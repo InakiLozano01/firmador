@@ -1,0 +1,2 @@
+class PDFSignatureError(Exception):
+    pass

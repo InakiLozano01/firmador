@@ -1,0 +1,95 @@
+@import url('font-source-sans-pro.css');
+
+body {
+	font-family: 'Source Sans Pro', Arial, sans-serif;
+}
+
+.breadcrumb-item + .breadcrumb-item::before {
+    content: ">";
+}
+
+.header-highlight {
+	background: #04244c;
+	height: 150px;
+}
+
+.logo-htc {
+	background-image: url("htc.svg");
+	background-size: 300px;
+	min-width: 300px;
+	height: 150px;
+	background-repeat: no-repeat;
+	background-position: center;
+	margin-left: 50px;
+	margin-right: 50px;
+}
+
+.footer {
+	height: 50px;
+	background-color: #50585a;
+	display: block;
+	margin-top: auto;
+}
+
+.footer p{
+	color: white;
+	margin-top: 1rem;
+	margin-bottom: 1rem;
+	text-align: left;
+}
+
+.container-fluid{
+	padding-left: 0;
+	padding-right: 0;
+	display: flex;
+	justify-content: flex-start;
+	align-items: center;
+}
+
+.bg-primary, .header-highlight {
+    background-color: #04244c!important;
+}
+
+.btn-primary, .btn-primary.active, .btn-primary.focus, .btn-primary:hover, .btn-primary:disabled {
+	background-color: #04244c;
+	border-color : #04244c;
+}
+
+.list-group-item.active {
+	background-color: #f8f9fa!important; /* bg-light color */
+	color :#04244c;
+	text-decoration: underline;
+	border-color : rgba(0,0,0,.125); /* same color than no active */
+}
+
+.btn:disabled {
+    cursor: not-allowed;
+}
+
+a, a:hover {
+	color : #04244c;
+}
+
+.badge-primary {
+	background-color: #04244c;
+}
+
+.drag-file-label {
+  color: #04244c;
+}
+
+
+html, body {
+	height: 100%;
+	margin: 0;
+}
+.wrapper {
+	min-height: 100%;
+	display: flex;
+	flex-direction: column;
+}
+.content {
+	flex: 1;
+}
+
+
