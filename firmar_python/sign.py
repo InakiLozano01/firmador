@@ -29,7 +29,7 @@ def save_signed_pdf(signed_pdf_base64, filename):
 
 @app.route('/sign', methods=['POST'])
 def sign_pdf():
-    host = request.remote_addr
+    host = request.headers.get('X-Real-IP')
     try:
         if 'file' not in request.files:
             raise PDFSignatureError("No file part in the request")
