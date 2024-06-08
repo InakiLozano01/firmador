@@ -5,7 +5,6 @@ COPY pom.xml /usr/src/mymaven/dss-demonstrations/
 COPY dss-demo-webapp/pom.xml /usr/src/mymaven/dss-demonstrations/dss-demo-webapp/
 COPY dss-demo-webapp/src /usr/src/mymaven/dss-demonstrations/dss-demo-webapp/src
 
-COPY dss-demo-bundle/pom.xml /usr/src/mymaven/dss-demonstrations/dss-demo-bundle/
 
 
 # OPTIONAL: provide documentation + javaDoc (change "pathTo")
