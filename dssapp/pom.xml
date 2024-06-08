@@ -71,7 +71,6 @@
 
 	<modules>
 		<module>dss-demo-webapp</module>
-		<module>dss-demo-bundle</module>
 	</modules>
 
 	<build>
