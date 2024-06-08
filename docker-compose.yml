@@ -9,8 +9,7 @@ services:
     depends_on:
       - java-webapp
       - flask-app
-    networks:
-      - signnet
+    network_mode: host
 
   java-webapp:
     build:
@@ -31,7 +30,8 @@ services:
       - ./firmar_python:/app
     depends_on:
       - java-webapp
-    network_mode: host
+    networks:
+      - signnet
 
 networks:
   signnet:
