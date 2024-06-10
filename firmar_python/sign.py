@@ -53,7 +53,7 @@ def sign_own_pdf():
 
         # Step 3: Extract certificate info (CUIL, name, email)
         cert_base64 = certificate_data
-        name, email = extract_certificate_info_own(cert_base64)
+        name, email = extract_certificate_info_own()
         cuit = "00000000000"
         current_time = int(time.time() * 1000)
 

@@ -8,7 +8,7 @@ import base64
 
 def get_signature_value_own(data_to_sign):
     # Cargar la clave privada desde un archivo
-    with open("C:/Users/kakit/OneDrive/Downloads/Projects/private_key.pem", "rb") as key_file:
+    with open("/app/private_key.pem", "rb") as key_file:
         private_key = load_pem_private_key(key_file.read(), password=None, backend=default_backend())
 
     # Generar la firma
@@ -24,7 +24,7 @@ def get_signature_value_own(data_to_sign):
 
 def get_certificate_from_local():
     # Leer el certificado desde un archivo
-    with open("C:/Users/kakit/OneDrive/Downloads/Projects/certificate.pem", "rb") as cert_file:
+    with open("/app/certificate.pem", "rb") as cert_file:
         certificate_data = cert_file.read()
     cert = certificate_data
     cert_chain = [certificate_data]
@@ -35,7 +35,9 @@ def get_certificate_from_local():
     }
     return certificate_base64
 
-def extract_certificate_info_own(cert_base64):
+def extract_certificate_info_own():
+    with open("/app/certificate.pem", "rb") as cert_file:
+	cert_base64 = cert_file.read()
     # Extraer el nombre del sujeto
     subject = cert_base64.subject.rfc4514_string()
     # Extraer nombre completo

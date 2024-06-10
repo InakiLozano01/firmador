@@ -28,6 +28,8 @@ services:
       - "5000:5000"
     volumes:
       - ./firmar_python:/app
+      - ./certificate.pem:/app/certificate.pem
+      - ./private_key.pem:/app/private_key.pem
     depends_on:
       - java-webapp
     networks:
