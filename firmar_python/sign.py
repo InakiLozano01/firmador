@@ -52,14 +52,13 @@ def sign_own_pdf():
         certificate_data = get_certificate_from_local()
 
         # Step 3: Extract certificate info (CUIL, name, email)
-        cert_base64 = certificate_data
         name, email = extract_certificate_info_own()
-        cuit = "00000000000"
+        cuit = "30629869510"
         current_time = int(time.time() * 1000)
 
         # Step 4: Get data to sign from DSS API
         data_to_sign_response = get_data_to_sign_own(prepared_pdf_bytes, certificate_data, x, y, len(PdfReader(io.BytesIO(prepared_pdf_bytes)).pages), name, cuit, email, current_time, datetimesigned)
-        data_to_sign = data_to_sign_response['bytes']
+        data_to_sign = base64.b64decode(data_to_sign_response['bytes'])
 
         # Step 5: Get signature value with criptography
         signature_value = get_signature_value_own(data_to_sign)

@@ -73,7 +73,7 @@ def get_data_to_sign_own(pdf_bytes, certificate_data, x, y, page, name, cuit, em
                         "signerTextHorizontalAlignment": "CENTER",
                         "signerTextVerticalAlignment": None,
                         "signerTextPosition": "TOP",
-                        "size": 7,
+                        "size": 5,
                         "text": f"Signed by: {name}\nDate: {datetimesigned}\nE-mail: {email}\nCUIT: {cuit}",
                         "textColor": {
                             "red": 0,
@@ -183,7 +183,7 @@ def sign_document_own(pdf_bytes, signature_value, certificate_data, x, y, page, 
                         "signerTextHorizontalAlignment": "CENTER",
                         "signerTextVerticalAlignment": None,
                         "signerTextPosition": "TOP",
-                        "size": 7,
+                        "size": 5,
                         "text": f"Signed by: {name}\nDate: {datetimesigned}\nE-mail: {email}\nCUIT: {cuit}",
                         "textColor": {
                             "red": 0,

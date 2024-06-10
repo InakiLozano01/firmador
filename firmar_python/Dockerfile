@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y apache2 apache2-dev gcc wget
 RUN apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Install Python packages
-RUN pip install requests cryptography PyMuPDF flask PyPDF2 werkzeug
+RUN pip install requests cryptography PyMuPDF flask PyPDF2 werkzeug python-dotenv
 
 # Install mod_wsgi
 RUN pip install mod_wsgi
