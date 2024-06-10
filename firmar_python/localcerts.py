@@ -36,9 +36,10 @@ def get_certificate_from_local():
     return certificate_base64
 
 def extract_certificate_info_own():
+    # Leer el certificado desde un archivo
     with open("/app/certificate.pem", "rb") as cert_file:
-	cert_base64 = cert_file.read()
-    # Extraer el nombre del sujeto
+        cert_base64 = cert_file.read()
+    
     subject = cert_base64.subject.rfc4514_string()
     # Extraer nombre completo
     common_name = subject.get_attributes_for_oid(x509.NameOID.COMMON_NAME)[0].value
