@@ -78,7 +78,7 @@ def get_certificates():
         return jsonify({"status": "error", "message": "An unexpected error occurred."}), 500
 
 @app.route('/firmas', methods=['POST'])
-def sign_pdf():
+def sign_pdf_firmas():
     signature_value = request.get_json()['signatureValue']
 
     signed_pdf_response = sign_document(pdf, signature_value, certificate_data, x, y, len(PdfReader(io.BytesIO(pdf)).pages), name, cuil, email, current_time, datetimesigned)
