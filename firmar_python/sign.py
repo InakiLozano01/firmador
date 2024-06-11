@@ -52,6 +52,8 @@ def get_certificates():
         if not pdf_file.filename.endswith('.pdf'):
             raise PDFSignatureError("File is not a PDF")
         
+        print(request.form.get('json'))
+        
         body = json.loads(request.form.get('json'))
 
         pdfname = secure_filename(re.sub(r'\.pdf$', '', pdf_file.filename))
