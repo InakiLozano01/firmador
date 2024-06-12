@@ -64,7 +64,7 @@ def get_certificates():
         global x, y
         prepared_pdf_bytes, x, y = check_and_prepare_pdf(pdf_bytes)
         global pdf
-        pdf = prepared_pdf_bytes
+        pdf = prepared_pdf_bytes.copy()
 
         global certificate_data
         certificate_data = body
@@ -86,6 +86,7 @@ def get_certificates():
         logging.error(f"Unexpected error in get_certificates: {str(e)}")
         return jsonify({"status": "error", "message": "An unexpected error occurred."}), 500
 
+
 @app.route('/firmas', methods=['POST'])
 def sign_pdf_firmas():
     signature_value = request.get_json()['signatureValue']
@@ -94,11 +95,10 @@ def sign_pdf_firmas():
     signed_pdf_base64 = signed_pdf_response['bytes']
 
     save_signed_pdf(signed_pdf_base64, signed_pdf_filename)
-
-    file_path = os.path.join(os.getcwd(), signed_pdf_filename)
+    response = send_from_directory(os.getcwd(), signed_pdf_filename, as_attachment=True)
     response.headers["Content-Disposition"] = "attachment; filename={}".format(signed_pdf_filename)
-    # Send the file as a response
-    return send_file(file_path, as_attachment=True, attachment_filename=signed_pdf_filename)
+    return response
+
 
 @app.route('/signown', methods=['POST'])
 def sign_own_pdf():
