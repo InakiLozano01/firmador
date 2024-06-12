@@ -28,7 +28,7 @@ def save_signed_pdf(signed_pdf_base64, filename):
     except Exception as e:
         logging.error(f"Error in save_signed_pdf: {str(e)}")
         raise PDFSignatureError("Failed to save signed PDF.")
-    
+
 pdf = None
 current_time = None
 certificate_data = None
@@ -41,6 +41,8 @@ signed_pdf_filename = None
 
 @app.route('/certificados', methods=['POST'])
 def get_certificates():
+    global pdf, current_time, certificate_data, x, y, name, cuil, email, signed_pdf_filename
+    
     try:
         if 'file' not in request.files:
             raise PDFSignatureError("No file part in the request")
@@ -56,28 +58,21 @@ def get_certificates():
         body = json.loads(request.form['json'])
 
         pdfname = secure_filename(re.sub(r'\.pdf$', '', pdf_file.filename))
-        global signed_pdf_filename
         signed_pdf_filename = pdfname + "_signed.pdf"
         pdf_bytes = pdf_file.read()
         
         # Step 1: Prepare PDF
-        global x, y
         prepared_pdf_bytes, x, y = check_and_prepare_pdf(pdf_bytes)
-        global pdf
         pdf = prepared_pdf_bytes
 
-        global certificate_data
         certificate_data = body
-        global cuil, name, email
         cuil, name, email = extract_certificate_info(certificate_data['certificate'])
 
-        global current_time
         current_time = int(time.time() * 1000)
 
         # Step 4: Get data to sign from DSS API
         data_to_sign_response = get_data_to_sign_tapir(prepared_pdf_bytes, certificate_data, x, y, len(PdfReader(io.BytesIO(prepared_pdf_bytes)).pages), name, cuil, email, current_time, datetimesigned)
         data_to_sign = data_to_sign_response["bytes"]
-
 
         return jsonify({"status": "success", "data_to_sign": data_to_sign})
     except PDFSignatureError as e:
@@ -86,18 +81,25 @@ def get_certificates():
         logging.error(f"Unexpected error in get_certificates: {str(e)}")
         return jsonify({"status": "error", "message": "An unexpected error occurred."}), 500
 
-
 @app.route('/firmas', methods=['POST'])
 def sign_pdf_firmas():
-    signature_value = request.get_json()['signatureValue']
-
-    signed_pdf_response = sign_document_tapir(pdf, signature_value, certificate_data, x, y, len(PdfReader(io.BytesIO(pdf)).pages), name, cuil, email, current_time, datetimesigned)
-    signed_pdf_base64 = signed_pdf_response['bytes']
-
-    save_signed_pdf(signed_pdf_base64, signed_pdf_filename)
-    response = send_from_directory(os.getcwd(), signed_pdf_filename, as_attachment=True)
-    response.headers["Content-Disposition"] = "attachment; filename={}".format(signed_pdf_filename)
-    return response
+    global pdf, certificate_data, x, y, name, cuil, email, current_time, signed_pdf_filename
+    
+    try:
+        print(request.get_json())
+        signature_value = request.get_json()['signatureValue']
+        print(signature_value)
+        signed_pdf_response = sign_document_tapir(pdf, signature_value, certificate_data, x, y, len(PdfReader(io.BytesIO(pdf)).pages), name, cuil, email, current_time, datetimesigned)
+        print(signed_pdf_response)
+        signed_pdf_base64 = signed_pdf_response['bytes']
+        print(signed_pdf_base64)
+        save_signed_pdf(signed_pdf_base64, signed_pdf_filename)
+        response = send_from_directory(os.getcwd(), signed_pdf_filename, as_attachment=True)
+        response.headers["Content-Disposition"] = "attachment; filename={}".format(signed_pdf_filename)
+        return response
+    except Exception as e:
+        logging.error(f"Unexpected error in sign_pdf_firmas: {str(e)}")
+        return jsonify({"status": "error", "message": "An unexpected error occurred."}), 500
 
 
 @app.route('/signown', methods=['POST'])
