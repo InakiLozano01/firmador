@@ -64,7 +64,7 @@ def get_certificates():
         global x, y
         prepared_pdf_bytes, x, y = check_and_prepare_pdf(pdf_bytes)
         global pdf
-        pdf = prepared_pdf_bytes.copy()
+        pdf = prepared_pdf_bytes
 
         global certificate_data
         certificate_data = body
