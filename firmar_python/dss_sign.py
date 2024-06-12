@@ -52,7 +52,7 @@ def get_data_to_sign_own(pdf_bytes, certificate_data, x, y, page, name, cuit, em
                     "dpi": None,
                     "image": None,
                     "fieldParameters": {
-                        "fieldId": None,
+                        "fieldId": "kakitosign",
                         "originX": x,
                         "originY": y,
                         "width": 185.0,
@@ -162,7 +162,7 @@ def sign_document_own(pdf_bytes, signature_value, certificate_data, x, y, page, 
                     "dpi": None,
                     "image": None,
                     "fieldParameters": {
-                        "fieldId": None,
+                        "fieldId": "kakitosign",
                         "originX": x,
                         "originY": y,
                         "width": 185.0,
