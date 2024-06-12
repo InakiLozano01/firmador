@@ -86,11 +86,9 @@ def sign_pdf_firmas():
     global pdf, certificate_data, x, y, name, cuil, email, current_time, signed_pdf_filename
     
     try:
-        print(request.headers)
-        print(request.get_data())
-        #print(request.json)
-        #signature_value = request.json['signatureValue']
-        signature_value = json.load(request.get_data())['signatureValue']
+
+        print(request.get_json())
+        signature_value = request.get_json()['signatureValue']
         print(signature_value)
         signed_pdf_response = sign_document_tapir(pdf, signature_value, certificate_data, x, y, len(PdfReader(io.BytesIO(pdf)).pages), name, cuil, email, current_time, datetimesigned)
         print(signed_pdf_response)
