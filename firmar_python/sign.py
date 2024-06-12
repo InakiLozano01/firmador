@@ -52,26 +52,32 @@ def get_certificates():
         if not pdf_file.filename.endswith('.pdf'):
             raise PDFSignatureError("File is not a PDF")
         
-        print(request.form.get('json'))
-        
-        body = json.loads(request.form.get('json'))
+        request._load_form_data()
+        body = json.loads(request.form['json'])
 
         pdfname = secure_filename(re.sub(r'\.pdf$', '', pdf_file.filename))
+        global signed_pdf_filename
         signed_pdf_filename = pdfname + "_signed.pdf"
         pdf_bytes = pdf_file.read()
         
         # Step 1: Prepare PDF
+        global x, y
         prepared_pdf_bytes, x, y = check_and_prepare_pdf(pdf_bytes)
+        global pdf
         pdf = prepared_pdf_bytes
 
-        certificate_data = body['certificate']
-        cuil, name, email = extract_certificate_info(certificate_data)
+        global certificate_data
+        certificate_data = body
+        global cuil, name, email
+        cuil, name, email = extract_certificate_info(certificate_data['certificate'])
 
+        global current_time
         current_time = int(time.time() * 1000)
 
         # Step 4: Get data to sign from DSS API
-        data_to_sign_response = get_data_to_sign_own(prepared_pdf_bytes, certificate_data, x, y, len(PdfReader(io.BytesIO(prepared_pdf_bytes)).pages), name, cuil, email, current_time, datetimesigned)
-        data_to_sign = data_to_sign_response['bytes']
+        data_to_sign_response = get_data_to_sign_tapir(prepared_pdf_bytes, certificate_data, x, y, len(PdfReader(io.BytesIO(prepared_pdf_bytes)).pages), name, cuil, email, current_time, datetimesigned)
+        data_to_sign = data_to_sign_response["bytes"]
+
 
         return jsonify({"status": "success", "data_to_sign": data_to_sign})
     except PDFSignatureError as e:
@@ -84,13 +90,15 @@ def get_certificates():
 def sign_pdf_firmas():
     signature_value = request.get_json()['signatureValue']
 
-    signed_pdf_response = sign_document(pdf, signature_value, certificate_data, x, y, len(PdfReader(io.BytesIO(pdf)).pages), name, cuil, email, current_time, datetimesigned)
+    signed_pdf_response = sign_document_tapir(pdf, signature_value, certificate_data, x, y, len(PdfReader(io.BytesIO(pdf)).pages), name, cuil, email, current_time, datetimesigned)
     signed_pdf_base64 = signed_pdf_response['bytes']
 
     save_signed_pdf(signed_pdf_base64, signed_pdf_filename)
-    response = send_from_directory(os.getcwd(), signed_pdf_filename, as_attachment=True)
+
+    file_path = os.path.join(os.getcwd(), signed_pdf_filename)
     response.headers["Content-Disposition"] = "attachment; filename={}".format(signed_pdf_filename)
-    return response
+    # Send the file as a response
+    return send_file(file_path, as_attachment=True, attachment_filename=signed_pdf_filename)
 
 @app.route('/signown', methods=['POST'])
 def sign_own_pdf():
