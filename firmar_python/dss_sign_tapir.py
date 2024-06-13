@@ -1,17 +1,21 @@
+# Descripcion: Este archivo contiene las funciones necesarias para firmar un documento PDF con la API de DSS desde Tapir
+
 import requests
 import base64
 import logging
 from errors import PDFSignatureError
+import io 
+from PyPDF2 import PdfReader
 
-def get_data_to_sign(pdf_bytes, certificate_data, x, y, page, name, cuil, email, current_time, datetimesigned):
+def get_data_to_sign_tapir(pdf, certificates, current_time, datetimesigned, field_id, stamp, area, name, encoded_image):
     try:
         body = {
             "parameters": {
                 "signingCertificate": {
-                    "encodedCertificate": certificate_data['response']['certificate']
+                    "encodedCertificate": certificates['certificate']
                 },
                 "certificateChain": [
-                    {"encodedCertificate": cert} for cert in certificate_data['response']['certificateChain']
+                    {"encodedCertificate": cert} for cert in certificates['certificateChain']
                 ],
                 "detachedContents": None,
                 "asicContainerType": None,
@@ -45,20 +49,20 @@ def get_data_to_sign(pdf_bytes, certificate_data, x, y, page, name, cuil, email,
                 "signWithExpiredCertificate": False,
                 "generateTBSWithoutCertificate": False,
                 "imageParameters": {
-                    "alignmentHorizontal": None,
+                    "alignmentHorizontal": "RIGHT",
                     "alignmentVertical": None,
                     "imageScaling": None,
                     "backgroundColor": None,
                     "dpi": None,
-                    "image": None,
+                    "image": encoded_image,
                     "fieldParameters": {
-                        "fieldId": None,
-                        "originX": x,
-                        "originY": y,
-                        "width": 185.0,
-                        "height": 50.0,
+                        "fieldId": f"{field_id}",
+                        "originX": 0,
+                        "originY": 0,
+                        "width": None,
+                        "height": None,
                         "rotation": None,
-                        "page": page
+                        "page": len(PdfReader(io.BytesIO(pdf)).pages)
                     },
                     "textParameters": {
                         "backgroundColor": {
@@ -74,7 +78,7 @@ def get_data_to_sign(pdf_bytes, certificate_data, x, y, page, name, cuil, email,
                         "signerTextVerticalAlignment": None,
                         "signerTextPosition": "TOP",
                         "size": 7,
-                        "text": f"Signed by: {name}\nDate: {datetimesigned}\nE-mail: {email}\nCUIL: {cuil}",
+                        "text": f"Firma Digital: {name}\n{datetimesigned}\n{stamp}\n{area}",
                         "textColor": {
                             "red": 0,
                             "green": 0,
@@ -105,7 +109,7 @@ def get_data_to_sign(pdf_bytes, certificate_data, x, y, page, name, cuil, email,
                 }
             },
             "toSignDocument": {
-                "bytes": base64.b64encode(pdf_bytes).decode('utf-8'),
+                "bytes": base64.b64encode(pdf).decode('utf-8'),
                 "digestAlgorithm": None,
                 "name": "document.pdf"
             }
@@ -114,18 +118,18 @@ def get_data_to_sign(pdf_bytes, certificate_data, x, y, page, name, cuil, email,
         response.raise_for_status()
         return response.json()
     except requests.RequestException as e:
-        logging.error(f"Error in get_data_to_sign: {str(e)}")
+        logging.error(f"Error in get_data_to_sign_tapir: {str(e)}")
         raise PDFSignatureError("Failed to get data to sign from DSS API.")
 
-def sign_document(pdf_bytes, signature_value, certificate_data, x, y, page, name, cuil, email, current_time, datetimesigned):
+def sign_document_tapir(pdf, signature_value, certificates, current_time, datetimesigned, field_id, stamp, area, name, encoded_image):
     try:
         body = {
             "parameters": {
                 "signingCertificate": {
-                    "encodedCertificate": certificate_data['response']['certificate']
+                    "encodedCertificate": certificates['certificate']
                 },
                 "certificateChain": [
-                    {"encodedCertificate": cert} for cert in certificate_data['response']['certificateChain']
+                    {"encodedCertificate": cert} for cert in certificates['certificateChain']
                 ],
                 "detachedContents": None,
                 "asicContainerType": None,
@@ -155,20 +159,20 @@ def sign_document(pdf_bytes, signature_value, certificate_data, x, y, page, name
                 "signWithExpiredCertificate": False,
                 "generateTBSWithoutCertificate": False,
                 "imageParameters": {
-                    "alignmentHorizontal": None,
+                    "alignmentHorizontal": "RIGHT",
                     "alignmentVertical": None,
                     "imageScaling": None,
                     "backgroundColor": None,
                     "dpi": None,
-                    "image": None,
+                    "image": encoded_image,
                     "fieldParameters": {
-                        "fieldId": None,
-                        "originX": x,
-                        "originY": y,
-                        "width": 185.0,
-                        "height": 50.0,
+                        "fieldId": f"{field_id}",
+                        "originX": 0,
+                        "originY": 0,
+                        "width": None,
+                        "height": None,
                         "rotation": None,
-                        "page": page
+                        "page": len(PdfReader(io.BytesIO(pdf)).pages)
                     },
                     "textParameters": {
                         "backgroundColor": {
@@ -184,7 +188,7 @@ def sign_document(pdf_bytes, signature_value, certificate_data, x, y, page, name
                         "signerTextVerticalAlignment": None,
                         "signerTextPosition": "TOP",
                         "size": 7,
-                        "text": f"Signed by: {name}\nDate: {datetimesigned}\nE-mail: {email}\nCUIL: {cuil}",
+                        "text": f"Firma Digital: {name}\n{datetimesigned}\n{stamp}\n{area}",
                         "textColor": {
                             "red": 0,
                             "green": 0,
@@ -219,7 +223,7 @@ def sign_document(pdf_bytes, signature_value, certificate_data, x, y, page, name
                 "value": signature_value
             },
             "toSignDocument": {
-                "bytes": base64.b64encode(pdf_bytes).decode('utf-8'),
+                "bytes": base64.b64encode(pdf).decode('utf-8'),
                 "digestAlgorithm": None,
                 "name": "document.pdf"
             }
@@ -228,6 +232,5 @@ def sign_document(pdf_bytes, signature_value, certificate_data, x, y, page, name
         response.raise_for_status()
         return response.json()
     except requests.RequestException as e:
-        logging.error(f"Error in sign_document: {str(e)}")
+        logging.error(f"Error in sign_document_tapir: {str(e)}")
         raise PDFSignatureError("Failed to sign document with DSS API.")
-

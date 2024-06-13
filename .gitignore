@@ -1,6 +1,6 @@
 /dss-demonstrations
 /firmar_python/.env
-/*/private_key.pem
-/*/certificate.pem
+/firmar_python/private_key.pem
+/firmar_python/certificate.pem
 /certificate.pem
 /private_key.pem
