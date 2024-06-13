@@ -51,7 +51,7 @@ def save_signed_pdf(signed_pdf_base64, filename):
 
 
 ### Imagen de firma en base64 ###
-with open("firma.png", "rb") as image_file:
+with open("logo_tribunal_para_tapir.png", "rb") as image_file:
     encoded_image = base64.b64encode(image_file.read()).decode('utf-8')
 
 
