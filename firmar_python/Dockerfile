@@ -13,6 +13,9 @@ RUN pip install requests cryptography PyMuPDF flask PyPDF2 werkzeug python-doten
 # Install mod_wsgi
 RUN pip install mod_wsgi
 
+# Install pillow
+RUN pip install pillow
+
 # Automatically configure mod_wsgi
 RUN mod_wsgi-express install-module | tee /etc/apache2/mods-available/wsgi.load
 RUN a2enmod wsgi

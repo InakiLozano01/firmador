@@ -16,11 +16,13 @@ from nexu import *
 from errors import PDFSignatureError
 import os
 import json
+from imagecomp import *
 
 ###     Configuracion de aplicacion Flask     ###
 app = Flask(__name__)
 
-logging.basicConfig(level=logging.root.level, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', debug=True, port=5000)
@@ -51,9 +53,8 @@ def save_signed_pdf(signed_pdf_base64, filename):
 
 
 ### Imagen de firma en base64 ###
-with open("logo_tribunal_para_tapir.png", "rb") as image_file:
-    encoded_image = base64.b64encode(image_file.read()).decode('utf-8')
-
+encoded_image = compress_and_encode_image("logo_tribunal_para_tapir.png")
+compressedimage = compressed_image_bytes("logo_tribunal_para_tapir.png")
 
 ###    Rutas de la aplicacion para Tapir     ###
 # Ruta para obtener PDF y certificados para firmar
@@ -137,17 +138,30 @@ def sign_own_pdf():
         pdfname = secure_filename(re.sub(r'\.pdf$', '', pdf_file.filename))
         signed_pdf_filename = pdfname + "_signed.pdf"
         pdf = pdf_file.read()
-        sign_info = json.loads(request.form['firma_info'])
-        field_id = sign_info['firma_lugar']
-        stamp = sign_info['firma_sello']
-        area = sign_info['firma_area']
+
+        """ try:
+            sign_info = json.loads(request.form['firma_info'])
+        except json.JSONDecodeError:
+            raise PDFSignatureError("Invalid JSON format for firma_info")
+
+        field_id = sign_info.get('firma_lugar')
+        stamp = sign_info.get('firma_sello')
+        area = sign_info.get('firma_area')
+
+        if not field_id or not stamp or not area:
+            raise PDFSignatureError("firma_info is missing required fields") """
+        
+        field_id = None
+        stamp = "Ingeniero de Desarrollo de Software"
+        area = "Tribunal de Cuentas de Tucumán"
+        name = "Fernando"
         
         certificates = get_certificate_from_local()
 
         current_time = int(time.time() * 1000)
 
         data_to_sign_response = get_data_to_sign_own(pdf, certificates, current_time, datetimesigned, field_id, stamp, area, name, encoded_image)
-        data_to_sign = base64.decode(data_to_sign_response['bytes'])
+        data_to_sign = base64.b64decode(data_to_sign_response['bytes'])
 
         signature_value = get_signature_value_own(data_to_sign)
 

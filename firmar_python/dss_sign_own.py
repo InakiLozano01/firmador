@@ -49,18 +49,21 @@ def get_data_to_sign_own(pdf, certificates, current_time, datetimesigned, field_
                 "signWithExpiredCertificate": False,
                 "generateTBSWithoutCertificate": False,
                 "imageParameters": {
-                    "alignmentHorizontal": "RIGHT",
+                    "alignmentHorizontal": None,
                     "alignmentVertical": None,
-                    "imageScaling": None,
+                    "imageScaling": "STRETCH",
                     "backgroundColor": None,
                     "dpi": None,
-                    "image": encoded_image,
+                    "image": {
+                        "bytes": encoded_image,
+                        "name": "image.png"
+                    },
                     "fieldParameters": {
-                        "fieldId": f"{field_id}",
+                        "fieldId": None,
                         "originX": 0,
                         "originY": 0,
-                        "width": 0,
-                        "height": 0,
+                        "width": 200,
+                        "height": 60,
                         "rotation": None,
                         "page": len(PdfReader(io.BytesIO(pdf)).pages)
                     },
@@ -76,7 +79,7 @@ def get_data_to_sign_own(pdf, certificates, current_time, datetimesigned, field_
                         "padding": None,
                         "signerTextHorizontalAlignment": "CENTER",
                         "signerTextVerticalAlignment": None,
-                        "signerTextPosition": "TOP",
+                        "signerTextPosition": "LEFT",
                         "size": 7,
                         "text": f"Firma Electronica: {name}\n{datetimesigned}\n{stamp}\n{area}",
                         "textColor": {
@@ -159,18 +162,21 @@ def sign_document_own(pdf, signature_value, certificates, current_time, datetime
                 "signWithExpiredCertificate": False,
                 "generateTBSWithoutCertificate": False,
                 "imageParameters": {
-                    "alignmentHorizontal": "RIGHT",
+                    "alignmentHorizontal": None,
                     "alignmentVertical": None,
-                    "imageScaling": None,
+                    "imageScaling": "STRETCH",
                     "backgroundColor": None,
                     "dpi": None,
-                    "image": encoded_image,
+                    "image": {
+                        "bytes": encoded_image,
+                        "name": "image.png"
+                    },
                     "fieldParameters": {
-                        "fieldId": f"{field_id}",
+                        "fieldId": None,
                         "originX": 0,
                         "originY": 0,
-                        "width": 0,
-                        "height": 0,
+                        "width": 200,
+                        "height": 60,
                         "rotation": None,
                         "page": len(PdfReader(io.BytesIO(pdf)).pages)
                     },
@@ -186,7 +192,7 @@ def sign_document_own(pdf, signature_value, certificates, current_time, datetime
                         "padding": None,
                         "signerTextHorizontalAlignment": "CENTER",
                         "signerTextVerticalAlignment": None,
-                        "signerTextPosition": "TOP",
+                        "signerTextPosition": "LEFT",
                         "size": 7,
                         "text": f"Firma Electronica: {name}\n{datetimesigned}\n{stamp}\n{area}",
                         "textColor": {
