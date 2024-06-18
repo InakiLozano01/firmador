@@ -19,6 +19,8 @@ import json
 from imagecomp import *
 from datetime import *
 import pytz
+import pikepdf
+from io import BytesIO
 
 ###     Configuracion de aplicacion Flask     ###
 app = Flask(__name__)
@@ -52,6 +54,36 @@ def save_signed_pdf(signed_pdf_base64, filename):
         logging.error(f"Error in save_signed_pdf: {str(e)}")
         raise PDFSignatureError("Failed to save signed PDF.")
 ###################################################
+
+def update_and_lock_pdf(base64_pdf, field_values):
+    # Decodificar el PDF en base64
+    pdf_data = base64.b64decode(base64_pdf)
+    with pikepdf.open(BytesIO(pdf_data)) as pdf:
+        # Modificar los campos del formulario
+        for page in pdf.pages:
+            for annots in page.get('/Annots', []):
+                for annot in annots:
+                    if annot.Type == '/Annot' and annot.Subtype == '/Widget':
+                        field_name = annot.get('/T')
+                        if field_name and field_name in field_values:
+                            annot.update({
+                                '/V': pikepdf.String(field_values[field_name]),
+                                '/Ff': pikepdf.Name(1)  # Marcar como solo lectura
+                            })
+
+        # Guardar el PDF modificado en un buffer
+        output_buffer = BytesIO()
+        pdf.save(output_buffer)
+
+        # Aplicar permisos para bloquear el PDF
+        with pikepdf.open(BytesIO(output_buffer.getvalue())) as pdf:
+            pdf.save(output_buffer, encryption=pikepdf.Encryption(owner=b'', allow=pikepdf.Permissions(assemble=False, print_high_res=True, modify_annotations=False, modify_contents=False, fill_form=False, extract_text=True)))
+
+        # Obtener el PDF modificado en base64
+        modified_pdf_base64 = base64.b64encode(output_buffer.getvalue()).decode('utf-8')
+
+    return modified_pdf_base64
+
 
 
 ### Imagen de firma en base64 ###
@@ -178,6 +210,10 @@ def sign_own_pdf():
 
         signed_pdf_response = sign_document_own(pdf, signature_value, certificates, current_time, datetimesigned, field_id, stamp, area, name, encoded_image)
         signed_pdf_base64 = signed_pdf_response['bytes']
+
+        field_values = json.loads(request.form['pdf_form'])
+        if field_values:
+            signed_pdf_base64 = update_and_lock_pdf(signed_pdf_base64, field_values)
 
         save_signed_pdf(signed_pdf_base64, signed_pdf_filename)
 
