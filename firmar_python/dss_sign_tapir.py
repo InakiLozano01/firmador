@@ -75,13 +75,13 @@ def get_data_to_sign_tapir(pdf, certificates, current_time, datetimesigned, fiel
                             "alpha": 255
                         },
                         "font": None,
-                        "textWrapping": "FILL_BOX",
+                        "textWrapping": None,
                         "padding": None,
                         "signerTextHorizontalAlignment": "CENTER",
                         "signerTextVerticalAlignment": None,
                         "signerTextPosition": "LEFT",
-                        "size": None,
-                        "text": f"Firma Digital: {name}                     \n{datetimesigned}\n{stamp}\n{area}",
+                        "size": 8,
+                        "text": f"Firma Digital: {name}\n{datetimesigned}\n{stamp}\n{area}",
                         "textColor": {
                             "red": 0,
                             "green": 0,
@@ -89,7 +89,7 @@ def get_data_to_sign_tapir(pdf, certificates, current_time, datetimesigned, fiel
                             "alpha": 255
                         }
                     },
-                    "zoom": 50
+                    "zoom": None
                 },
                 "signatureIdToCounterSign": None,
                 "blevelParams": {
@@ -188,13 +188,13 @@ def sign_document_tapir(pdf, signature_value, certificates, current_time, dateti
                             "alpha": 255
                         },
                         "font": None,
-                        "textWrapping": "FILL_BOX",
+                        "textWrapping": None,
                         "padding": None,
                         "signerTextHorizontalAlignment": "CENTER",
                         "signerTextVerticalAlignment": None,
                         "signerTextPosition": "LEFT",
-                        "size": None,
-                        "text": f"Firma Digital: {name}                     \n{datetimesigned}\n{stamp}\n{area}",
+                        "size": 8,
+                        "text": f"Firma Digital: {name}\n{datetimesigned}\n{stamp}\n{area}",
                         "textColor": {
                             "red": 0,
                             "green": 0,
@@ -202,7 +202,7 @@ def sign_document_tapir(pdf, signature_value, certificates, current_time, dateti
                             "alpha": 255
                         }
                     },
-                    "zoom": 50
+                    "zoom": None
                 },
                 "signatureIdToCounterSign": None,
                 "blevelParams": {
