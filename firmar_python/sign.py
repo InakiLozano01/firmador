@@ -17,6 +17,7 @@ from errors import PDFSignatureError
 import os
 import json
 from imagecomp import *
+from datetime import *
 
 ###     Configuracion de aplicacion Flask     ###
 app = Flask(__name__)
@@ -29,7 +30,7 @@ if __name__ == '__main__':
 ##################################################
 
 ###    Variables globales     ###
-datetimesigned = time.strftime('%Y-%m-%d %H:%M:%S')
+datetimesigned = None
 pdf = None
 current_time = None
 certificates = None
@@ -60,7 +61,7 @@ compressedimage = compressed_image_bytes("logo_tribunal_para_tapir.png")
 # Ruta para obtener PDF y certificados para firmar
 @app.route('/certificados', methods=['POST'])
 def get_certificates():
-    global pdf, current_time, certificates, signed_pdf_filename, field_id, stamp, area, name
+    global pdf, current_time, certificates, signed_pdf_filename, field_id, stamp, area, name, datetimesigned
     
     try:
         if 'file' not in request.files:
@@ -95,6 +96,8 @@ def get_certificates():
         pdf = pdf_file.read()
 
         current_time = int(time.time() * 1000)
+
+        datetimesigned = (datetime.now(timezone.utc) + timedelta(hours=-3)).strftime("%Y-%m-%dT%H:%M:%S")
 
         data_to_sign_response = get_data_to_sign_tapir(pdf, certificates, current_time, datetimesigned, field_id, stamp, area, name, encoded_image)
         data_to_sign = data_to_sign_response["bytes"]
@@ -165,6 +168,8 @@ def sign_own_pdf():
 
         current_time = int(time.time() * 1000)
 
+        datetimesigned = (datetime.now(timezone.utc) + timedelta(hours=-3)).strftime("%Y-%m-%dT%H:%M:%S")
+
         data_to_sign_response = get_data_to_sign_own(pdf, certificates, current_time, datetimesigned, field_id, stamp, area, name, encoded_image)
         data_to_sign = base64.b64decode(data_to_sign_response['bytes'])
 
@@ -215,6 +220,8 @@ def sign_pdf():
         cert_base64 = certificate_data['response']['certificate']
         cuil, name, email = extract_certificate_info(cert_base64)
         current_time = int(time.time() * 1000)
+
+        datetimesigned = (datetime.now(timezone.utc) + timedelta(hours=-3)).strftime("%Y-%m-%dT%H:%M:%S")
 
         # Step 4: Get data to sign from DSS API
         data_to_sign_response = get_data_to_sign(prepared_pdf_bytes, certificate_data, x, y, len(PdfReader(io.BytesIO(prepared_pdf_bytes)).pages), name, cuil, email, current_time, datetimesigned)

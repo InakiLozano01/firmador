@@ -32,7 +32,7 @@ def compress_and_encode_image(image_path):
             img = img.convert("RGBA")
             
             # Redimensionar la imagen a 50x50 píxeles
-            img = img.resize((50, 50), Image.LANCZOS)
+            img = img.resize((58, 58), Image.LANCZOS)
             
             # Comprimir la imagen
             buffer = io.BytesIO()
