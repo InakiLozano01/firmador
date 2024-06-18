@@ -51,7 +51,7 @@ def get_data_to_sign_tapir(pdf, certificates, current_time, datetimesigned, fiel
                 "imageParameters": {
                     "alignmentHorizontal": None,
                     "alignmentVertical": None,
-                    "imageScaling": "ZOOM_AND_CENTER",
+                    "imageScaling": "CENTER",
                     "backgroundColor": None,
                     "dpi": 72,
                     "image": {
@@ -75,7 +75,7 @@ def get_data_to_sign_tapir(pdf, certificates, current_time, datetimesigned, fiel
                             "alpha": 255
                         },
                         "font": None,
-                        "textWrapping": None,
+                        "textWrapping": "FILL_BOX",
                         "padding": None,
                         "signerTextHorizontalAlignment": "CENTER",
                         "signerTextVerticalAlignment": None,
@@ -164,7 +164,7 @@ def sign_document_tapir(pdf, signature_value, certificates, current_time, dateti
                 "imageParameters": {
                     "alignmentHorizontal": None,
                     "alignmentVertical": None,
-                    "imageScaling": "ZOOM_AND_CENTER",
+                    "imageScaling": "CENTER",
                     "backgroundColor": None,
                     "dpi": 72,
                     "image": {
@@ -188,7 +188,7 @@ def sign_document_tapir(pdf, signature_value, certificates, current_time, dateti
                             "alpha": 255
                         },
                         "font": None,
-                        "textWrapping": None,
+                        "textWrapping": "FILL_BOX",
                         "padding": None,
                         "signerTextHorizontalAlignment": "CENTER",
                         "signerTextVerticalAlignment": None,
