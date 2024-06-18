@@ -31,8 +31,8 @@ def compress_and_encode_image(image_path):
             # Convertir la imagen a modo RGBA para mantener la transparencia
             img = img.convert("RGBA")
             
-            # Redimensionar la imagen a 100x100 píxeles
-            img = img.resize((100, 100), Image.LANCZOS)
+            # Redimensionar la imagen a 50x50 píxeles
+            img = img.resize((50, 50), Image.LANCZOS)
             
             # Comprimir la imagen
             buffer = io.BytesIO()

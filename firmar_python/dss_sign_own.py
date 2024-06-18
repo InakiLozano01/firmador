@@ -51,7 +51,7 @@ def get_data_to_sign_own(pdf, certificates, current_time, datetimesigned, field_
                 "imageParameters": {
                     "alignmentHorizontal": None,
                     "alignmentVertical": None,
-                    "imageScaling": "STRETCH",
+                    "imageScaling": "CENTER",
                     "backgroundColor": None,
                     "dpi": None,
                     "image": {
@@ -164,7 +164,7 @@ def sign_document_own(pdf, signature_value, certificates, current_time, datetime
                 "imageParameters": {
                     "alignmentHorizontal": None,
                     "alignmentVertical": None,
-                    "imageScaling": "STRETCH",
+                    "imageScaling": "CENTER",
                     "backgroundColor": None,
                     "dpi": None,
                     "image": {
