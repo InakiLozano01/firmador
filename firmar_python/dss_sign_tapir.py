@@ -1,4 +1,4 @@
-# Descripcion: Este archivo contiene las funciones necesarias para firmar un documento PDF con la API de DSS desde Tapir
+# Descripcion: Este archivo contiene las funciones necesarias para firmar un documento PDF con la API de DSS desde Tapir con certificado de Token
 
 import requests
 import base64
@@ -49,12 +49,15 @@ def get_data_to_sign_tapir(pdf, certificates, current_time, datetimesigned, fiel
                 "signWithExpiredCertificate": False,
                 "generateTBSWithoutCertificate": False,
                 "imageParameters": {
-                    "alignmentHorizontal": "RIGHT",
+                    "alignmentHorizontal": None,
                     "alignmentVertical": None,
-                    "imageScaling": None,
+                    "imageScaling": "STRETCH",
                     "backgroundColor": None,
                     "dpi": None,
-                    "image": encoded_image,
+                    "image": {
+                        "bytes": encoded_image,
+                        "name": "image.png"
+                    },
                     "fieldParameters": {
                         "fieldId": f"{field_id}",
                         "originX": 0,
@@ -76,7 +79,7 @@ def get_data_to_sign_tapir(pdf, certificates, current_time, datetimesigned, fiel
                         "padding": None,
                         "signerTextHorizontalAlignment": "CENTER",
                         "signerTextVerticalAlignment": None,
-                        "signerTextPosition": "TOP",
+                        "signerTextPosition": "LEFT",
                         "size": 7,
                         "text": f"Firma Digital: {name}\n{datetimesigned}\n{stamp}\n{area}",
                         "textColor": {
@@ -92,7 +95,7 @@ def get_data_to_sign_tapir(pdf, certificates, current_time, datetimesigned, fiel
                 "blevelParams": {
                     "trustAnchorBPPolicy": True,
                     "signingDate": current_time,  # Current time in milliseconds
-                    "claimedSignerRoles": None,
+                    "claimedSignerRoles": f"{stamp}",
                     "policyId": None,
                     "policyQualifier": None,
                     "policyDescription": None,
@@ -101,11 +104,11 @@ def get_data_to_sign_tapir(pdf, certificates, current_time, datetimesigned, fiel
                     "policySpuri": None,
                     "commitmentTypeIndications": None,
                     "signerLocationPostalAddress": [],
-                    "signerLocationPostalCode": None,
-                    "signerLocationLocality": None,
-                    "signerLocationStateOrProvince": None,
+                    "signerLocationPostalCode": "4000",
+                    "signerLocationLocality": "San Miguel de Tucumán",
+                    "signerLocationStateOrProvince": "Tucumán",
                     "signerLocationCountry": "AR",
-                    "signerLocationStreet": None
+                    "signerLocationStreet": "Congreso 180"
                 }
             },
             "toSignDocument": {
@@ -159,12 +162,15 @@ def sign_document_tapir(pdf, signature_value, certificates, current_time, dateti
                 "signWithExpiredCertificate": False,
                 "generateTBSWithoutCertificate": False,
                 "imageParameters": {
-                    "alignmentHorizontal": "RIGHT",
+                    "alignmentHorizontal": None,
                     "alignmentVertical": None,
-                    "imageScaling": None,
+                    "imageScaling": "STRETCH",
                     "backgroundColor": None,
                     "dpi": None,
-                    "image": encoded_image,
+                    "image": {
+                        "bytes": encoded_image,
+                        "name": "image.png"
+                    },
                     "fieldParameters": {
                         "fieldId": f"{field_id}",
                         "originX": 0,
@@ -186,7 +192,7 @@ def sign_document_tapir(pdf, signature_value, certificates, current_time, dateti
                         "padding": None,
                         "signerTextHorizontalAlignment": "CENTER",
                         "signerTextVerticalAlignment": None,
-                        "signerTextPosition": "TOP",
+                        "signerTextPosition": "LEFT",
                         "size": 7,
                         "text": f"Firma Digital: {name}\n{datetimesigned}\n{stamp}\n{area}",
                         "textColor": {
@@ -202,7 +208,7 @@ def sign_document_tapir(pdf, signature_value, certificates, current_time, dateti
                 "blevelParams": {
                     "trustAnchorBPPolicy": True,
                     "signingDate": current_time,  # Current time in milliseconds
-                    "claimedSignerRoles": None,
+                    "claimedSignerRoles": f"{stamp}",
                     "policyId": None,
                     "policyQualifier": None,
                     "policyDescription": None,
@@ -211,11 +217,11 @@ def sign_document_tapir(pdf, signature_value, certificates, current_time, dateti
                     "policySpuri": None,
                     "commitmentTypeIndications": None,
                     "signerLocationPostalAddress": [],
-                    "signerLocationPostalCode": None,
-                    "signerLocationLocality": None,
-                    "signerLocationStateOrProvince": None,
+                    "signerLocationPostalCode": "4000",
+                    "signerLocationLocality": "San Miguel de Tucumán",
+                    "signerLocationStateOrProvince": "Tucumán",
                     "signerLocationCountry": "AR",
-                    "signerLocationStreet": None
+                    "signerLocationStreet": "Congreso 180"
                 }
             },
             "signatureValue": {

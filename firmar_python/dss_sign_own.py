@@ -59,11 +59,11 @@ def get_data_to_sign_own(pdf, certificates, current_time, datetimesigned, field_
                         "name": "image.png"
                     },
                     "fieldParameters": {
-                        "fieldId": None,
+                        "fieldId": f"{field_id}",
                         "originX": 0,
                         "originY": 0,
-                        "width": 200,
-                        "height": 60,
+                        "width": None,
+                        "height": None,
                         "rotation": None,
                         "page": len(PdfReader(io.BytesIO(pdf)).pages)
                     },
@@ -95,7 +95,7 @@ def get_data_to_sign_own(pdf, certificates, current_time, datetimesigned, field_
                 "blevelParams": {
                     "trustAnchorBPPolicy": True,
                     "signingDate": current_time,  # Current time in milliseconds
-                    "claimedSignerRoles": None,
+                    "claimedSignerRoles": f"{stamp}",
                     "policyId": None,
                     "policyQualifier": None,
                     "policyDescription": None,
@@ -104,11 +104,11 @@ def get_data_to_sign_own(pdf, certificates, current_time, datetimesigned, field_
                     "policySpuri": None,
                     "commitmentTypeIndications": None,
                     "signerLocationPostalAddress": [],
-                    "signerLocationPostalCode": None,
-                    "signerLocationLocality": None,
-                    "signerLocationStateOrProvince": None,
+                    "signerLocationPostalCode": "4000",
+                    "signerLocationLocality": "San Miguel de Tucumán",
+                    "signerLocationStateOrProvince": "Tucumán",
                     "signerLocationCountry": "AR",
-                    "signerLocationStreet": None
+                    "signerLocationStreet": "Congreso 180"
                 }
             },
             "toSignDocument": {
@@ -172,11 +172,11 @@ def sign_document_own(pdf, signature_value, certificates, current_time, datetime
                         "name": "image.png"
                     },
                     "fieldParameters": {
-                        "fieldId": None,
+                        "fieldId": f"{field_id}",
                         "originX": 0,
                         "originY": 0,
-                        "width": 200,
-                        "height": 60,
+                        "width": None,
+                        "height": None,
                         "rotation": None,
                         "page": len(PdfReader(io.BytesIO(pdf)).pages)
                     },
@@ -208,7 +208,7 @@ def sign_document_own(pdf, signature_value, certificates, current_time, datetime
                 "blevelParams": {
                     "trustAnchorBPPolicy": True,
                     "signingDate": current_time,  # Current time in milliseconds
-                    "claimedSignerRoles": None,
+                    "claimedSignerRoles": f"{stamp}",
                     "policyId": None,
                     "policyQualifier": None,
                     "policyDescription": None,
@@ -217,11 +217,11 @@ def sign_document_own(pdf, signature_value, certificates, current_time, datetime
                     "policySpuri": None,
                     "commitmentTypeIndications": None,
                     "signerLocationPostalAddress": [],
-                    "signerLocationPostalCode": None,
-                    "signerLocationLocality": None,
-                    "signerLocationStateOrProvince": None,
+                    "signerLocationPostalCode": "4000",
+                    "signerLocationLocality": "San Miguel de Tucumán",
+                    "signerLocationStateOrProvince": "Tucumán",
                     "signerLocationCountry": "AR",
-                    "signerLocationStreet": None
+                    "signerLocationStreet": "Congreso 180"
                 }
             },
             "signatureValue": {

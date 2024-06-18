@@ -75,10 +75,18 @@ def get_certificates():
         
         request._load_form_data()
         certificates = json.loads(request.form['certificados'])
-        sign_info = json.loads(request.form['firma_info'])
-        field_id = sign_info['firma_lugar']
-        stamp = sign_info['firma_sello']
-        area = sign_info['firma_area']
+
+        try:
+            sign_info = json.loads(request.form['firma_info'])
+        except json.JSONDecodeError:
+            raise PDFSignatureError("Invalid JSON format for firma_info")
+
+        field_id = sign_info.get('firma_lugar')
+        stamp = sign_info.get('firma_sello')
+        area = sign_info.get('firma_area')
+
+        if not field_id or not stamp or not area:
+            raise PDFSignatureError("firma_info is missing required fields")
 
         name = extract_certificate_info_name(certificates['certificate'])
 
@@ -139,7 +147,7 @@ def sign_own_pdf():
         signed_pdf_filename = pdfname + "_signed.pdf"
         pdf = pdf_file.read()
 
-        """ try:
+        try:
             sign_info = json.loads(request.form['firma_info'])
         except json.JSONDecodeError:
             raise PDFSignatureError("Invalid JSON format for firma_info")
@@ -147,14 +155,11 @@ def sign_own_pdf():
         field_id = sign_info.get('firma_lugar')
         stamp = sign_info.get('firma_sello')
         area = sign_info.get('firma_area')
+        name = sign_info.get('firma_nombre')
 
-        if not field_id or not stamp or not area:
-            raise PDFSignatureError("firma_info is missing required fields") """
+        if not field_id or not name:
+            raise PDFSignatureError("firma_info is missing required fields")
         
-        field_id = None
-        stamp = "Ingeniero de Desarrollo de Software"
-        area = "Tribunal de Cuentas de Tucumán"
-        name = "Fernando"
         
         certificates = get_certificate_from_local()
 
