@@ -103,7 +103,12 @@ def get_data_to_sign_tapir(pdf, certificates, current_time, datetimesigned, fiel
                     "policyDigestValue": None,
                     "policySpuri": None,
                     "commitmentTypeIndications": None,
-                    "signerLocationPostalAddress": [],
+                    "signerLocationPostalAddress": [
+                        "Congreso 180",
+                        "4000 San Miguel de Tucumán",
+                        "Tucumán",
+                        "AR"
+                    ],
                     "signerLocationPostalCode": "4000",
                     "signerLocationLocality": "San Miguel de Tucumán",
                     "signerLocationStateOrProvince": "Tucumán",
@@ -216,7 +221,12 @@ def sign_document_tapir(pdf, signature_value, certificates, current_time, dateti
                     "policyDigestValue": None,
                     "policySpuri": None,
                     "commitmentTypeIndications": None,
-                    "signerLocationPostalAddress": [],
+                    "signerLocationPostalAddress": [
+                        "Congreso 180",
+                        "4000 San Miguel de Tucumán",
+                        "Tucumán",
+                        "AR"
+                    ],
                     "signerLocationPostalCode": "4000",
                     "signerLocationLocality": "San Miguel de Tucumán",
                     "signerLocationStateOrProvince": "Tucumán",
