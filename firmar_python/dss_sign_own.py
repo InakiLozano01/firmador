@@ -95,7 +95,7 @@ def get_data_to_sign_own(pdf, certificates, current_time, datetimesigned, field_
                 "blevelParams": {
                     "trustAnchorBPPolicy": True,
                     "signingDate": current_time,  # Current time in milliseconds
-                    "claimedSignerRoles": f"{stamp}",
+                    "claimedSignerRoles": [f"{stamp}"],
                     "policyId": None,
                     "policyQualifier": None,
                     "policyDescription": None,
@@ -208,7 +208,7 @@ def sign_document_own(pdf, signature_value, certificates, current_time, datetime
                 "blevelParams": {
                     "trustAnchorBPPolicy": True,
                     "signingDate": current_time,  # Current time in milliseconds
-                    "claimedSignerRoles": f"{stamp}",
+                    "claimedSignerRoles": [f"{stamp}"],
                     "policyId": None,
                     "policyQualifier": None,
                     "policyDescription": None,
