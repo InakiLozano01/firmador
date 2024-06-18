@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify, send_from_directory
 import re
 import base64
-import time
+import time as tiempo
 from PyPDF2 import PdfReader
 import io
 import logging
@@ -96,7 +96,7 @@ def get_certificates():
         signed_pdf_filename = pdfname + "_signed.pdf"
         pdf = pdf_file.read()
 
-        current_time = int(time.time() * 1000)
+        current_time = int(tiempo.time() * 1000)
 
         datetimesigned = datetime.now(pytz.utc).astimezone(pytz.timezone('America/Argentina/Buenos_Aires')).strftime("%Y-%m-%dT%H:%M:%S")
 
@@ -167,7 +167,7 @@ def sign_own_pdf():
         
         certificates = get_certificate_from_local()
 
-        current_time = int(time.time() * 1000)
+        current_time = int(tiempo.time() * 1000)
 
         datetimesigned = datetime.now(pytz.utc).astimezone(pytz.timezone('America/Argentina/Buenos_Aires')).strftime("%Y-%m-%dT%H:%M:%S")
 
@@ -220,7 +220,7 @@ def sign_pdf():
         # Step 3: Extract certificate info (CUIL, name, email)
         cert_base64 = certificate_data['response']['certificate']
         cuil, name, email = extract_certificate_info(cert_base64)
-        current_time = int(time.time() * 1000)
+        current_time = int(tiempo.time() * 1000)
 
         datetimesigned = datetime.now(pytz.utc).astimezone(pytz.timezone('America/Argentina/Buenos_Aires')).strftime("%Y-%m-%dT%H:%M:%S")
 
