@@ -98,7 +98,7 @@ def get_certificates():
 
         current_time = int(tiempo.time() * 1000)
 
-        datetimesigned = datetime.now(pytz.utc).astimezone(pytz.timezone('America/Argentina/Buenos_Aires')).strftime("%Y-%m-%dT%H:%M:%S")
+        datetimesigned = datetime.now(pytz.utc).astimezone(pytz.timezone('America/Argentina/Buenos_Aires')).strftime("%Y-%m-%d %H:%M:%S")
 
         data_to_sign_response = get_data_to_sign_tapir(pdf, certificates, current_time, datetimesigned, field_id, stamp, area, name, encoded_image)
         data_to_sign = data_to_sign_response["bytes"]
@@ -169,7 +169,7 @@ def sign_own_pdf():
 
         current_time = int(tiempo.time() * 1000)
 
-        datetimesigned = datetime.now(pytz.utc).astimezone(pytz.timezone('America/Argentina/Buenos_Aires')).strftime("%Y-%m-%dT%H:%M:%S")
+        datetimesigned = datetime.now(pytz.utc).astimezone(pytz.timezone('America/Argentina/Buenos_Aires')).strftime("%Y-%m-%d %H:%M:%S")
 
         data_to_sign_response = get_data_to_sign_own(pdf, certificates, current_time, datetimesigned, field_id, stamp, area, name, encoded_image)
         data_to_sign = base64.b64decode(data_to_sign_response['bytes'])
@@ -222,7 +222,7 @@ def sign_pdf():
         cuil, name, email = extract_certificate_info(cert_base64)
         current_time = int(tiempo.time() * 1000)
 
-        datetimesigned = datetime.now(pytz.utc).astimezone(pytz.timezone('America/Argentina/Buenos_Aires')).strftime("%Y-%m-%dT%H:%M:%S")
+        datetimesigned = datetime.now(pytz.utc).astimezone(pytz.timezone('America/Argentina/Buenos_Aires')).strftime("%Y-%m-%d %H:%M:%S")
 
         # Step 4: Get data to sign from DSS API
         data_to_sign_response = get_data_to_sign(prepared_pdf_bytes, certificate_data, x, y, len(PdfReader(io.BytesIO(prepared_pdf_bytes)).pages), name, cuil, email, current_time, datetimesigned)

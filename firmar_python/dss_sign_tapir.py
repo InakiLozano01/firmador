@@ -53,7 +53,7 @@ def get_data_to_sign_tapir(pdf, certificates, current_time, datetimesigned, fiel
                     "alignmentVertical": None,
                     "imageScaling": "CENTER",
                     "backgroundColor": None,
-                    "dpi": 72,
+                    "dpi": None,
                     "image": {
                         "bytes": encoded_image,
                         "name": "image.png"
@@ -81,7 +81,7 @@ def get_data_to_sign_tapir(pdf, certificates, current_time, datetimesigned, fiel
                         "signerTextVerticalAlignment": None,
                         "signerTextPosition": "LEFT",
                         "size": None,
-                        "text": f"Firma Digital: {name}\n{datetimesigned}\n{stamp}\n{area}",
+                        "text": f"Firma Digital: {name}                     \n{datetimesigned}\n{stamp}\n{area}",
                         "textColor": {
                             "red": 0,
                             "green": 0,
@@ -194,7 +194,7 @@ def sign_document_tapir(pdf, signature_value, certificates, current_time, dateti
                         "signerTextVerticalAlignment": None,
                         "signerTextPosition": "LEFT",
                         "size": None,
-                        "text": f"Firma Digital: {name}\n{datetimesigned}\n{stamp}\n{area}",
+                        "text": f"Firma Digital: {name}                     \n{datetimesigned}\n{stamp}\n{area}",
                         "textColor": {
                             "red": 0,
                             "green": 0,
