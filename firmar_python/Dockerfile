@@ -16,6 +16,9 @@ RUN pip install mod_wsgi
 # Install pillow
 RUN pip install pillow
 
+# Install Pytz
+RUN pip install pytz
+
 # Automatically configure mod_wsgi
 RUN mod_wsgi-express install-module | tee /etc/apache2/mods-available/wsgi.load
 RUN a2enmod wsgi
