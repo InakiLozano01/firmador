@@ -80,7 +80,7 @@ def get_data_to_sign_tapir(pdf, certificates, current_time, datetimesigned, fiel
                         "signerTextHorizontalAlignment": "CENTER",
                         "signerTextVerticalAlignment": None,
                         "signerTextPosition": "LEFT",
-                        "size": 8,
+                        "size": 9,
                         "text": f"Firma Digital: {name}\n{datetimesigned}\n{stamp}\n{area}",
                         "textColor": {
                             "red": 0,
@@ -89,7 +89,7 @@ def get_data_to_sign_tapir(pdf, certificates, current_time, datetimesigned, fiel
                             "alpha": 255
                         }
                     },
-                    "zoom": None
+                    "zoom": 50
                 },
                 "signatureIdToCounterSign": None,
                 "blevelParams": {
@@ -193,7 +193,7 @@ def sign_document_tapir(pdf, signature_value, certificates, current_time, dateti
                         "signerTextHorizontalAlignment": "CENTER",
                         "signerTextVerticalAlignment": None,
                         "signerTextPosition": "LEFT",
-                        "size": 8,
+                        "size": 9,
                         "text": f"Firma Digital: {name}\n{datetimesigned}\n{stamp}\n{area}",
                         "textColor": {
                             "red": 0,
@@ -202,7 +202,7 @@ def sign_document_tapir(pdf, signature_value, certificates, current_time, dateti
                             "alpha": 255
                         }
                     },
-                    "zoom": None
+                    "zoom": 50
                 },
                 "signatureIdToCounterSign": None,
                 "blevelParams": {
