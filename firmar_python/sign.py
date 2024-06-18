@@ -58,33 +58,33 @@ def save_signed_pdf(signed_pdf_base64, filename):
 def update_and_lock_pdf(base64_pdf, field_values):
     # Decodificar el PDF en base64
     pdf_data = base64.b64decode(base64_pdf)
+    output_buffer = BytesIO()
+
     with pikepdf.open(BytesIO(pdf_data)) as pdf:
         # Modificar los campos del formulario
         for page in pdf.pages:
-            for annots in page.get('/Annots', []):
-                for annot in annots:
+            if '/Annots' in page:
+                for annot in page.Annots:
                     if annot.Type == '/Annot' and annot.Subtype == '/Widget':
                         field_name = annot.get('/T')
                         if field_name and field_name in field_values:
                             annot.update({
                                 '/V': pikepdf.String(field_values[field_name]),
-                                '/Ff': pikepdf.Name(1)  # Marcar como solo lectura
+                                '/Ff': annot.get('/Ff', 0) | 1  # Marcar como solo lectura
                             })
-
-        # Guardar el PDF modificado en un buffer
-        output_buffer = BytesIO()
+        
+        # Guardar el PDF modificado con permisos
         pdf.save(output_buffer)
+    
+    # Aplicar permisos para bloquear el PDF
+    with pikepdf.open(BytesIO(output_buffer.getvalue())) as pdf:
+        final_output_buffer = BytesIO()
+        pdf.save(final_output_buffer, encryption=pikepdf.Encryption(owner=b'', allow=pikepdf.Permissions(assemble=False, print_high_res=True, modify_annotations=False, modify_contents=False, fill_form=False, extract_text=True)))
 
-        # Aplicar permisos para bloquear el PDF
-        with pikepdf.open(BytesIO(output_buffer.getvalue())) as pdf:
-            pdf.save(output_buffer, encryption=pikepdf.Encryption(owner=b'', allow=pikepdf.Permissions(assemble=False, print_high_res=True, modify_annotations=False, modify_contents=False, fill_form=False, extract_text=True)))
-
-        # Obtener el PDF modificado en base64
-        modified_pdf_base64 = base64.b64encode(output_buffer.getvalue()).decode('utf-8')
+    # Obtener el PDF modificado en base64
+    modified_pdf_base64 = base64.b64encode(final_output_buffer.getvalue()).decode('utf-8')
 
     return modified_pdf_base64
-
-
 
 ### Imagen de firma en base64 ###
 encoded_image = compress_and_encode_image("logo_tribunal_para_tapir.png")
