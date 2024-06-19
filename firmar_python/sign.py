@@ -2,7 +2,8 @@ from flask import Flask, request, jsonify, send_from_directory
 import re
 import base64
 import time as tiempo
-from PyPDF2 import PdfReader
+import PyPDF2
+from PyPDF2 import PdfReader, PdfWriter
 import io
 import logging
 from werkzeug.utils import secure_filename
@@ -21,6 +22,9 @@ from datetime import *
 import pytz
 import pikepdf
 from io import BytesIO
+from pdfrw import *
+import fitz
+import pdfrw
 
 ###     Configuracion de aplicacion Flask     ###
 app = Flask(__name__)
@@ -56,35 +60,49 @@ def save_signed_pdf(signed_pdf_base64, filename):
 ###################################################
 
 def update_and_lock_pdf(base64_pdf, field_values):
-    # Decodificar el PDF en base64
-    pdf_data = base64.b64decode(base64_pdf)
-    output_buffer = BytesIO()
+    try:
+        # Decodificar el PDF en base64
+        print("Base64 input PDF:", base64_pdf[:100])  # Imprime los primeros 100 caracteres para verificar
+        pdf_data = base64.b64decode(base64_pdf)
+        print("Decoded PDF data size:", len(pdf_data))
+        input_buffer = io.BytesIO(pdf_data)
+        output_buffer = io.BytesIO()
 
-    with pikepdf.open(BytesIO(pdf_data)) as pdf:
-        # Modificar los campos del formulario
-        for page in pdf.pages:
-            if '/Annots' in page:
-                for annot in page.Annots:
-                    if annot.Type == '/Annot' and annot.Subtype == '/Widget':
-                        field_name = annot.get('/T')
-                        if field_name and field_name in field_values:
-                            annot.update({
-                                '/V': pikepdf.String(field_values[field_name]),
-                                '/Ff': annot.get('/Ff', 0) | 1  # Marcar como solo lectura
-                            })
-        
-        # Guardar el PDF modificado con permisos
-        pdf.save(output_buffer)
-    
-    # Aplicar permisos para bloquear el PDF
-    with pikepdf.open(BytesIO(output_buffer.getvalue())) as pdf:
-        final_output_buffer = BytesIO()
-        pdf.save(final_output_buffer, encryption=pikepdf.Encryption(owner=b'', allow=pikepdf.Permissions(assemble=False, print_high_res=True, modify_annotations=False, modify_contents=False, fill_form=False, extract_text=True)))
+        # Read the PDF
+        input_pdf = PdfReader(input_buffer)
+        output_pdf = PdfWriter()
 
-    # Obtener el PDF modificado en base64
-    modified_pdf_base64 = base64.b64encode(final_output_buffer.getvalue()).decode('utf-8')
+        # Update form fields with the provided data
+        # Modificar los campos del formulario con los datos proporcionados
+        for page in input_pdf.pages:
+            annotations = page.Annots
+            if annotations:
+                for annotation in annotations:
+                    annotation_obj = annotation.resolve()
+                    if annotation_obj.Subtype == PdfName.Widget:
+                        field_name = annotation_obj.T
+                        if field_name and field_name[1:-1] in field_values:
+                            print(f"Updating field: {field_name[1:-1]} with value: {field_values[field_name[1:-1]]}")
+                            annotation_obj.update(
+                                PdfDict(V=PdfObject('({})'.format(field_values[field_name[1:-1]])), Ff=1)  # Marcar como solo lectura
+                            )
+            output_pdf.addpage(page)
 
-    return modified_pdf_base64
+        # Write the modified PDF to buffer
+        output_pdf.write(output_buffer)
+        print("Modified PDF saved to buffer, size:", len(output_buffer.getvalue()))
+
+        # Obtener el PDF modificado en base64
+        final_buffer_content = output_buffer.getvalue()
+        print(f"Final buffer size: {len(final_buffer_content)} bytes")
+
+        modified_pdf_base64 = base64.b64encode(final_buffer_content).decode('utf-8')
+        print("Base64 output PDF:", modified_pdf_base64[:100])  # Imprime los primeros 100 caracteres para verificar
+        return modified_pdf_base64
+
+    except Exception as e:
+        print("An error occurred in update and lock:", str(e))
+        raise
 
 ### Imagen de firma en base64 ###
 encoded_image = compress_and_encode_image("logo_tribunal_para_tapir.png")
@@ -211,10 +229,13 @@ def sign_own_pdf():
         signed_pdf_response = sign_document_own(pdf, signature_value, certificates, current_time, datetimesigned, field_id, stamp, area, name, encoded_image)
         signed_pdf_base64 = signed_pdf_response['bytes']
 
+        pdf_to_update = fitz.open(stream=base64.b64decode(signed_pdf_base64), filetype="pdf")
+
         field_values = json.loads(request.form['pdf_form'])
         if field_values:
-            signed_pdf_base64 = update_and_lock_pdf(signed_pdf_base64, field_values)
-
+            response = requests.post('http://java-webapp:5555/pdf/update', multipart={'file': (signed_pdf_filename, pdf_to_update, 'application/pdf'), 'fieldValues': json.dumps(field_values)})
+            response.raise_for_status()
+            signed_pdf_base64 = base64.b64encode(response.content).decode('utf-8')
         save_signed_pdf(signed_pdf_base64, signed_pdf_filename)
 
         response = send_from_directory(os.getcwd(), signed_pdf_filename, as_attachment=True)
