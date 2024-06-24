@@ -43,7 +43,7 @@ def create_signature_image(text, encoded_image, width=234, height=57, scale_fact
     img.paste(stamp, (stamp_x, stamp_y), stamp if stamp.mode == 'RGBA' else None)
     
     # Downscale the image to the final size
-    img = img.resize((width, height), Image.ANTIALIAS)
+    img = img.resize((width, height), Image.Resampling.LANCZOS)
     
     # Convert the image to base64
     buffered = io.BytesIO()
