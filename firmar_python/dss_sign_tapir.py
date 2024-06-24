@@ -67,28 +67,7 @@ def get_data_to_sign_tapir(pdf, certificates, current_time, datetimesigned, fiel
                         "rotation": None,
                         "page": len(PdfReader(io.BytesIO(pdf)).pages)
                     },
-                    "textParameters": {
-                        "backgroundColor": {
-                            "red": 255,
-                            "green": 255,
-                            "blue": 255,
-                            "alpha": 255
-                        },
-                        "font": None,
-                        "textWrapping": None,
-                        "padding": None,
-                        "signerTextHorizontalAlignment": "CENTER",
-                        "signerTextVerticalAlignment": None,
-                        "signerTextPosition": "LEFT",
-                        "size": 9,
-                        "text": f"Firma Digital: {name}\n{datetimesigned}\n{stamp}\n{area}",
-                        "textColor": {
-                            "red": 0,
-                            "green": 0,
-                            "blue": 0,
-                            "alpha": 255
-                        }
-                    },
+                    "textParameters": None,
                     "zoom": 50
                 },
                 "signatureIdToCounterSign": None,
@@ -185,28 +164,7 @@ def sign_document_tapir(pdf, signature_value, certificates, current_time, dateti
                         "rotation": None,
                         "page": len(PdfReader(io.BytesIO(pdf)).pages)
                     },
-                    "textParameters": {
-                        "backgroundColor": {
-                            "red": 255,
-                            "green": 255,
-                            "blue": 255,
-                            "alpha": 255
-                        },
-                        "font": None,
-                        "textWrapping": None,
-                        "padding": None,
-                        "signerTextHorizontalAlignment": "CENTER",
-                        "signerTextVerticalAlignment": None,
-                        "signerTextPosition": "LEFT",
-                        "size": 9,
-                        "text": f"Firma Digital: {name}\n{datetimesigned}\n{stamp}\n{area}",
-                        "textColor": {
-                            "red": 0,
-                            "green": 0,
-                            "blue": 0,
-                            "alpha": 255
-                        }
-                    },
+                    "textParameters": None,
                     "zoom": 50
                 },
                 "signatureIdToCounterSign": None,

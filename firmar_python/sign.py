@@ -25,6 +25,7 @@ from io import BytesIO
 from pdfrw import *
 import fitz
 import pdfrw
+from signimagepregenerated import *
 
 ###     Configuracion de aplicacion Flask     ###
 app = Flask(__name__)
@@ -46,6 +47,7 @@ field_id = None
 stamp = None
 area = None
 name = None
+custom_image = None
 ##################################################
 
 ###    Funcion de guardado de PDF     ###
@@ -59,51 +61,6 @@ def save_signed_pdf(signed_pdf_base64, filename):
         raise PDFSignatureError("Failed to save signed PDF.")
 ###################################################
 
-def update_and_lock_pdf(base64_pdf, field_values):
-    try:
-        # Decodificar el PDF en base64
-        print("Base64 input PDF:", base64_pdf[:100])  # Imprime los primeros 100 caracteres para verificar
-        pdf_data = base64.b64decode(base64_pdf)
-        print("Decoded PDF data size:", len(pdf_data))
-        input_buffer = io.BytesIO(pdf_data)
-        output_buffer = io.BytesIO()
-
-        # Read the PDF
-        input_pdf = PdfReader(input_buffer)
-        output_pdf = PdfWriter()
-
-        # Update form fields with the provided data
-        # Modificar los campos del formulario con los datos proporcionados
-        for page in input_pdf.pages:
-            annotations = page.Annots
-            if annotations:
-                for annotation in annotations:
-                    annotation_obj = annotation.resolve()
-                    if annotation_obj.Subtype == PdfName.Widget:
-                        field_name = annotation_obj.T
-                        if field_name and field_name[1:-1] in field_values:
-                            print(f"Updating field: {field_name[1:-1]} with value: {field_values[field_name[1:-1]]}")
-                            annotation_obj.update(
-                                PdfDict(V=PdfObject('({})'.format(field_values[field_name[1:-1]])), Ff=1)  # Marcar como solo lectura
-                            )
-            output_pdf.addpage(page)
-
-        # Write the modified PDF to buffer
-        output_pdf.write(output_buffer)
-        print("Modified PDF saved to buffer, size:", len(output_buffer.getvalue()))
-
-        # Obtener el PDF modificado en base64
-        final_buffer_content = output_buffer.getvalue()
-        print(f"Final buffer size: {len(final_buffer_content)} bytes")
-
-        modified_pdf_base64 = base64.b64encode(final_buffer_content).decode('utf-8')
-        print("Base64 output PDF:", modified_pdf_base64[:100])  # Imprime los primeros 100 caracteres para verificar
-        return modified_pdf_base64
-
-    except Exception as e:
-        print("An error occurred in update and lock:", str(e))
-        raise
-
 ### Imagen de firma en base64 ###
 encoded_image = compress_and_encode_image("logo_tribunal_para_tapir.png")
 compressedimage = compressed_image_bytes("logo_tribunal_para_tapir.png")
@@ -112,7 +69,7 @@ compressedimage = compressed_image_bytes("logo_tribunal_para_tapir.png")
 # Ruta para obtener PDF y certificados para firmar
 @app.route('/certificados', methods=['POST'])
 def get_certificates():
-    global pdf, current_time, certificates, signed_pdf_filename, field_id, stamp, area, name, datetimesigned
+    global pdf, current_time, certificates, signed_pdf_filename, field_id, stamp, area, name, datetimesigned, custom_image
     
     try:
         if 'file' not in request.files:
@@ -150,7 +107,12 @@ def get_certificates():
 
         datetimesigned = datetime.now(pytz.utc).astimezone(pytz.timezone('America/Argentina/Buenos_Aires')).strftime("%Y-%m-%d %H:%M:%S")
 
-        data_to_sign_response = get_data_to_sign_tapir(pdf, certificates, current_time, datetimesigned, field_id, stamp, area, name, encoded_image)
+        custom_image = create_signature_image(
+          f"Firma Electronica: {name}\n{datetimesigned}\n{stamp}\n{area}",
+          encoded_image
+      )
+
+        data_to_sign_response = get_data_to_sign_tapir(pdf, certificates, current_time, datetimesigned, field_id, stamp, area, name, custom_image)
         data_to_sign = data_to_sign_response["bytes"]
 
         return jsonify({"status": "success", "data_to_sign": data_to_sign})
@@ -167,7 +129,7 @@ def sign_pdf_firmas():
 
         signature_value = request.get_json()['signatureValue']
 
-        signed_pdf_response = sign_document_tapir(pdf, signature_value, certificates, current_time, datetimesigned, field_id, stamp, area, name, encoded_image)
+        signed_pdf_response = sign_document_tapir(pdf, signature_value, certificates, current_time, datetimesigned, field_id, stamp, area, name, custom_image)
         
         signed_pdf_base64 = signed_pdf_response['bytes']
         
