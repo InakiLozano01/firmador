@@ -45,8 +45,13 @@ public class PdfFormService {
                         // Set no highlight
                         widget.setHighlightMode(PdfAnnotation.HIGHLIGHT_NONE);
 
-                        // Remove appearance characteristics
-                        widget.setAppearanceCharacteristics(new PdfDictionary());
+                        // Remove appearance characteristics related to border and background
+                        PdfDictionary appearanceCharacteristics = widget.getAppearanceCharacteristics();
+                        if (appearanceCharacteristics != null) {
+                            appearanceCharacteristics.remove(PdfName.BC); // Remove border color
+                            appearanceCharacteristics.remove(PdfName.BG); // Remove background color
+                            widget.setAppearanceCharacteristics(appearanceCharacteristics);
+                        }
                     }
 
                     System.out.println("Updating field: " + fieldName + " with value: " + fieldValues.get(fieldName));
