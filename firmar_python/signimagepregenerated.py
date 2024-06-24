@@ -2,7 +2,7 @@ from PIL import Image, ImageDraw, ImageFont
 import io
 import base64
 
-def create_signature_image(text, encoded_image, width=234, height=57, scale_factor=50):
+def create_signature_image(text, encoded_image, width=234, height=57, scale_factor=100000):
     # Create a new image with white background at higher resolution
     high_res_width = width * scale_factor
     high_res_height = height * scale_factor
@@ -26,13 +26,15 @@ def create_signature_image(text, encoded_image, width=234, height=57, scale_fact
         draw.text((5 * scale_factor, y_text), line, font=font, fill='black')
         y_text += font.getbbox(line)[3] + 2 * scale_factor  # Move to next line (font height + 2 pixels)
     
+
     # Decode and open the stamp image
     stamp_data = base64.b64decode(encoded_image)
     stamp = Image.open(io.BytesIO(stamp_data))
-    
+
     # Resize stamp to fit within the remaining width and height, taking into account the scale factor
-    stamp_max_width = high_res_width - text_width - 5 * scale_factor  # 5 pixels padding
-    stamp_max_height = high_res_height - 4 * scale_factor  # 2 pixels padding top and bottom
+    original_stamp_width, original_stamp_height = stamp.size
+    stamp_max_width = (width - text_width / scale_factor - 5) * scale_factor  # 5 pixels padding
+    stamp_max_height = (height - 4) * scale_factor  # 2 pixels padding top and bottom
     stamp.thumbnail((stamp_max_width, stamp_max_height), Image.Resampling.LANCZOS)
     
     # Calculate position to paste stamp (right-aligned)
