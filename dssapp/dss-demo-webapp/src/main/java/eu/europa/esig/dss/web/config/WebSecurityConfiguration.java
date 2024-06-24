@@ -44,7 +44,7 @@ public class WebSecurityConfiguration {
 	
 	/** API urls (REST/SOAP webServices) */
 	private static final String[] API_URLS = new String[] {
-			"/services/rest/**", "/services/soap/**"
+			"/services/rest/**", "/services/soap/**", "/pdf/update"
 	};
 
 	@Bean
