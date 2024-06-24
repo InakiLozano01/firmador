@@ -45,14 +45,8 @@ public class PdfFormService {
                         // Set no highlight
                         widget.setHighlightMode(PdfAnnotation.HIGHLIGHT_NONE);
 
-                        // Adjust appearance characteristics to remove border color and background color
-                        PdfDictionary appearanceCharacteristics = widget.getAppearanceCharacteristics();
-                        if (appearanceCharacteristics == null) {
-                            appearanceCharacteristics = new PdfDictionary();
-                            widget.setAppearanceCharacteristics(appearanceCharacteristics);
-                        }
-                        appearanceCharacteristics.put(PdfName.BC, new PdfArray(new float[] {1, 1, 1})); // Set border color to white
-                        appearanceCharacteristics.put(PdfName.BG, new PdfArray(new float[] {1, 1, 1})); // Set background color to white
+                        // Remove appearance characteristics
+                        widget.setAppearanceCharacteristics(new PdfDictionary());
                     }
 
                     System.out.println("Updating field: " + fieldName + " with value: " + fieldValues.get(fieldName));
