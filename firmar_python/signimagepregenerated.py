@@ -8,14 +8,9 @@ def create_signature_image(text, encoded_image, width=234, height=57):
     draw = ImageDraw.Draw(img)
     
     # Try to use a common sans-serif font, falling back to default if not available
-    try:
-        font = ImageFont.truetype("sans-serif.ttf", 9)
-    except IOError:
-        try:
-            font = ImageFont.truetype("arial.ttf", 9)
-        except IOError:
-            font = ImageFont.load_default()
-            print("Warning: Using default font. Text size may not be as expected.")
+
+    font = ImageFont.truetype("./PTSerif-Regular.ttf", 9)
+
     
     # Calculate text area width (about 75% of total width)
     text_width = int(width * 0.75)
@@ -25,7 +20,7 @@ def create_signature_image(text, encoded_image, width=234, height=57):
     y_text = 5
     for line in lines:
         draw.text((5, y_text), line, font=font, fill='black')
-        y_text += font.getsize(line)[1] + 2  # Move to next line (font height + 2 pixels)
+        y_text += font.getbbox(line)[3] + 2   # Move to next line (font height + 2 pixels)
     
     # Decode and open the stamp image
     stamp_data = base64.b64decode(encoded_image)
