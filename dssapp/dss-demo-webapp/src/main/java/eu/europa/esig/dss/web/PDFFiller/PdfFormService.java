@@ -2,21 +2,21 @@ package eu.europa.esig.dss.web.PDFFiller;
 
 import com.itextpdf.forms.PdfAcroForm;
 import com.itextpdf.forms.fields.PdfFormField;
-import com.itextpdf.io.source.ByteArrayOutputStream;
 import com.itextpdf.kernel.pdf.*;
 import com.itextpdf.kernel.pdf.annot.PdfAnnotation;
 import com.itextpdf.kernel.pdf.annot.PdfWidgetAnnotation;
 import org.springframework.stereotype.Service;
-import org.springframework.web.multipart.MultipartFile;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.Map;
 
 @Service
 public class PdfFormService {
 
-    public ByteArrayOutputStream updatePdfFields(MultipartFile file, Map<String, String> fieldValues) throws IOException {
-        PdfReader reader = new PdfReader(file.getInputStream());
+    public ByteArrayOutputStream updatePdfFields(byte[] pdfBytes, Map<String, String> fieldValues) throws IOException {
+        PdfReader reader = new PdfReader(new ByteArrayInputStream(pdfBytes));
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         PdfWriter writer = new PdfWriter(baos);
         StampingProperties stampingProperties = new StampingProperties().useAppendMode();
