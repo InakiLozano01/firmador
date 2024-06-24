@@ -14,6 +14,13 @@
     <name>DSS Demo: Web Application</name>
     <description>DSS Demo: Web Application</description>
 
+    <repositories>
+        <repository>
+            <id>itext</id>
+            <url>https://repo.itextsupport.com/releases</url>
+        </repository>
+    </repositories>
+    
     <dependencies>
         <!-- Sprint-Boot dependencies -->
         <dependency>
