@@ -229,17 +229,14 @@ def sign_own_pdf():
         signed_pdf_response = sign_document_own(pdf, signature_value, certificates, current_time, datetimesigned, field_id, stamp, area, name, encoded_image)
         signed_pdf_base64 = signed_pdf_response['bytes']
 
-        pdf_to_update = fitz.open(stream=base64.b64decode(signed_pdf_base64), filetype="pdf")
-        pdfupdate_bytes = pdf_to_update.write()
         field_values = json.loads(request.form['pdf_form'])
         if field_values:
-            files = {
-            'file': (signed_pdf_filename, pdfupdate_bytes, 'application/pdf')
-            }
             data = {
-            'fieldValues': json.dumps(field_values)
+                'fileBase64': signed_pdf_base64,
+                'fileName': signed_pdf_filename,
+                'fieldValues': json.dumps(field_values)
             }
-            response = requests.post('http://java-webapp:5555/pdf/update', files=files, data=data)
+            response = requests.post('http://java-webapp:5555/pdf/update', data=data)
             response.raise_for_status()
             signed_pdf_base64 = base64.b64encode(response.content).decode('utf-8')
         save_signed_pdf(signed_pdf_base64, signed_pdf_filename)
