@@ -40,6 +40,7 @@ public class PdfFormService {
                         // Remove border
                         PdfDictionary borderStyle = new PdfDictionary();
                         borderStyle.put(PdfName.W, new PdfNumber(0)); // Set border width to 0
+                        borderStyle.put(PdfName.Width, new PdfNumber(0)); // Set border width to 0
                         widget.setBorderStyle(borderStyle);
 
                         // Set no highlight
@@ -47,12 +48,23 @@ public class PdfFormService {
 
                         // Adjust appearance characteristics to remove border color and background color
                         PdfDictionary appearanceCharacteristics = widget.getAppearanceCharacteristics();
-                        if (appearanceCharacteristics == null) {
+                        if (appearanceCharacteristics != null) {
+                            appearanceCharacteristics.remove(PdfName.BC); // Remove border color
+                            appearanceCharacteristics.remove(PdfName.BG); // Remove background color
+                            widget.setAppearanceCharacteristics(appearanceCharacteristics);
+                        } else {
                             appearanceCharacteristics = new PdfDictionary();
                             widget.setAppearanceCharacteristics(appearanceCharacteristics);
                         }
-                        appearanceCharacteristics.put(PdfName.BC, new PdfArray(new float[] {1, 1, 1, 0})); // Set border color to transparent
-                        appearanceCharacteristics.put(PdfName.BG, new PdfArray(new float[] {1, 1, 1, 0})); // Set background color to transparent
+
+                        // Clear any additional border appearance settings
+                        widget.getPdfObject().remove(PdfName.BS);
+                        widget.getPdfObject().remove(PdfName.MK);
+                        widget.getPdfObject().remove(PdfName.Border);
+                        widget.getPdfObject().remove(PdfName.BorderColor);
+                        widget.getPdfObject().remove(PdfName.BorderStyle);
+                        widget.getPdfObject().remove(PdfName.BorderThickness);
+
                     }
 
                     System.out.println("Updating field: " + fieldName + " with value: " + fieldValues.get(fieldName));
