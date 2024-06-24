@@ -24,7 +24,7 @@ public class PdfFormService {
         PdfDocument pdfDoc = new PdfDocument(reader, writer, stampingProperties);
         PdfAcroForm form = PdfAcroForm.getAcroForm(pdfDoc, true);
 
-        for (Map.Entry<String, PdfFormField> entry : form.getFormFields().entrySet()) {
+        for (Map.Entry<String, PdfFormField> entry : form.getAllFormFields().entrySet()) {
             String fieldName = entry.getKey();
             PdfFormField field = entry.getValue();
 
