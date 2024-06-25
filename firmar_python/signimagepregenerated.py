@@ -2,7 +2,7 @@ from PIL import Image, ImageDraw, ImageFont
 import io
 import base64
 
-def create_signature_image(text, encoded_image, width=234, height=57, scale_factor=100000):
+def create_signature_image(text, encoded_image, width=234, height=57, scale_factor=60):
     # Create a new image with white background at higher resolution
     high_res_width = width * scale_factor
     high_res_height = height * scale_factor
