@@ -29,6 +29,9 @@ def create_signature_image(text, encoded_image, width=233, height=56):
     stamp_data = base64.b64decode(encoded_image)
     stamp = Image.open(io.BytesIO(stamp_data))
 
+    # Ensure the stamp fits within the final dimensions
+    stamp.thumbnail((50, 50), Image.LANCZOS)
+
     # Calculate position to paste stamp (right-aligned)
     stamp_x = width - stamp.width - 2  # 2 pixels padding from right edge
     stamp_y = (height - stamp.height) // 2
