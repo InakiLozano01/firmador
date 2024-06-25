@@ -53,7 +53,7 @@ def get_data_to_sign_tapir(pdf, certificates, current_time, datetimesigned, fiel
                     "alignmentVertical": None,
                     "imageScaling": "STRETCH",
                     "backgroundColor": None,
-                    "dpi": None,
+                    "dpi": 600,
                     "image": {
                         "bytes": encoded_image,
                         "name": "image.png"
@@ -150,7 +150,7 @@ def sign_document_tapir(pdf, signature_value, certificates, current_time, dateti
                     "alignmentVertical": None,
                     "imageScaling": "STRETCH",
                     "backgroundColor": None,
-                    "dpi": None,
+                    "dpi": 600,
                     "image": {
                         "bytes": encoded_image,
                         "name": "image.png"

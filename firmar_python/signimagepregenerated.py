@@ -38,8 +38,8 @@ def create_signature_image(text, encoded_image, width=233, height=56):
     
     # Convert the image to base64
     buffered = io.BytesIO()
-    img.save(buffered, format="PNG", optimize=True)
-    img.save("image.png")
+    img.save(buffered, format="PNG", optimize=True, dpi=(600, 600))
+    img.save("image.png", format='PNG', dpi=(600, 600), optimize=True)
     img_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
     
     return img_base64
