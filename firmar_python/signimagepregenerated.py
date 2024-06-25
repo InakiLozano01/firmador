@@ -2,48 +2,39 @@ from PIL import Image, ImageDraw, ImageFont
 import io
 import base64
 
-def create_signature_image(text, encoded_image, width=234, height=57, scale_factor=60):
+def create_signature_image(text, encoded_image, width=234, height=57):
     # Create a new image with white background at higher resolution
-    high_res_width = width * scale_factor
-    high_res_height = height * scale_factor
-    img = Image.new('RGB', (high_res_width, high_res_height), color='white')
+    
+    img = Image.new('RGB', (width, height), color='white')
     draw = ImageDraw.Draw(img)
     
     # Try to use the Roboto font, falling back to default if not available
     try:
-        font = ImageFont.truetype("./PTSerif-Regular.ttf", 9 * scale_factor)
+        font = ImageFont.truetype("./PTSerif-Regular.ttf", 9)
     except IOError:
         font = ImageFont.load_default()
         print("Warning: Using default font. Text size may not be as expected.")
     
     # Calculate text area width (about 75% of total width)
-    text_width = int(high_res_width * 0.75)
+    #text_width = int(width * 0.75)
     
     # Split text into lines and draw each line
     lines = text.split('\n')
-    y_text = 5 * scale_factor
+    y_text = 5 # Start 5 pixels from top edge
     for line in lines:
-        draw.text((5 * scale_factor, y_text), line, font=font, fill='black')
-        y_text += font.getbbox(line)[3] + 2 * scale_factor  # Move to next line (font height + 2 pixels)
+        draw.text((5, y_text), line, font=font, fill='black')
+        y_text += font.getbbox(line)[3] + 2  # Move to next line (font height + 2 pixels)
     
     # Decode and open the stamp image
     stamp_data = base64.b64decode(encoded_image)
     stamp = Image.open(io.BytesIO(stamp_data))
 
-    # Resize stamp to fit within the remaining width and height, taking into account the scale factor
-    stamp_max_width = (width - (text_width / scale_factor) - 5) * scale_factor  # 5 pixels padding
-    stamp_max_height = (height - 4) * scale_factor  # 2 pixels padding top and bottom
-    stamp.thumbnail((stamp_max_width, stamp_max_height), Image.Resampling.LANCZOS)
-    
     # Calculate position to paste stamp (right-aligned)
-    stamp_x = high_res_width - stamp.width - (2 * scale_factor)  # 2 pixels padding from right edge
-    stamp_y = (high_res_height - stamp.height) // 2
+    stamp_x = width - stamp.width - 2  # 2 pixels padding from right edge
+    stamp_y = (height - stamp.height) // 2
 
     # Paste stamp image
     img.paste(stamp, (stamp_x, stamp_y), stamp if stamp.mode == 'RGBA' else None)
-    
-    # Downscale the image to the final size
-    img = img.resize((width*10, height*10), Image.Resampling.LANCZOS)
     
     # Convert the image to base64
     buffered = io.BytesIO()

@@ -62,8 +62,8 @@ def save_signed_pdf(signed_pdf_base64, filename):
 ###################################################
 
 ### Imagen de firma en base64 ###
-encoded_image = compress_and_encode_image("logo_tribunal_para_tapir.png")
-compressedimage = compressed_image_bytes("logo_tribunal_para_tapir.png")
+encoded_image = encode_image("logo_tribunal_para_tapir.png")
+compressedimage = compressed_image_encoded("logo_tribunal_para_tapir.png")
 
 ###    Rutas de la aplicacion para Tapir     ###
 # Ruta para obtener PDF y certificados para firmar
@@ -108,9 +108,9 @@ def get_certificates():
         datetimesigned = datetime.now(pytz.utc).astimezone(pytz.timezone('America/Argentina/Buenos_Aires')).strftime("%Y-%m-%d %H:%M:%S")
 
         custom_image = create_signature_image(
-          f"Firma Electronica: {name}\n{datetimesigned}\n{stamp}\n{area}",
-          encoded_image
-      )
+          f"Firma Digital: {name}\n{datetimesigned}\n{stamp}\n{area}",
+          compressedimage
+        )
 
         data_to_sign_response = get_data_to_sign_tapir(pdf, certificates, current_time, datetimesigned, field_id, stamp, area, name, custom_image)
         data_to_sign = data_to_sign_response["bytes"]

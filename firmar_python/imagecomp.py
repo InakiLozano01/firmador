@@ -3,7 +3,7 @@ import base64
 import io
 
 # Función para comprimir la imagen y obtener los bytes
-def compressed_image_bytes(image_path, size=(150, 150)):
+def compressed_image_encoded(image_path, size=(50, 50)):
     try:
         # Abrir la imagen
         with Image.open(image_path) as img:
@@ -24,25 +24,22 @@ def compressed_image_bytes(image_path, size=(150, 150)):
         return None
 
 # Función para comprimir y codificar la imagen a base64
-def compress_and_encode_image(image_path):
+def encode_image(image_path):
     try:
         # Abrir la imagen
         with Image.open(image_path) as img:
             # Convertir la imagen a modo RGBA para mantener la transparencia
             img = img.convert("RGBA")
-            
-            # Redimensionar la imagen a 50x50 píxeles
-            img = img.resize((58, 58), Image.LANCZOS)
-            
+        
             # Comprimir la imagen
             buffer = io.BytesIO()
             img.save(buffer, format="PNG", optimize=True)
             
             # Obtener los bytes de la imagen comprimida
-            compressed_image_bytes = buffer.getvalue()
+            encoded_image_bytes = buffer.getvalue()
         
         # Codificar la imagen comprimida a base64
-        encoded_image = base64.b64encode(compressed_image_bytes).decode('utf-8')
+        encoded_image = base64.b64encode(encoded_image_bytes).decode('utf-8')
         return encoded_image
     except Exception as e:
         print(f"Error: {str(e)}")
@@ -59,6 +56,4 @@ def decode_image(encoded_image):
         print(f"Error: {str(e)}")
         return None
 
-# Comprimir y codificar la imagen
-encoded_image = compress_and_encode_image("logo_tribunal_para_tapir.png")
 
