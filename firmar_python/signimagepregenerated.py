@@ -2,44 +2,54 @@ from PIL import Image, ImageDraw, ImageFont
 import io
 import base64
 
-def create_signature_image(text, encoded_image, width=233, height=56):
+def create_signature_image(text, encoded_image, width=233, height=56, scale_factor=10):
     # Create a new image with white background at higher resolution
-    
-    img = Image.new('RGB', (width, height), color='white')
+    high_res_width, high_res_height = width * scale_factor, height * scale_factor
+    img = Image.new('RGB', (high_res_width, high_res_height), color='white')
     draw = ImageDraw.Draw(img)
     
-    # Try to use the Roboto font, falling back to default if not available
+    # Try to use the PTSerif font, falling back to default if not available
     try:
-        font = ImageFont.truetype("./PTSerif-Regular.ttf", 9)
+        font = ImageFont.truetype("./PTSerif-Regular.ttf", 9 * scale_factor)
     except IOError:
         font = ImageFont.load_default()
         print("Warning: Using default font. Text size may not be as expected.")
     
-    # Calculate text area width (about 75% of total width)
-    #text_width = int(width * 0.75)
-    
     # Split text into lines and draw each line
     lines = text.split('\n')
-    y_text = 5 # Start 5 pixels from top edge
+    y_text = 5 * scale_factor  # Start 5 pixels from top edge (scaled)
     for line in lines:
-        draw.text((5, y_text), line, font=font, fill='black')
-        y_text += font.getbbox(line)[3] + 2  # Move to next line (font height + 2 pixels)
+        draw.text((5 * scale_factor, y_text), line, font=font, fill='black')
+        y_text += font.getbbox(line)[3] + 2 * scale_factor  # Move to next line (font height + 2 pixels, scaled)
     
     # Decode and open the stamp image
     stamp_data = base64.b64decode(encoded_image)
     stamp = Image.open(io.BytesIO(stamp_data))
+    
+    # Scale up the stamp image
+    stamp_scaled = stamp.resize((stamp.width * scale_factor, stamp.height * scale_factor), Image.LANCZOS)
 
     # Calculate position to paste stamp (right-aligned)
-    stamp_x = width - stamp.width - 2  # 2 pixels padding from right edge
-    stamp_y = (height - stamp.height) // 2
+    stamp_x = high_res_width - stamp_scaled.width - 2 * scale_factor  # 2 pixels padding from right edge (scaled)
+    stamp_y = (high_res_height - stamp_scaled.height) // 2
 
     # Paste stamp image
-    img.paste(stamp, (stamp_x, stamp_y), stamp if stamp.mode == 'RGBA' else None)
+    img.paste(stamp_scaled, (stamp_x, stamp_y), stamp_scaled if stamp_scaled.mode == 'RGBA' else None)
     
-    # Convert the image to base64
-    buffered = io.BytesIO()
-    img.save(buffered, format="PNG", optimize=True, dpi=(600, 600))
-    img.save("image.png", format='PNG', dpi=(600, 600), optimize=True)
-    img_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+    # Function to save and encode image
+    def save_and_encode(image, filename, dpi):
+        buffered = io.BytesIO()
+        image.save(buffered, format="PNG", optimize=True, dpi=dpi)
+        image.save(filename, format='PNG', dpi=dpi, optimize=True)
+        return base64.b64encode(buffered.getvalue()).decode('utf-8')
     
-    return img_base64
+    # Save and encode high resolution image
+    high_res_base64 = save_and_encode(img, "high_res_image.png", (600, 600))
+    
+    # Scale down the image
+    img_scaled = img.resize((width, height), Image.LANCZOS)
+    
+    # Save and encode scaled down image
+    scaled_base64 = save_and_encode(img_scaled, "scaled_image.png", (600, 600))
+    
+    return high_res_base64
