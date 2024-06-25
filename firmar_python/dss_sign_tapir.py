@@ -68,7 +68,7 @@ def get_data_to_sign_tapir(pdf, certificates, current_time, datetimesigned, fiel
                         "page": len(PdfReader(io.BytesIO(pdf)).pages)
                     },
                     "textParameters": None,
-                    "zoom": 50
+                    "zoom": None
                 },
                 "signatureIdToCounterSign": None,
                 "blevelParams": {
