@@ -48,9 +48,7 @@ public class PdfFormService {
                         // Remove appearance characteristics related to border and background
                         PdfDictionary appearanceCharacteristics = widget.getAppearanceCharacteristics();
                         if (appearanceCharacteristics != null) {
-                            appearanceCharacteristics.remove(PdfName.BC); // Remove border color
-                            appearanceCharacteristics.remove(PdfName.BG); // Remove background color
-                            widget.setAppearanceCharacteristics(appearanceCharacteristics);
+                            widget.setAppearanceCharacteristics(new PdfDictionary());
                         }
 
                         // Clear any additional border appearance settings
