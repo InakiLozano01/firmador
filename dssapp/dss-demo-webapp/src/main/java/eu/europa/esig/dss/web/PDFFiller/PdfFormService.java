@@ -40,25 +40,17 @@ public class PdfFormService {
                         // Remove border
                         PdfDictionary borderStyle = new PdfDictionary();
                         borderStyle.put(PdfName.W, new PdfNumber(0)); // Set border width to 0
-                        borderStyle.put(PdfName.Width, new PdfNumber(0)); // Set border width to 0
                         widget.setBorderStyle(borderStyle);
 
                         // Set no highlight
                         widget.setHighlightMode(PdfAnnotation.HIGHLIGHT_NONE);
 
+                        // Remove appearance characteristics related to border and background
                         PdfDictionary appearanceCharacteristics = widget.getAppearanceCharacteristics();
-                        if (appearanceCharacteristics == null) {
-                            appearanceCharacteristics = new PdfDictionary();
-                        }
-                        appearanceCharacteristics.put(PdfName.BC, new PdfArray(new float[] {1, 1, 1, 0})); // Transparent border color
-                        appearanceCharacteristics.put(PdfName.BG, new PdfArray(new float[] {1, 1, 1, 0})); // Transparent background color
-                        widget.setAppearanceCharacteristics(appearanceCharacteristics);
-
-                        // Ensure the appearance stream is properly set
-                        PdfDictionary mk = widget.getAppearanceCharacteristics();
-                        if (mk != null) {
-                            mk.put(PdfName.BC, new PdfArray(new float[] {1, 1, 1, 0}));
-                            mk.put(PdfName.BG, new PdfArray(new float[] {1, 1, 1, 0}));
+                        if (appearanceCharacteristics != null) {
+                            appearanceCharacteristics.remove(PdfName.BC); // Remove border color
+                            appearanceCharacteristics.remove(PdfName.BG); // Remove background color
+                            widget.setAppearanceCharacteristics(appearanceCharacteristics);
                         }
 
                         // Clear any additional border appearance settings
