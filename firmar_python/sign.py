@@ -183,12 +183,12 @@ def sign_own_pdf():
 
         datetimesigned = datetime.now(pytz.utc).astimezone(pytz.timezone('America/Argentina/Buenos_Aires')).strftime("%Y-%m-%d %H:%M:%S")
 
-        data_to_sign_response = get_data_to_sign_own(pdf, certificates, current_time, datetimesigned, field_id, stamp, area, name, encoded_image)
+        data_to_sign_response = get_data_to_sign_own(pdf, certificates, current_time, datetimesigned, field_id, stamp, area, name, compressedimage)
         data_to_sign = base64.b64decode(data_to_sign_response['bytes'])
 
         signature_value = get_signature_value_own(data_to_sign)
 
-        signed_pdf_response = sign_document_own(pdf, signature_value, certificates, current_time, datetimesigned, field_id, stamp, area, name, encoded_image)
+        signed_pdf_response = sign_document_own(pdf, signature_value, certificates, current_time, datetimesigned, field_id, stamp, area, name, compressedimage)
         signed_pdf_base64 = signed_pdf_response['bytes']
 
         field_values = json.loads(request.form['pdf_form'])
