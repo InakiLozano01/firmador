@@ -63,8 +63,6 @@ public class PdfFormService {
 
                         // Clear any additional border appearance settings
                         widget.getPdfObject().remove(PdfName.BS);
-                        widget.getPdfObject().remove(PdfName.Border);
-                        widget.getPdfObject().remove(PdfName.CA);
                         widget.getPdfObject().remove(PdfName.MK);
                     }
 

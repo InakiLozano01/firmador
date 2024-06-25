@@ -26,26 +26,24 @@ def create_signature_image(text, encoded_image, width=234, height=57, scale_fact
         draw.text((5 * scale_factor, y_text), line, font=font, fill='black')
         y_text += font.getbbox(line)[3] + 2 * scale_factor  # Move to next line (font height + 2 pixels)
     
-
     # Decode and open the stamp image
     stamp_data = base64.b64decode(encoded_image)
     stamp = Image.open(io.BytesIO(stamp_data))
 
     # Resize stamp to fit within the remaining width and height, taking into account the scale factor
-    original_stamp_width, original_stamp_height = stamp.size
-    stamp_max_width = (width - text_width / scale_factor - 5) * scale_factor  # 5 pixels padding
+    stamp_max_width = (width - (text_width / scale_factor) - 5) * scale_factor  # 5 pixels padding
     stamp_max_height = (height - 4) * scale_factor  # 2 pixels padding top and bottom
     stamp.thumbnail((stamp_max_width, stamp_max_height), Image.Resampling.LANCZOS)
     
     # Calculate position to paste stamp (right-aligned)
-    stamp_x = high_res_width - stamp.width - 2 * scale_factor  # 2 pixels padding from right edge
+    stamp_x = high_res_width - stamp.width - (2 * scale_factor)  # 2 pixels padding from right edge
     stamp_y = (high_res_height - stamp.height) // 2
 
     # Paste stamp image
     img.paste(stamp, (stamp_x, stamp_y), stamp if stamp.mode == 'RGBA' else None)
     
     # Downscale the image to the final size
-    img = img.resize((width, height), Image.Resampling.LANCZOS)
+    #img = img.resize((width, height), Image.Resampling.LANCZOS)
     
     # Convert the image to base64
     buffered = io.BytesIO()
