@@ -17,8 +17,9 @@ def compressed_image_encoded(image_path, size=(50, 50)):
             img.save(buffer, format="PNG", optimize=True)
             # Obtener los bytes de la imagen comprimida
             compressed_image_bytes = buffer.getvalue()
-        
-        return compressed_image_bytes
+            compressed_image_encoded = base64.b64encode(compressed_image_bytes).decode('utf-8')
+
+        return compressed_image_encoded
     except Exception as e:
         print(f"Error: {str(e)}")
         return None
