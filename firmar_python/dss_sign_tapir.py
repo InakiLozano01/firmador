@@ -165,7 +165,7 @@ def sign_document_tapir(pdf, signature_value, certificates, current_time, dateti
                         "page": len(PdfReader(io.BytesIO(pdf)).pages)
                     },
                     "textParameters": None,
-                    "zoom": 50
+                    "zoom": None
                 },
                 "signatureIdToCounterSign": None,
                 "blevelParams": {
