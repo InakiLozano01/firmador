@@ -51,7 +51,7 @@ def get_data_to_sign_tapir(pdf, certificates, current_time, datetimesigned, fiel
                 "imageParameters": {
                     "alignmentHorizontal": None,
                     "alignmentVertical": None,
-                    "imageScaling": "CENTER",
+                    "imageScaling": "STRETCH",
                     "backgroundColor": None,
                     "dpi": None,
                     "image": {
@@ -148,7 +148,7 @@ def sign_document_tapir(pdf, signature_value, certificates, current_time, dateti
                 "imageParameters": {
                     "alignmentHorizontal": None,
                     "alignmentVertical": None,
-                    "imageScaling": "CENTER",
+                    "imageScaling": "STRETCH",
                     "backgroundColor": None,
                     "dpi": None,
                     "image": {
