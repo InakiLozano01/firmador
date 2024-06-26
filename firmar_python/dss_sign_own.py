@@ -7,7 +7,7 @@ from errors import PDFSignatureError
 import io 
 from PyPDF2 import PdfReader
 
-def get_data_to_sign_own(pdf, certificates, current_time, datetimesigned, field_id, stamp, area, name, encoded_image):
+def get_data_to_sign_own(pdf, certificates, current_time, field_id, stamp, encoded_image):
     try:
         body = {
             "parameters": {
@@ -51,9 +51,9 @@ def get_data_to_sign_own(pdf, certificates, current_time, datetimesigned, field_
                 "imageParameters": {
                     "alignmentHorizontal": None,
                     "alignmentVertical": None,
-                    "imageScaling": "CENTER",
+                    "imageScaling": "STRETCH",
                     "backgroundColor": None,
-                    "dpi": 72,
+                    "dpi": 600,
                     "image": {
                         "bytes": encoded_image,
                         "name": "image.png"
@@ -67,28 +67,7 @@ def get_data_to_sign_own(pdf, certificates, current_time, datetimesigned, field_
                         "rotation": None,
                         "page": len(PdfReader(io.BytesIO(pdf)).pages)
                     },
-                    "textParameters": {
-                        "backgroundColor": {
-                            "red": 255,
-                            "green": 255,
-                            "blue": 255,
-                            "alpha": 255
-                        },
-                        "font": None,
-                        "textWrapping": "FILL_BOX",
-                        "padding": None,
-                        "signerTextHorizontalAlignment": "CENTER",
-                        "signerTextVerticalAlignment": None,
-                        "signerTextPosition": "LEFT",
-                        "size": 7,
-                        "text": f"Firma Electronica: {name}\n{datetimesigned}\n{stamp}\n{area}",
-                        "textColor": {
-                            "red": 0,
-                            "green": 0,
-                            "blue": 0,
-                            "alpha": 255
-                        }
-                    },
+                    "textParameters": None,
                     "zoom": None
                 },
                 "signatureIdToCounterSign": None,
@@ -103,7 +82,12 @@ def get_data_to_sign_own(pdf, certificates, current_time, datetimesigned, field_
                     "policyDigestValue": None,
                     "policySpuri": None,
                     "commitmentTypeIndications": None,
-                    "signerLocationPostalAddress": [],
+                    "signerLocationPostalAddress": [
+                        "Congreso 180",
+                        "4000 San Miguel de Tucumán",
+                        "Tucumán",
+                        "AR"
+                    ],
                     "signerLocationPostalCode": "4000",
                     "signerLocationLocality": "San Miguel de Tucumán",
                     "signerLocationStateOrProvince": "Tucumán",
@@ -124,7 +108,7 @@ def get_data_to_sign_own(pdf, certificates, current_time, datetimesigned, field_
         logging.error(f"Error in get_data_to_sign: {str(e)}")
         raise PDFSignatureError("Failed to get data to sign from DSS API.")
 
-def sign_document_own(pdf, signature_value, certificates, current_time, datetimesigned, field_id, stamp, area, name, encoded_image):
+def sign_document_own(pdf, signature_value, certificates, current_time, field_id, stamp, encoded_image):
     try:
         body = {
             "parameters": {
@@ -164,9 +148,9 @@ def sign_document_own(pdf, signature_value, certificates, current_time, datetime
                 "imageParameters": {
                     "alignmentHorizontal": None,
                     "alignmentVertical": None,
-                    "imageScaling": "CENTER",
+                    "imageScaling": "STRETCH",
                     "backgroundColor": None,
-                    "dpi": 72,
+                    "dpi": 600,
                     "image": {
                         "bytes": encoded_image,
                         "name": "image.png"
@@ -180,28 +164,7 @@ def sign_document_own(pdf, signature_value, certificates, current_time, datetime
                         "rotation": None,
                         "page": len(PdfReader(io.BytesIO(pdf)).pages)
                     },
-                    "textParameters": {
-                        "backgroundColor": {
-                            "red": 255,
-                            "green": 255,
-                            "blue": 255,
-                            "alpha": 255
-                        },
-                        "font": None,
-                        "textWrapping": "FILL_BOX",
-                        "padding": None,
-                        "signerTextHorizontalAlignment": "CENTER",
-                        "signerTextVerticalAlignment": None,
-                        "signerTextPosition": "LEFT",
-                        "size": 7,
-                        "text": f"Firma Electronica: {name}\n{datetimesigned}\n{stamp}\n{area}",
-                        "textColor": {
-                            "red": 0,
-                            "green": 0,
-                            "blue": 0,
-                            "alpha": 255
-                        }
-                    },
+                    "textParameters": None,
                     "zoom": None
                 },
                 "signatureIdToCounterSign": None,
@@ -216,7 +179,12 @@ def sign_document_own(pdf, signature_value, certificates, current_time, datetime
                     "policyDigestValue": None,
                     "policySpuri": None,
                     "commitmentTypeIndications": None,
-                    "signerLocationPostalAddress": [],
+                    "signerLocationPostalAddress": [
+                        "Congreso 180",
+                        "4000 San Miguel de Tucumán",
+                        "Tucumán",
+                        "AR"
+                    ],
                     "signerLocationPostalCode": "4000",
                     "signerLocationLocality": "San Miguel de Tucumán",
                     "signerLocationStateOrProvince": "Tucumán",

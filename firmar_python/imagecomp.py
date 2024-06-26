@@ -24,8 +24,7 @@ def compressed_image_encoded(image_path, size=(50, 50)):
         print(f"Error: {str(e)}")
         return None
 
-# Función para comprimir y codificar la imagen a base64
-def encode_image(image_path):
+def encode_image(image_path, dpi=(600, 600)):
     try:
         # Abrir la imagen
         with Image.open(image_path) as img:
@@ -34,7 +33,7 @@ def encode_image(image_path):
         
             # Comprimir la imagen
             buffer = io.BytesIO()
-            img.save(buffer, format="PNG", optimize=True)
+            img.save(buffer, format="PNG", optimize=True, dpi=dpi)
             
             # Obtener los bytes de la imagen comprimida
             encoded_image_bytes = buffer.getvalue()

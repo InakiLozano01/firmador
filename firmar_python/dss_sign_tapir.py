@@ -7,7 +7,7 @@ from errors import PDFSignatureError
 import io 
 from PyPDF2 import PdfReader
 
-def get_data_to_sign_tapir(pdf, certificates, current_time, datetimesigned, field_id, stamp, area, name, encoded_image):
+def get_data_to_sign_tapir(pdf, certificates, current_time, field_id, stamp, encoded_image):
     try:
         body = {
             "parameters": {
@@ -108,7 +108,7 @@ def get_data_to_sign_tapir(pdf, certificates, current_time, datetimesigned, fiel
         logging.error(f"Error in get_data_to_sign_tapir: {str(e)}")
         raise PDFSignatureError("Failed to get data to sign from DSS API.")
 
-def sign_document_tapir(pdf, signature_value, certificates, current_time, datetimesigned, field_id, stamp, area, name, encoded_image):
+def sign_document_tapir(pdf, signature_value, certificates, current_time, field_id, stamp, encoded_image):
     try:
         body = {
             "parameters": {

@@ -10,7 +10,7 @@ def create_signature_image(text, encoded_image, width=233, height=56, scale_fact
     
     # Try to use the PTSerif font, falling back to default if not available
     try:
-        font = ImageFont.truetype("./PTSerif-Regular.ttf", 9 * scale_factor)
+        font = ImageFont.truetype("./PTSerif-Regular.ttf", 8 * scale_factor)
     except IOError:
         font = ImageFont.load_default()
         print("Warning: Using default font. Text size may not be as expected.")
@@ -26,15 +26,18 @@ def create_signature_image(text, encoded_image, width=233, height=56, scale_fact
     stamp_data = base64.b64decode(encoded_image)
     stamp = Image.open(io.BytesIO(stamp_data))
     
-    # Scale up the stamp image
-    stamp_scaled = stamp.resize((stamp.width * scale_factor, stamp.height * scale_factor), Image.LANCZOS)
+    # Scale down the high-resolution stamp image to fit within the final dimensions
+    stamp_scaled = stamp.resize((width - int(width * 0.75) - 5, height - 4), Image.LANCZOS)
+
+    # Scale up the stamp image for the high resolution canvas
+    stamp_scaled_high_res = stamp_scaled.resize((stamp_scaled.width * scale_factor, stamp_scaled.height * scale_factor), Image.LANCZOS)
 
     # Calculate position to paste stamp (right-aligned)
-    stamp_x = high_res_width - stamp_scaled.width - 2 * scale_factor  # 2 pixels padding from right edge (scaled)
-    stamp_y = (high_res_height - stamp_scaled.height) // 2
+    stamp_x = high_res_width - stamp_scaled_high_res.width - 2 * scale_factor  # 2 pixels padding from right edge (scaled)
+    stamp_y = (high_res_height - stamp_scaled_high_res.height) // 2
 
     # Paste stamp image
-    img.paste(stamp_scaled, (stamp_x, stamp_y), stamp_scaled if stamp_scaled.mode == 'RGBA' else None)
+    img.paste(stamp_scaled_high_res, (stamp_x, stamp_y), stamp_scaled_high_res if stamp_scaled_high_res.mode == 'RGBA' else None)
     
     # Function to save and encode image
     def save_and_encode(image, filename, dpi):
