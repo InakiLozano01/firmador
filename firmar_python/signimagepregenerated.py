@@ -22,7 +22,7 @@ def create_signature_image(text, encoded_image, width=233, height=56, scale_fact
     # Calculate new dimensions for the stamp image to fit within the final dimensions
     stamp_max_width = int(high_res_width * 0.25)  # Up to 25% of the width for the stamp
     stamp_max_height = high_res_height - 10 * scale_factor  # 10 pixels padding
-    stamp.thumbnail((stamp_max_width, stamp_max_height), Image.LANCZOS, dpi=600)
+    stamp.thumbnail((stamp_max_width, stamp_max_height), Image.LANCZOS)
     
     # Calculate position to paste stamp (left-aligned)
     stamp_x = 2 * scale_factor  # 2 pixels padding from left edge (scaled)
