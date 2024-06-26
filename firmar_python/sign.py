@@ -108,7 +108,7 @@ def get_certificates():
         datetimesigned = datetime.now(pytz.utc).astimezone(pytz.timezone('America/Argentina/Buenos_Aires')).strftime("%Y-%m-%d %H:%M:%S")
 
         custom_image = create_signature_image(
-          f"Firma Digital: {name}\n{datetimesigned}\n{stamp}\n{area}",
+          f"{name}\n{datetimesigned}\n{stamp}\n{area}",
           encoded_image
         )
 
@@ -180,7 +180,7 @@ def sign_own_pdf():
         datetimesigned = datetime.now(pytz.utc).astimezone(pytz.timezone('America/Argentina/Buenos_Aires')).strftime("%Y-%m-%d %H:%M:%S")
 
         custom_image = create_signature_image(
-          f"Firma Electronica: {name}\n{datetimesigned}\n{stamp}\n{area}",
+          f"{name}\n{datetimesigned}\n{stamp}\n{area}",
           encoded_image
         )
 
