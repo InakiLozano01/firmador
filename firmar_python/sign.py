@@ -176,17 +176,15 @@ def sign_own_pdf():
         if not field_id or not name:
             raise PDFSignatureError("firma_info is missing required fields")
         
-        
+        current_time = int(tiempo.time() * 1000)
+        datetimesigned = datetime.now(pytz.utc).astimezone(pytz.timezone('America/Argentina/Buenos_Aires')).strftime("%Y-%m-%d %H:%M:%S")
+
         custom_image = create_signature_image(
           f"Firma Electronica: {name}\n{datetimesigned}\n{stamp}\n{area}",
           encoded_image
         )
 
         certificates = get_certificate_from_local()
-
-        current_time = int(tiempo.time() * 1000)
-
-        datetimesigned = datetime.now(pytz.utc).astimezone(pytz.timezone('America/Argentina/Buenos_Aires')).strftime("%Y-%m-%d %H:%M:%S")
 
         data_to_sign_response = get_data_to_sign_own(pdf, certificates, current_time, field_id, stamp, custom_image)
         data_to_sign = base64.b64decode(data_to_sign_response['bytes'])
@@ -207,7 +205,7 @@ def sign_own_pdf():
             response.raise_for_status()
             signed_pdf_base64 = base64.b64encode(response.content).decode('utf-8')
             signed_pdf_filename = f"{pdfname}_closed"
-            
+
         save_signed_pdf(signed_pdf_base64, signed_pdf_filename)
 
         response = send_from_directory(os.getcwd(), signed_pdf_filename, as_attachment=True)
