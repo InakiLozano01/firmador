@@ -65,7 +65,7 @@ def get_data_to_sign_tapir(pdf, certificates, current_time, field_id, stamp, enc
                         "width": None,
                         "height": None,
                         "rotation": None,
-                        "page": len(PdfReader(io.BytesIO(pdf)).pages)
+                        "page": len(PdfReader(io.BytesIO(base64.b64encode(pdf))).pages)
                     },
                     "textParameters": None,
                     "zoom": None
@@ -96,7 +96,7 @@ def get_data_to_sign_tapir(pdf, certificates, current_time, field_id, stamp, enc
                 }
             },
             "toSignDocument": {
-                "bytes": base64.b64encode(pdf).decode('utf-8'),
+                "bytes": pdf,
                 "digestAlgorithm": None,
                 "name": "document.pdf"
             }
@@ -162,7 +162,7 @@ def sign_document_tapir(pdf, signature_value, certificates, current_time, field_
                         "width": None,
                         "height": None,
                         "rotation": None,
-                        "page": len(PdfReader(io.BytesIO(pdf)).pages)
+                        "page": len(PdfReader(io.BytesIO(base64.b64encode(pdf))).pages)
                     },
                     "textParameters": None,
                     "zoom": None
@@ -197,7 +197,7 @@ def sign_document_tapir(pdf, signature_value, certificates, current_time, field_
                 "value": signature_value
             },
             "toSignDocument": {
-                "bytes": base64.b64encode(pdf).decode('utf-8'),
+                "bytes": pdf,
                 "digestAlgorithm": None,
                 "name": "document.pdf"
             }
