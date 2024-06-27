@@ -27,6 +27,7 @@ import fitz
 import pdfrw
 from signimagepregenerated import *
 
+##################################################
 ###     Configuracion de aplicacion Flask     ###
 app = Flask(__name__)
 
