@@ -1,3 +1,3 @@
-./firmar_python/certificate.pem
-./firmar_python/private_key.pem
-./firmar_python/.env
+firmar_python/certificate.pem
+firmar_python/private_key.pem
+firmar_python/.env
