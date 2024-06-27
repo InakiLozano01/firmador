@@ -64,7 +64,7 @@ def get_certificates():
     
     try:   
         request._load_form_data()
-        pdf_b64 = request.form.get['file']
+        pdf_b64 = request.form.get('file')
         certificates = json.loads(request.form['certificados'])
 
         try:
@@ -73,7 +73,7 @@ def get_certificates():
             raise PDFSignatureError("Invalid JSON format for firma_info")
 
         try:
-            signed_pdf_filename = request.form.get['file_name']
+            signed_pdf_filename = request.form.get('file_name')
         except KeyError:
             raise PDFSignatureError("file_name is missing")
         
