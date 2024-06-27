@@ -65,7 +65,7 @@ def get_data_to_sign_own(pdf, certificates, current_time, field_id, stamp, encod
                         "width": None,
                         "height": None,
                         "rotation": None,
-                        "page": len(PdfReader(io.BytesIO(base64.b64encode(pdf))).pages)
+                        "page": len(PdfReader(io.BytesIO(base64.b64decode(pdf))).pages)
                     },
                     "textParameters": None,
                     "zoom": None
@@ -162,7 +162,7 @@ def sign_document_own(pdf, signature_value, certificates, current_time, field_id
                         "width": None,
                         "height": None,
                         "rotation": None,
-                        "page": len(PdfReader(io.BytesIO(base64.b64encode(pdf))).pages)
+                        "page": len(PdfReader(io.BytesIO(base64.b64decode(pdf))).pages)
                     },
                     "textParameters": None,
                     "zoom": None
