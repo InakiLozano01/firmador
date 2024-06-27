@@ -64,7 +64,7 @@ def get_certificates():
     
     try:   
         request._load_form_data()
-        pdf_b64 = request.form.get('file')
+        pdf_b64 = request.form.get('pdf')
         certificates = json.loads(request.form['certificados'])
 
         try:
