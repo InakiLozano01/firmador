@@ -205,7 +205,7 @@ def sign_own_pdf():
             response = requests.post('http://java-webapp:5555/pdf/update', data=data)
             response.raise_for_status()
             signed_pdf_base64 = base64.b64encode(response.content).decode('utf-8')
-            signed_pdf_filename = f"{pdfname}_closed"
+            signed_pdf_filename = f"{pdfname}_closed.pdf"
 
         save_signed_pdf(signed_pdf_base64, signed_pdf_filename)
 
