@@ -1,3 +1,3 @@
-firmar_python/certificate.pem
-firmar_python/private_key.pem
+firmar_python/*.crt
+firmar_python/yunga_clave_csr_key
 firmar_python/.env
