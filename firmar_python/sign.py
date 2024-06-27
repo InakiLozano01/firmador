@@ -26,10 +26,14 @@ from pdfrw import *
 import fitz
 import pdfrw
 from signimagepregenerated import *
+from signnewendpoints import firma_bp
 
 ##################################################
 ###     Configuracion de aplicacion Flask     ###
 app = Flask(__name__)
+
+# Register the Blueprint
+app.register_blueprint(firma_bp, url_prefix='/firma')
 
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
