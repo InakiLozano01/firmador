@@ -9,12 +9,14 @@ from dotenv import load_dotenv
 # Cargar las variables de entorno desde el archivo .env
 load_dotenv()
 
-# Obtener la contraseña de la clave privada desde las variables de entorno
-private_key_password = os.getenv('password')
+# Obtener la contraseña de la clave privada y las rutas desde las variables de entorno
+private_key_password = os.getenv('PRIVATE_KEY_PASSWORD')
+private_key_path = os.getenv('PRIVATE_KEY_PATH')
+certificate_path = os.getenv('CERTIFICATE_PATH')
 
 def get_signature_value_own(data_to_sign):
     # Cargar la clave privada desde un archivo
-    with open("./private_key.pem", "rb") as key_file:
+    with open(private_key_path, "rb") as key_file:
         private_key = load_pem_private_key(key_file.read(), password=private_key_password.encode(), backend=default_backend())
 
     # Generar la firma
@@ -30,7 +32,7 @@ def get_signature_value_own(data_to_sign):
 
 def get_certificate_from_local():
     # Leer el certificado desde un archivo
-    with open("./certificate.pem", "rb") as cert_file:
+    with open(certificate_path, "rb") as cert_file:
         certificate_data = cert_file.read()
 
     # Convertir el certificado a base64 para enviarlo a DSS
