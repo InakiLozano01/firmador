@@ -36,7 +36,7 @@ closingplace = None
 closing_number = None
 closing_date = None
 fieldValues = None
-signed_pdf_filename = None
+json_fieldValues = None
 ##################################################
 
 ###    Funcion de guardado de PDF     ###
@@ -62,11 +62,13 @@ compressedimage = compressed_image_encoded("logo_tribunal_para_tapir.png")
 
 @firma_bp.route('/firma_init', methods=['POST'])
 def get_certificates():
-    global pdf_b64, current_time, certificates, signed_pdf_filename, field_id, stamp, area, name, datetimesigned, custom_image, isdigital, isclosing, closingplace, closing_number, closing_date, fieldValues, signed_pdf_filename
+    global pdf_b64, current_time, certificates, signed_pdf_filename, field_id, stamp, area, name, datetimesigned, custom_image, isdigital, isclosing, closingplace, closing_number, closing_date, fieldValues, signed_pdf_filename, json_fieldValues
     
     try:   
         request._load_form_data()
         pdf_b64 = request.form.get('pdf')
+        now = datetime.now()
+        signed_pdf_filename = now.strftime("pdf_%d/%m/%Y_%H%M%S")
 
         # Repetir un proceso similar para 'firma_info'
         firma_info_str = request.form.get('firma_info', '')
@@ -111,6 +113,7 @@ def get_certificates():
             "numero": closing_number,
             "fecha": closing_date
         }
+        json_fieldValues = json.dumps(fieldValues)
 
         current_time = int(tiempo.time() * 1000)
         datetimesigned = datetime.now(pytz.utc).astimezone(pytz.timezone('America/Argentina/Buenos_Aires')).strftime("%Y-%m-%d %H:%M:%S")
@@ -135,10 +138,8 @@ def get_certificates():
                 data_to_sign = data_to_sign_response["bytes"]
             case (False, True):
                 signed_pdf_base64 = signown(pdf_b64, False)
-                signed_pdf_base64 = signown(signed_pdf_base64, True)
-                print("Certificates por mandar a cerrar")
-                print(signed_pdf_base64)
-                lastpdf = closePDF(signed_pdf_base64)
+                signed_pdf_base64_toclose = signown(signed_pdf_base64, True)
+                lastpdf = closePDF(signed_pdf_base64_toclose)
                 save_signed_pdf(lastpdf, signed_pdf_filename+"signEandclose.pdf")
             case (False, False):
                 lastpdf = signown(pdf_b64, False)
@@ -181,17 +182,15 @@ def signown(pdf, isSigned):
     try:
         if not isSigned and isclosing or not isSigned and not isclosing:
             custom_image = create_signature_image(
-                        f"{name}\n{datetimesigned}\n{stamp}\n{area}",
-                        encoded_image
-                    )
+                f"{name}\n{datetimesigned}\n{stamp}\n{area}",
+                encoded_image
+            )
             certificates = get_certificate_from_local()
             data_to_sign_response = get_data_to_sign_own(pdf, certificates, current_time, field_id, stamp, custom_image)
             data_to_sign = data_to_sign_response["bytes"]
             signature_value = get_signature_value_own(data_to_sign)
             signed_pdf_response = sign_document_own(pdf, signature_value, certificates, current_time, field_id, stamp, custom_image)
             signed_pdf_base64 = signed_pdf_response['bytes']
-            print("Signown firma")
-            print(signed_pdf_base64)
             return signed_pdf_base64
         else:
             custom_image = create_signature_image(
@@ -204,8 +203,6 @@ def signown(pdf, isSigned):
             signature_value = get_signature_value_own(data_to_sign)
             signed_pdf_response = sign_document_own(pdf, signature_value, certificates, current_time, closingplace, stamp, custom_image)
             signed_pdf_base64 = signed_pdf_response['bytes']
-            print("Signown cierre")
-            print(signed_pdf_base64)
             return signed_pdf_base64
     except PDFSignatureError as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -214,8 +211,8 @@ def closePDF(pdftoclose):
     try:
         data = {
                     'fileBase64': pdftoclose,
-                    'fileName': signed_pdf_filename,
-                    'fieldValues': fieldValues
+                    'fileName': "hola.pdf",
+                    'fieldValues': json_fieldValues
                 }
         response = requests.post('http://java-webapp:5555/pdf/update', data=data)
         response.raise_for_status()
