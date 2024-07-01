@@ -168,10 +168,10 @@ def signown(pdf, isSigned):
                 f"Sistema Yunga TC Tucumán\n{datetimesigned}",
                 encoded_image
             )
-            data_to_sign_response = get_data_to_sign_own(pdf, certificates, current_time, field_id, stamp, custom_image)
+            data_to_sign_response = get_data_to_sign_own(pdf, certificates, current_time, closingplace, stamp, custom_image)
             data_to_sign = data_to_sign_response["bytes"]
             signature_value = get_signature_value_own(data_to_sign)
-            signed_pdf_response = sign_document_own(pdf, signature_value, certificates, current_time, field_id, stamp, custom_image)
+            signed_pdf_response = sign_document_own(pdf, signature_value, certificates, current_time, closingplace, stamp, custom_image)
             signed_pdf_base64 = signed_pdf_response['bytes']
             return signed_pdf_base64
     except PDFSignatureError as e:
