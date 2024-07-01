@@ -65,7 +65,7 @@ def get_certificates():
     try:   
         request._load_form_data()
         pdf_b64 = request.form.get('pdf')
-        
+
         
 
         # Repetir un proceso similar para 'firma_info'
@@ -80,16 +80,18 @@ def get_certificates():
         
         isdigital = sign_info.get('firma_digital')
 
+        # Solo intentar cargar y verificar 'certificados' si 'isdigital' es verdadero
+        if isdigital:
         # Verificar que el campo 'certificados' esté presente y no esté vacío
-        certificados_str = request.form.get('certificados', '')
-        if not certificados_str and isdigital:
-            raise PDFSignatureError("El campo 'certificados' está vacío o falta.")
+            certificados_str = request.form.get('certificados', '')
+            if not certificados_str and isdigital:
+                raise PDFSignatureError("El campo 'certificados' está vacío o falta.")
 
-        # Intentar analizar el campo 'certificados' como JSON
-        try:
-            certificates = json.loads(certificados_str)
-        except json.JSONDecodeError:
-            raise PDFSignatureError("Formato JSON inválido para 'certificados'.")
+            # Intentar analizar el campo 'certificados' como JSON
+            try:
+                certificates = json.loads(certificados_str)
+            except json.JSONDecodeError:
+                raise PDFSignatureError("Formato JSON inválido para 'certificados'.")
         
         try:
             signed_pdf_filename = request.form.get('file_name')
