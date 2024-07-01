@@ -42,8 +42,10 @@ signed_pdf_filename = None
 ###    Funcion de guardado de PDF     ###
 def save_signed_pdf(signed_pdf_base64, filename):
     try:
+        print("Guardando PDF")
         signed_pdf_bytes = base64.b64decode(signed_pdf_base64)
         with open(filename, 'wb') as f:
+            print("Guardando PDF with")
             f.write(signed_pdf_bytes)
     except Exception as e:
         logging.error(f"Error in save_signed_pdf: {str(e)}")
@@ -137,6 +139,7 @@ def get_certificates():
                 signed_pdf_base64 = signown(pdf_b64, False)
                 signed_pdf_base64 = signown(signed_pdf_base64, True)
                 lastpdf = closePDF(signed_pdf_base64)
+                print(lastpdf)
                 save_signed_pdf(lastpdf, signed_pdf_filename+"signEandclose.pdf")
             case (False, False):
                 lastpdf = signown(pdf_b64, False)
@@ -214,11 +217,7 @@ def closePDF(pdftoclose):
                 }
         response = requests.post('http://java-webapp:5555/pdf/update', data=data)
         response.raise_for_status()
-        # Decodificar la respuesta JSON
-        response_json = response.json()
-
-        # Acceder al PDF codificado en base64 dentro del JSON
-        signed_pdf_base64 = response_json['bytes']
+        signed_pdf_base64 = base64.b64encode(response.content).decode("utf-8")
         return signed_pdf_base64
 
     except PDFSignatureError as e:

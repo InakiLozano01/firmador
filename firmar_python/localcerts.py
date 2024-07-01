@@ -15,13 +15,15 @@ private_key_path = os.getenv('PRIVATE_KEY_PATH')
 certificate_path = os.getenv('CERTIFICATE_PATH')
 
 def get_signature_value_own(data_to_sign):
+
     # Cargar la clave privada desde un archivo
     with open(private_key_path, "rb") as key_file:
         private_key = load_pem_private_key(key_file.read(), password=private_key_password.encode(), backend=default_backend())
 
+    data_to_sign_bytes = base64.b64decode(data_to_sign)
     # Generar la firma
     signature = private_key.sign(
-        data_to_sign,
+        data_to_sign_bytes,
         padding.PKCS1v15(),
         hashes.SHA256()
     )
