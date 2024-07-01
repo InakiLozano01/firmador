@@ -40,15 +40,12 @@ public class PdfFormController {
             // Update the PDF fields
             ByteArrayOutputStream baos = pdfFormUpdateService.updatePdfFields(pdfBytes, fieldValues);
 
-            // Prepare headers
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_PDF);
-            // Suggest a filename for the browser to download
-            headers.setContentDispositionFormData("attachment", fileName);
-
-            return new ResponseEntity<>(baos.toByteArray(), headers, HttpStatus.OK);
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + fileName)
+                    .contentType(MediaType.APPLICATION_PDF)
+                    .body(baos.toByteArray());
         } catch (IOException e) {
-            return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
+            return ResponseEntity.status(500).body(null);
         }
     }
 }
