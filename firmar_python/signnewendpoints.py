@@ -68,8 +68,6 @@ def get_certificates():
         request._load_form_data()
         pdf_b64 = request.form.get('pdf')
 
-        
-
         # Repetir un proceso similar para 'firma_info'
         firma_info_str = request.form.get('firma_info', '')
         if not firma_info_str:
@@ -138,8 +136,9 @@ def get_certificates():
             case (False, True):
                 signed_pdf_base64 = signown(pdf_b64, False)
                 signed_pdf_base64 = signown(signed_pdf_base64, True)
+                print("Certificates por mandar a cerrar")
+                print(signed_pdf_base64)
                 lastpdf = closePDF(signed_pdf_base64)
-                print(lastpdf)
                 save_signed_pdf(lastpdf, signed_pdf_filename+"signEandclose.pdf")
             case (False, False):
                 lastpdf = signown(pdf_b64, False)
@@ -179,7 +178,6 @@ def sign_pdf_firmas():
         return jsonify({"status": "error", "message": "An unexpected error occurred."}), 500
 
 def signown(pdf, isSigned):
-    global current_time, datetimesigned, certificates, field_id, stamp, area, name, custom_image, isclosing, closingplace, fieldValues, signed_pdf_filename
     try:
         if not isSigned and isclosing or not isSigned and not isclosing:
             custom_image = create_signature_image(
@@ -192,6 +190,8 @@ def signown(pdf, isSigned):
             signature_value = get_signature_value_own(data_to_sign)
             signed_pdf_response = sign_document_own(pdf, signature_value, certificates, current_time, field_id, stamp, custom_image)
             signed_pdf_base64 = signed_pdf_response['bytes']
+            print("Signown firma")
+            print(signed_pdf_base64)
             return signed_pdf_base64
         else:
             custom_image = create_signature_image(
@@ -204,6 +204,8 @@ def signown(pdf, isSigned):
             signature_value = get_signature_value_own(data_to_sign)
             signed_pdf_response = sign_document_own(pdf, signature_value, certificates, current_time, closingplace, stamp, custom_image)
             signed_pdf_base64 = signed_pdf_response['bytes']
+            print("Signown cierre")
+            print(signed_pdf_base64)
             return signed_pdf_base64
     except PDFSignatureError as e:
         return jsonify({"status": "error", "message": str(e)}), 500
