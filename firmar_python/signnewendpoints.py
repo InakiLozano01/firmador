@@ -66,16 +66,7 @@ def get_certificates():
         request._load_form_data()
         pdf_b64 = request.form.get('pdf')
         
-        # Verificar que el campo 'certificados' esté presente y no esté vacío
-        certificados_str = request.form.get('certificados', '')
-        if not certificados_str:
-            raise PDFSignatureError("El campo 'certificados' está vacío o falta.")
-
-        # Intentar analizar el campo 'certificados' como JSON
-        try:
-            certificates = json.loads(certificados_str)
-        except json.JSONDecodeError:
-            raise PDFSignatureError("Formato JSON inválido para 'certificados'.")
+        
 
         # Repetir un proceso similar para 'firma_info'
         firma_info_str = request.form.get('firma_info', '')
@@ -86,7 +77,20 @@ def get_certificates():
             sign_info = json.loads(firma_info_str)
         except json.JSONDecodeError:
             raise PDFSignatureError("Formato JSON inválido para 'firma_info'.")
+        
+        isdigital = sign_info.get('firma_digital')
 
+        # Verificar que el campo 'certificados' esté presente y no esté vacío
+        certificados_str = request.form.get('certificados', '')
+        if not certificados_str and isdigital:
+            raise PDFSignatureError("El campo 'certificados' está vacío o falta.")
+
+        # Intentar analizar el campo 'certificados' como JSON
+        try:
+            certificates = json.loads(certificados_str)
+        except json.JSONDecodeError:
+            raise PDFSignatureError("Formato JSON inválido para 'certificados'.")
+        
         try:
             signed_pdf_filename = request.form.get('file_name')
         except KeyError:
@@ -96,7 +100,7 @@ def get_certificates():
         name = sign_info.get('firma_nombre')
         stamp = sign_info.get('firma_sello')
         area = sign_info.get('firma_area')
-        isdigital = sign_info.get('firma_digital')
+        
         isclosing = sign_info.get('firma_cierra')
         closingplace = sign_info.get('firma_lugarcierre')
         closing_number = sign_info.get('numero_doc')
