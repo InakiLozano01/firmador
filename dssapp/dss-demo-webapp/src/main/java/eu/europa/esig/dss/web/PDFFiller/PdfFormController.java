@@ -24,7 +24,7 @@ public class PdfFormController {
     private ObjectMapper objectMapper; // For converting JSON string to Map
 
     @PostMapping(value = "/update", consumes = MediaType.APPLICATION_FORM_URLENCODED_VALUE)
-    public ResponseEntity<byte[]> updatePdf(
+    public ResponseEntity<String> updatePdf(
             @RequestParam("fileBase64") String fileBase64,
             @RequestParam("fileName") String fileName,
             @RequestParam("fieldValues") String fieldValuesJson) {
@@ -38,10 +38,19 @@ public class PdfFormController {
             // Update the PDF fields
             ByteArrayOutputStream baos = pdfFormUpdateService.updatePdfFields(pdfBytes, fieldValues);
 
+            // Encode updated PDF to base64
+            String base64EncodedPdf = Base64.getEncoder().encodeToString(baos.toByteArray());
+
+            // Create a map to hold the base64 encoded PDF under the key "bytes"
+            Map<String, String> responseBody = new HashMap<>();
+            responseBody.put("bytes", base64EncodedPdf);
+
+            // Convert map to JSON string
+            String jsonResponse = objectMapper.writeValueAsString(responseBody);
+
             return ResponseEntity.ok()
-                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + fileName)
-                    .contentType(MediaType.APPLICATION_PDF)
-                    .body(baos.toByteArray());
+                    .contentType(MediaType.APPLICATION_JSON) // Cambiado a application/json
+                    .body(jsonResponse);
         } catch (IOException e) {
             return ResponseEntity.status(500).body(null);
         }

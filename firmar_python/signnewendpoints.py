@@ -118,7 +118,7 @@ def get_certificates():
         if not field_id or not stamp or not area:
             raise PDFSignatureError("firma_info is missing required fields")
 
-        if not name:
+        if isdigital:
             name = extract_certificate_info_name(certificates['certificate'])
 
         custom_image = create_signature_image(
@@ -176,8 +176,14 @@ def sign_pdf_firmas():
         return jsonify({"status": "error", "message": "An unexpected error occurred."}), 500
 
 def signown(pdf, isSigned):
+    global current_time, datetimesigned, certificates, field_id, stamp, area, name, custom_image, isclosing, closingplace, fieldValues, signed_pdf_filename
     try:
         if not isSigned and isclosing or not isSigned and not isclosing:
+            custom_image = create_signature_image(
+                        f"{name}\n{datetimesigned}\n{stamp}\n{area}",
+                        encoded_image
+                    )
+            certificates = get_certificate_from_local()
             data_to_sign_response = get_data_to_sign_own(pdf, certificates, current_time, field_id, stamp, custom_image)
             data_to_sign = data_to_sign_response["bytes"]
             signature_value = get_signature_value_own(data_to_sign)
@@ -189,6 +195,7 @@ def signown(pdf, isSigned):
                 f"Sistema Yunga TC Tucumán\n{datetimesigned}",
                 encoded_image
             )
+            certificates = get_certificate_from_local()
             data_to_sign_response = get_data_to_sign_own(pdf, certificates, current_time, closingplace, stamp, custom_image)
             data_to_sign = data_to_sign_response["bytes"]
             signature_value = get_signature_value_own(data_to_sign)
@@ -207,7 +214,11 @@ def closePDF(pdftoclose):
                 }
         response = requests.post('http://java-webapp:5555/pdf/update', data=data)
         response.raise_for_status()
-        signed_pdf_base64 = base64.b64encode(response.content).decode('utf-8')
+        # Decodificar la respuesta JSON
+        response_json = response.json()
+
+        # Acceder al PDF codificado en base64 dentro del JSON
+        signed_pdf_base64 = response_json['bytes']
         return signed_pdf_base64
 
     except PDFSignatureError as e:
