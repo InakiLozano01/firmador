@@ -1,3 +1,4 @@
+###################################################
 from flask import Flask, request, jsonify, send_from_directory, Blueprint
 import base64
 import time as tiempo
@@ -16,10 +17,16 @@ from datetime import *
 import pytz
 from pdfrw import *
 from signimagepregenerated import *
+from dotenv import load_dotenv
+import psycopg2
+###################################################
 
 firma_bp = Blueprint('firma', __name__)
 
+load_dotenv()
+##################################################
 ###    Variables globales     ###
+##################################################
 datetimesigned = None
 pdf_b64 = None
 current_time = None
@@ -40,6 +47,7 @@ json_fieldValues = None
 ##################################################
 
 ###    Funcion de guardado de PDF     ###
+###################################################
 def save_signed_pdf(signed_pdf_base64, filename):
     try:
         print("Guardando PDF")
@@ -54,12 +62,13 @@ def save_signed_pdf(signed_pdf_base64, filename):
 
 
 ### Imagen de firma en base64 ###
+###################################################
 encoded_image = encode_image("logo_tribunal_para_tapir.png")
 compressedimage = compressed_image_encoded("logo_tribunal_para_tapir.png")
-
+###################################################
 
 ###    Rutas de la aplicacion para Tapir     ###
-
+###################################################
 @firma_bp.route('/firma_init', methods=['POST'])
 def get_certificates():
     global pdf_b64, current_time, certificates, signed_pdf_filename, field_id, stamp, area, name, datetimesigned, custom_image, isdigital, isclosing, closingplace, closing_number, closing_date, fieldValues, signed_pdf_filename, json_fieldValues
@@ -70,7 +79,6 @@ def get_certificates():
         now = datetime.now()
         signed_pdf_filename = now.strftime("pdf_%d/%m/%Y_%H%M%S")
 
-        # Repetir un proceso similar para 'firma_info'
         firma_info_str = request.form.get('firma_info', '')
         if not firma_info_str:
             raise PDFSignatureError("El campo 'firma_info' está vacío o falta.")
@@ -107,8 +115,8 @@ def get_certificates():
         
         isclosing = sign_info.get('firma_cierra')
         closingplace = sign_info.get('firma_lugarcierre')
-        closing_number = sign_info.get('numero_doc')
-        closing_date = sign_info.get('fecha_doc')
+        idDoc = sign_info.get('id_doc')
+        closing_number, closing_date  = get_closing_number_and_date(idDoc)
         fieldValues = {
             "numero": closing_number,
             "fecha": closing_date
@@ -138,9 +146,9 @@ def get_certificates():
                 data_to_sign = data_to_sign_response["bytes"]
             case (False, True):
                 signed_pdf_base64 = signown(pdf_b64, False)
-                signed_pdf_base64_toclose = signown(signed_pdf_base64, True)
-                lastpdf = closePDF(signed_pdf_base64_toclose)
-                save_signed_pdf(lastpdf, signed_pdf_filename+"signEandclose.pdf")
+                lastpdf = closePDF(signed_pdf_base64)
+                signed_pdf_base64_closed = signown(lastpdf, True)
+                save_signed_pdf(signed_pdf_base64_closed, signed_pdf_filename+"signEandclose.pdf")
             case (False, False):
                 lastpdf = signown(pdf_b64, False)
                 save_signed_pdf(lastpdf, signed_pdf_filename+"signE.pdf")
@@ -155,7 +163,9 @@ def get_certificates():
     except Exception as e:
         logging.error(f"Unexpected error in get_certificates: {str(e)}")
         return jsonify({"status": "error", "message": "An unexpected error occurred."}), 500
+###################################################
 
+###################################################
 @firma_bp.route('/firma_valor', methods=['POST'])
 def sign_pdf_firmas():
     try:
@@ -166,9 +176,9 @@ def sign_pdf_firmas():
 
         match (isdigital, isclosing):
             case (True, True):
-                lastsignedpdf = signown(signed_pdf_base64, True)
-                lastpdf = closePDF(lastsignedpdf)
-                save_signed_pdf(lastpdf, signed_pdf_filename+"signDandclose.pdf")
+                lastpdf = closePDF(signed_pdf_base64)
+                lastsignedpdf = signown(lastpdf, True)
+                save_signed_pdf(lastsignedpdf, signed_pdf_filename+"signDandclose.pdf")
                 return jsonify({"status": "success", "pdf": lastpdf}), 200
             case (True, False):
                 save_signed_pdf(signed_pdf_base64, signed_pdf_filename+"signD.pdf")
@@ -177,10 +187,15 @@ def sign_pdf_firmas():
     except Exception as e:
         logging.error(f"Unexpected error in sign_pdf_firmas: {str(e)}")
         return jsonify({"status": "error", "message": "An unexpected error occurred."}), 500
+###################################################
 
-def signown(pdf, isSigned):
+
+### Funciones ###
+# Función para firmar el PDF con certificado propio del servidor #
+###################################################
+def signown(pdf, isSignedYet):
     try:
-        if not isSigned and isclosing or not isSigned and not isclosing:
+        if not isSignedYet and isclosing or not isSignedYet and not isclosing:
             custom_image = create_signature_image(
                 f"{name}\n{datetimesigned}\n{stamp}\n{area}",
                 encoded_image
@@ -206,12 +221,14 @@ def signown(pdf, isSigned):
             return signed_pdf_base64
     except PDFSignatureError as e:
         return jsonify({"status": "error", "message": str(e)}), 500
-
+###################################################
+# Función para cerrar el PDF #
+###################################################
 def closePDF(pdftoclose):
     try:
         data = {
                     'fileBase64': pdftoclose,
-                    'fileName': "hola.pdf",
+                    'fileName': signed_pdf_filename,
                     'fieldValues': json_fieldValues
                 }
         response = requests.post('http://java-webapp:5555/pdf/update', data=data)
@@ -224,3 +241,45 @@ def closePDF(pdftoclose):
     except Exception as e:
         logging.error(f"Unexpected error in sign_own_pdf: {str(e)}")
         return jsonify({"status": "error", "message": "An unexpected error occurred."}), 500
+###################################################
+# Función para obtener el número de cierre y la fecha de cierre #    
+###################################################
+def get_closing_number_and_date(idDoc):
+    dbname = os.getenv('DB_NAME')
+    user = os.getenv('DB_USER')
+    password = os.getenv('DB_PASSWORD')
+    host = os.getenv('DB_HOST')
+    port = os.getenv('DB_PORT')
+
+    # Detalles de conexión
+    conn_params = {
+        'dbname': dbname,
+        'user': user,
+        'password': password,
+        'host': host,
+        'port': port  # Puerto por defecto de PostgreSQL
+    }
+    try:
+        # Establecer la conexión
+        conn = psycopg2.connect(**conn_params)
+        conn.autocommit = False  # Desactivar el autocommit para manejar transacciones manualmente
+        cursor = conn.cursor()
+        try:
+            funcion_sql = "SELECT f_documento_protocolizar(%s);"
+            idDoc = 6
+            cursor.execute(funcion_sql, idDoc)
+
+            datos = cursor.fetchone()
+            print(datos)
+        except Exception as e:
+            print("Error en la transacción", e)
+            return jsonify({"status": "error", "message": "Error en la transacción"}), 500
+        finally:
+            cursor.close()
+    except Exception as e:
+        print("Error al conectar a la base de datos:", e)
+        return jsonify({"status": "error", "message": "Error al conectar a la base de datos"}), 500
+    finally:
+        if conn:
+            conn.close()
+###################################################
