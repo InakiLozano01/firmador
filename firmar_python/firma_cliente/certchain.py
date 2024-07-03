@@ -7,6 +7,8 @@ from cryptography.x509.oid import ExtensionOID, AuthorityInformationAccessOID
 import requests
 import base64
 
+
+
 def get_pin_from_user():
     root = tk.Tk()
     root.withdraw()
