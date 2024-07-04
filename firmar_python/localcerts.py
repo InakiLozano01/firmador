@@ -19,8 +19,9 @@ def get_signature_value_own(data_to_sign):
     # Cargar la clave privada desde un archivo
     with open(private_key_path, "rb") as key_file:
         private_key = load_pem_private_key(key_file.read(), password=private_key_password.encode(), backend=default_backend())
-
+    print("Private key loaded")
     data_to_sign_bytes = base64.b64decode(data_to_sign)
+    print("Data to sign decoded")
     # Generar la firma
     signature = private_key.sign(
         data_to_sign_bytes,
