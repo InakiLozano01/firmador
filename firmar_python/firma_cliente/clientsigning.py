@@ -1,7 +1,9 @@
 import PyKCS11
 import tkinter as tk
-from tkinter import simpledialog
+from tkinter import simpledialog, filedialog
 import base64
+import hashlib
+from OpenSSL import crypto
 
 def get_pin_from_user():
     root = tk.Tk()
@@ -76,7 +78,9 @@ try:
     session, private_key, certificate = get_private_key_and_certificates(token_library_path)
     print(f"Certificate: {certificate}\n")
     
-    digest_base64 = "c2FtcGxlIGRhdGE="
+    path = filedialog.askopenfilename(filetypes=[("PDF files", "*.pdf")])
+    digest_base64 = "Algo"
+    print(f"Digest: {digest_base64}")
 
     # Sign data
     signature_base64 = sign_data_with_private_key(session, private_key, digest_base64)
@@ -87,3 +91,5 @@ try:
     
 except Exception as e:
     print(f"An error occurred: {e}")
+
+

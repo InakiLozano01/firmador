@@ -44,6 +44,7 @@ closing_number = None
 closing_date = None
 fieldValues = None
 json_fieldValues = None
+idDoc = None
 ##################################################
 
 ###    Funcion de guardado de PDF     ###
@@ -71,7 +72,7 @@ compressedimage = compressed_image_encoded("logo_tribunal_para_tapir.png")
 ###################################################
 @firma_bp.route('/firma_init', methods=['POST'])
 def get_certificates():
-    global pdf_b64, current_time, certificates, signed_pdf_filename, field_id, stamp, area, name, datetimesigned, custom_image, isdigital, isclosing, closingplace, closing_number, closing_date, fieldValues, signed_pdf_filename, json_fieldValues
+    global pdf_b64, current_time, certificates, signed_pdf_filename, field_id, stamp, area, name, datetimesigned, custom_image, isdigital, isclosing, closingplace, closing_number, closing_date, fieldValues, signed_pdf_filename, json_fieldValues, idDoc
     
     try:   
         request._load_form_data()
@@ -106,7 +107,7 @@ def get_certificates():
         try:
             signed_pdf_filename = request.form.get('file_name')
         except KeyError:
-            raise PDFSignatureError("file_name is missing")
+            raise PDFSignatureError("El campo file_name is missing")
         
         field_id = sign_info.get('firma_lugar')
         name = sign_info.get('firma_nombre')
@@ -116,11 +117,6 @@ def get_certificates():
         isclosing = sign_info.get('firma_cierra')
         closingplace = sign_info.get('firma_lugarcierre')
         idDoc = sign_info.get('id_doc')
-        closing_number, closing_date  = get_closing_number_and_date(idDoc)
-        fieldValues = {
-            "numero": closing_number,
-            "fecha": closing_date
-        }
         json_fieldValues = json.dumps(fieldValues)
 
         current_time = int(tiempo.time() * 1000)
@@ -146,7 +142,7 @@ def get_certificates():
                 data_to_sign = data_to_sign_response["bytes"]
             case (False, True):
                 signed_pdf_base64 = signown(pdf_b64, False)
-                lastpdf = closePDF(signed_pdf_base64)
+                lastpdf = get_number_and_date_then_close(signed_pdf_base64, idDoc)
                 signed_pdf_base64_closed = signown(lastpdf, True)
                 save_signed_pdf(signed_pdf_base64_closed, signed_pdf_filename+"signEandclose.pdf")
             case (False, False):
@@ -159,10 +155,10 @@ def get_certificates():
             return jsonify({"status": "success", "pdf": lastpdf}), 200
         
     except PDFSignatureError as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"status": "error", "message": "Error en get_certificates: " + str(e)}), 500
     except Exception as e:
         logging.error(f"Unexpected error in get_certificates: {str(e)}")
-        return jsonify({"status": "error", "message": "An unexpected error occurred."}), 500
+        return jsonify({"status": "error", "message": "An unexpected error occurred in get_certificates."}), 500
 ###################################################
 
 ###################################################
@@ -176,7 +172,7 @@ def sign_pdf_firmas():
 
         match (isdigital, isclosing):
             case (True, True):
-                lastpdf = closePDF(signed_pdf_base64)
+                lastpdf = get_number_and_date_then_close(signed_pdf_base64, idDoc)
                 lastsignedpdf = signown(lastpdf, True)
                 save_signed_pdf(lastsignedpdf, signed_pdf_filename+"signDandclose.pdf")
                 return jsonify({"status": "success", "pdf": lastpdf}), 200
@@ -186,16 +182,16 @@ def sign_pdf_firmas():
 
     except Exception as e:
         logging.error(f"Unexpected error in sign_pdf_firmas: {str(e)}")
-        return jsonify({"status": "error", "message": "An unexpected error occurred."}), 500
+        return jsonify({"status": "error", "message": "An unexpected error occurred in sign_pdf_firmas."}), 500
 ###################################################
 
 
 ### Funciones ###
 # Función para firmar el PDF con certificado propio del servidor #
 ###################################################
-def signown(pdf, isSignedYet):
+def signown(pdf, isYungaSign):
     try:
-        if not isSignedYet and isclosing or not isSignedYet and not isclosing:
+        if not isYungaSign and isclosing or not isYungaSign and not isclosing:
             custom_image = create_signature_image(
                 f"{name}\n{datetimesigned}\n{stamp}\n{area}",
                 encoded_image
@@ -220,14 +216,14 @@ def signown(pdf, isSignedYet):
             signed_pdf_base64 = signed_pdf_response['bytes']
             return signed_pdf_base64
     except PDFSignatureError as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"status": "error", "message": "Error en signown: " + str(e)}), 500
 ###################################################
 # Función para cerrar el PDF #
 ###################################################
-def closePDF(pdftoclose):
+def closePDF(pdfToClose):
     try:
         data = {
-                    'fileBase64': pdftoclose,
+                    'fileBase64': pdfToClose,
                     'fileName': signed_pdf_filename,
                     'fieldValues': json_fieldValues
                 }
@@ -235,16 +231,16 @@ def closePDF(pdftoclose):
         response.raise_for_status()
         signed_pdf_base64 = base64.b64encode(response.content).decode("utf-8")
         return signed_pdf_base64
-
     except PDFSignatureError as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"status": "error", "message": "Error cerrando el PDF: " + str(e)}), 500
     except Exception as e:
-        logging.error(f"Unexpected error in sign_own_pdf: {str(e)}")
-        return jsonify({"status": "error", "message": "An unexpected error occurred."}), 500
+        logging.error(f"Unexpected error in closePDF: {str(e)}")
+        return jsonify({"status": "error", "message": "An unexpected error occurred in closePDF"}), 500
 ###################################################
 # Función para obtener el número de cierre y la fecha de cierre #    
 ###################################################
-def get_closing_number_and_date(idDoc):
+def get_number_and_date_then_close(pdfToClose, idDoc):
+    global fieldValues
     dbname = os.getenv('DB_NAME')
     user = os.getenv('DB_USER')
     password = os.getenv('DB_PASSWORD')
@@ -265,20 +261,33 @@ def get_closing_number_and_date(idDoc):
         conn.autocommit = False  # Desactivar el autocommit para manejar transacciones manualmente
         cursor = conn.cursor()
         try:
-            funcion_sql = "SELECT f_documento_protocolizar(%s);"
-            idDoc = 6
-            cursor.execute(funcion_sql, idDoc)
+            cursor.execute("SELECT f_documento_protocolizar(%s)", (idDoc,))
 
             datos = cursor.fetchone()
+            datos_json = json.loads(json.dumps(datos[0]))
             print(datos)
+            print(datos_json)
+            print(type(datos_json))
+            fieldValues = {
+                "numero": datos_json['numero'],
+                "fecha": datos_json['fecha']
+            }
+            if datos_json['status'] == False:
+                return jsonify({"status": "error", "message": "Error al obtener fecha y numero: " + str(datos_json['message'].capitalize())}), 500
+            else:
+                print("Cierro el documento")
+                ###########################
+                closePDF(pdfToClose)
+                ###########################
+                print("Listo para firmar")
+                conn.commit()
         except Exception as e:
-            print("Error en la transacción", e)
-            return jsonify({"status": "error", "message": "Error en la transacción"}), 500
+            conn.rollback()
+            return jsonify({"status": "error", "message": "Error transaccion: " + str(e)}), 500
         finally:
             cursor.close()
     except Exception as e:
-        print("Error al conectar a la base de datos:", e)
-        return jsonify({"status": "error", "message": "Error al conectar a la base de datos"}), 500
+        return jsonify({"status": "error", "message": "Error al conectar a la base de datos: " + str(e)}), 500
     finally:
         if conn:
             conn.close()

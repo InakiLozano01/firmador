@@ -99,7 +99,6 @@ public class SignatureController {
 	@RequestMapping(method = RequestMethod.POST)
 	public String sendSignatureParameters(Model model, HttpServletRequest response,
 										  @ModelAttribute("signatureDocumentForm") @Valid SignatureDocumentForm signatureDocumentForm, BindingResult result) {
-		System.out.println("Hola");
 		if (result.hasErrors()) {
 			if (LOG.isDebugEnabled()) {
 				List<ObjectError> allErrors = result.getAllErrors();
@@ -140,8 +139,6 @@ public class SignatureController {
 		}
 
 		model.addAttribute("signatureDocumentForm", signatureDocumentForm);
-
-		System.out.println("signatureDocumentForm: " + signatureDocumentForm.toString());
 
 		ToBeSigned dataToSign = signingService.getDataToSign(signatureDocumentForm);
 		if (dataToSign == null) {

@@ -123,7 +123,6 @@ public class SigningService {
 	public ToBeSigned getDataToSign(SignatureDocumentForm form) {
 		LOG.info("Start getDataToSign with one document");
 		DocumentSignatureService service = getSignatureService(form.getContainerType(), form.getSignatureForm());
-		System.out.println("signatureDocumentForm: " + form.toString());
 		this.originalDoc = WebAppUtils.toDSSDocument(form.getDocumentToSign());
 		AbstractSignatureParameters parameters = fillParameters(form);
 
@@ -238,67 +237,6 @@ public class SigningService {
 
 		fillTimestampParameters(parameters, form);
 	}
-
-	/*private SignatureFieldParameters calculateSignatureFieldPosition() {
-		try (PDDocument document = PDDocument.load(originalDoc.openStream())) {
-			int lastPageNumber = document.getNumberOfPages();
-			PDPage lastPage = document.getPage(lastPageNumber - 1);
-			List<PDAnnotation> annotations = lastPage.getAnnotations();
-			SignatureFieldParameters fieldParameters = new SignatureFieldParameters();
-			fieldParameters.setPage(lastPageNumber);
-
-			if (annotations.isEmpty()) {
-				// No previous signatures, add a new page and place signature at the top
-				PDPage newPage = new PDPage();
-				document.addPage(newPage);
-				fieldParameters.setPage(document.getNumberOfPages());
-				fieldParameters.setOriginX(20);
-				fieldParameters.setOriginY(20);
-				ByteArrayOutputStream baos = new ByteArrayOutputStream();
-				document.save(baos);
-				originalDoc = new InMemoryDocument(baos.toByteArray());
-			} else {
-				// Count existing signatures on the page
-				int signatureCount = 0;
-				for (PDAnnotation annotation : annotations) {
-					signatureCount++;
-				}
-
-				// Calculate potential placement of the new signature
-				float potentialOriginY = 20 + signatureCount * 200;
-
-				// Get page dimensions
-				PDRectangle pageSize = lastPage.getMediaBox();
-				float pageHeight = pageSize.getHeight();
-
-				// Check if there's enough space for the new signature
-				if (potentialOriginY + fieldParameters.getHeight() <= pageHeight) {
-					// Place the signature on the current page
-					fieldParameters.setOriginY(potentialOriginY);
-				} else {
-					// Not enough space - add a new page and place at the top
-					PDPage newPage = new PDPage();
-					document.addPage(newPage);
-					fieldParameters.setPage(document.getNumberOfPages());
-					fieldParameters.setOriginX(20);
-					fieldParameters.setOriginY(20);
-
-					// Save the document with the new page
-					ByteArrayOutputStream baos = new ByteArrayOutputStream();
-					document.save(baos);
-					originalDoc = new InMemoryDocument(baos.toByteArray());
-				}
-
-				fieldParameters.setOriginX(20);
-			}
-
-			fieldParameters.setWidth(170);
-			fieldParameters.setHeight(50);
-			return fieldParameters;
-		} catch (IOException e) {
-			throw new RuntimeException("Error analyzing PDF document", e);
-		}
-	}*/
 
 	private SignatureFieldParameters calculateSignatureFieldPosition() {
 		try (PDDocument document = PDDocument.load(originalDoc.openStream())) {
