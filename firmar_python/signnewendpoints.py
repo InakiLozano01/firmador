@@ -272,6 +272,8 @@ def get_number_and_date_then_close(pdfToClose, idDoc):
                 "numero": datos_json['numero'],
                 "fecha": datos_json['fecha']
             }
+            json_fieldValues = json.dumps(fieldValues)
+            fieldValues = json_fieldValues
             if datos_json['status'] == False:
                 return jsonify({"status": "error", "message": "Error al obtener fecha y numero: " + str(datos_json['message'].capitalize())}), 500
             else:
