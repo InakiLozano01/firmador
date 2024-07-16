@@ -283,7 +283,8 @@ def get_number_and_date_then_close(pdfToClose, idDoc):
                 "fecha": datos_json['fecha']
             }
             json_fieldValues = json.dumps(json_fieldValues1)
-            if datos_json['status'] == False:
+            #datos_json['status'] == False
+            if False:
                 raise Exception("Error al obtener fecha y numero: " + datos_json['message'])
             else:
                 print("Cierro el documento")

@@ -2,3 +2,6 @@ firmar_python/*.crt
 firmar_python/yunga_clave_csr_key
 firmar_python/.env
 firmar_python/*.pem
+.png
+.ttf
+.pdf
