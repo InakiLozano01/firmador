@@ -154,7 +154,7 @@ def get_certificates():
         if isdigital:
             return jsonify({"status": "success", "data_to_sign": data_to_sign}), 200
         else:
-            return jsonify({"status": "success", "pdf": lastpdf}), 200
+            return jsonify({"status": "success", "pdf": signed_pdf_base64_closed}), 200
         
     except PDFSignatureError as e:
         return jsonify({"status": "error", "message": "Error en get_certificates: " + str(e)}), 500
