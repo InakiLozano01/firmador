@@ -26,7 +26,7 @@ RUN pip install pikepdf
 RUN pip install pdfrw
 
 # Install psycopg2
-RUN pip install psycopg2
+RUN pip install psycopg2-binary
 
 # Automatically configure mod_wsgi
 RUN mod_wsgi-express install-module | tee /etc/apache2/mods-available/wsgi.load

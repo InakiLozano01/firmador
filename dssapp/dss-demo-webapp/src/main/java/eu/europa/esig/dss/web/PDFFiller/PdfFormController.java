@@ -22,6 +22,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.Base64;
 import java.util.Map;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @RestController
 @RequestMapping("/pdf")
@@ -51,7 +53,7 @@ public class PdfFormController {
             byte[] pdfBytes = Base64.getDecoder().decode(fileBase64);
 
             // Convert JSON string to Map
-            Map<String, String> fieldValues = objectMapper.readValue(fieldValuesJson, Map.class);
+            Map<String, Object> fieldValues = objectMapper.readValue(fieldValuesJson, new TypeReference<Map<String, Object>>() {});
 
             // Update the PDF fields
             ByteArrayOutputStream baos = pdfFormUpdateService.updatePdfFields(pdfBytes, fieldValues);

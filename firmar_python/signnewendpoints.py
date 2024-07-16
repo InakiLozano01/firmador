@@ -117,7 +117,6 @@ def get_certificates():
         isclosing = sign_info.get('firma_cierra')
         closingplace = sign_info.get('firma_lugarcierre')
         idDoc = sign_info.get('id_doc')
-        json_fieldValues = json.dumps(fieldValues)
 
         current_time = int(tiempo.time() * 1000)
         datetimesigned = datetime.now(pytz.utc).astimezone(pytz.timezone('America/Argentina/Buenos_Aires')).strftime("%Y-%m-%d %H:%M:%S")
@@ -141,8 +140,11 @@ def get_certificates():
                 data_to_sign_response = get_data_to_sign_tapir(pdf_b64, certificates, current_time, field_id, stamp, custom_image)
                 data_to_sign = data_to_sign_response["bytes"]
             case (False, True):
+                print("Entro Firma propia")
                 signed_pdf_base64 = signown(pdf_b64, False)
+                print("Mando a Cerrar PDF")
                 lastpdf = get_number_and_date_then_close(signed_pdf_base64, idDoc)
+                print("Cierro PDF con firma yunga")
                 signed_pdf_base64_closed = signown(lastpdf, True)
                 save_signed_pdf(signed_pdf_base64_closed, signed_pdf_filename+"signEandclose.pdf")
             case (False, False):
@@ -190,12 +192,14 @@ def sign_pdf_firmas():
 # Función para firmar el PDF con certificado propio del servidor #
 ###################################################
 def signown(pdf, isYungaSign):
+    print("Firma propia")
     try:
         if not isYungaSign and isclosing or not isYungaSign and not isclosing:
             custom_image = create_signature_image(
                 f"{name}\n{datetimesigned}\n{stamp}\n{area}",
                 encoded_image
             )
+            print("Firma propia cert")
             certificates = get_certificate_from_local()
             data_to_sign_response = get_data_to_sign_own(pdf, certificates, current_time, field_id, stamp, custom_image)
             data_to_sign = data_to_sign_response["bytes"]
@@ -208,10 +212,16 @@ def signown(pdf, isYungaSign):
                 f"Sistema Yunga TC Tucumán\n{datetimesigned}",
                 encoded_image
             )
+            print("Firma propia yunga")
             certificates = get_certificate_from_local()
+            print("Getdatatosign yunga")
             data_to_sign_response = get_data_to_sign_own(pdf, certificates, current_time, closingplace, stamp, custom_image)
+            print(data_to_sign_response)
             data_to_sign = data_to_sign_response["bytes"]
+            print(data_to_sign)
+            print("Get signature value yunga")
             signature_value = get_signature_value_own(data_to_sign)
+            print("Sign document yunga")
             signed_pdf_response = sign_document_own(pdf, signature_value, certificates, current_time, closingplace, stamp, custom_image)
             signed_pdf_base64 = signed_pdf_response['bytes']
             return signed_pdf_base64
@@ -227,6 +237,7 @@ def closePDF(pdfToClose):
                     'fileName': signed_pdf_filename,
                     'fieldValues': json_fieldValues
                 }
+        print(data)
         response = requests.post('http://java-webapp:5555/pdf/update', data=data)
         response.raise_for_status()
         signed_pdf_base64 = base64.b64encode(response.content).decode("utf-8")
@@ -240,7 +251,7 @@ def closePDF(pdfToClose):
 # Función para obtener el número de cierre y la fecha de cierre #    
 ###################################################
 def get_number_and_date_then_close(pdfToClose, idDoc):
-    global fieldValues
+    global json_fieldValues
     dbname = os.getenv('DB_NAME')
     user = os.getenv('DB_USER')
     password = os.getenv('DB_PASSWORD')
@@ -258,7 +269,6 @@ def get_number_and_date_then_close(pdfToClose, idDoc):
     try:
         # Establecer la conexión
         conn = psycopg2.connect(**conn_params)
-        conn.autocommit = False  # Desactivar el autocommit para manejar transacciones manualmente
         cursor = conn.cursor()
         try:
             cursor.execute("SELECT f_documento_protocolizar(%s)", (idDoc,))
@@ -268,22 +278,25 @@ def get_number_and_date_then_close(pdfToClose, idDoc):
             print(datos)
             print(datos_json)
             print(type(datos_json))
-            fieldValues = {
+            json_fieldValues1 = {
                 "numero": datos_json['numero'],
                 "fecha": datos_json['fecha']
             }
-            json_fieldValues = json.dumps(fieldValues)
-            fieldValues = json_fieldValues
+            json_fieldValues = json.dumps(json_fieldValues1)
             if datos_json['status'] == False:
-                return jsonify({"status": "error", "message": "Error al obtener fecha y numero: " + str(datos_json['message'].capitalize())}), 500
+                raise Exception("Error al obtener fecha y numero: " + datos_json['message'])
             else:
                 print("Cierro el documento")
                 ###########################
-                closePDF(pdfToClose)
+                print("Llamo a closePDF")
+                pdf = closePDF(pdfToClose)
                 ###########################
                 print("Listo para firmar")
                 conn.commit()
+                print(type(pdf))
+                return pdf
         except Exception as e:
+            print("Error en la transaccion")
             conn.rollback()
             return jsonify({"status": "error", "message": "Error transaccion: " + str(e)}), 500
         finally:
