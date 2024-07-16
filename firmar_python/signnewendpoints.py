@@ -148,7 +148,7 @@ def get_certificates():
                 signed_pdf_base64_closed = signown(lastpdf, True)
                 save_signed_pdf(signed_pdf_base64_closed, signed_pdf_filename+"signEandclose.pdf")
             case (False, False):
-                lastpdf = signown(pdf_b64, False)
+                signed_pdf_base64_closed = signown(pdf_b64, False)
                 save_signed_pdf(lastpdf, signed_pdf_filename+"signE.pdf")
         
         if isdigital:
