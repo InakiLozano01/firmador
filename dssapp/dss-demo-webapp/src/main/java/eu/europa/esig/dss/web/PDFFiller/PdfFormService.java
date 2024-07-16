@@ -21,7 +21,7 @@ public class PdfFormService {
 
     private static final Logger logger = LoggerFactory.getLogger(PdfFormService.class);
 
-    public ByteArrayOutputStream updatePdfFields(byte[] pdfBytes, Map<String, Object> fieldValues) {
+    public ByteArrayOutputStream updatePdfFields(byte[] pdfBytes, Map<String, String> fieldValues) {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         PdfDocument pdfDoc = null;
 
