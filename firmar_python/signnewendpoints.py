@@ -177,7 +177,7 @@ def sign_pdf_firmas():
                 lastpdf = get_number_and_date_then_close(signed_pdf_base64, idDoc)
                 lastsignedpdf = signown(lastpdf, True)
                 save_signed_pdf(lastsignedpdf, signed_pdf_filename+"signDandclose.pdf")
-                return jsonify({"status": "success", "pdf": lastpdf}), 200
+                return jsonify({"status": "success", "pdf": lastsignedpdf}), 200
             case (True, False):
                 save_signed_pdf(signed_pdf_base64, signed_pdf_filename+"signD.pdf")
                 return jsonify({"status": "success", "pdf": signed_pdf_base64}), 200
