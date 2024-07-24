@@ -8,7 +8,7 @@ import time as tiempo
 import logging
 import os
 import json
-import datetime
+from datetime import *
 import pytz
 import psycopg2
 
@@ -138,6 +138,8 @@ def get_certificates():
         current_time = int(tiempo.time() * 1000)
         datetimesigned = datetime.now(pytz.utc).astimezone(pytz.timezone('America/Argentina/Buenos_Aires')).strftime("%Y-%m-%d %H:%M:%S")
 
+        print (sign_info)
+
         if not field_id or not stamp or not area:
             raise PDFSignatureError("firma_info is missing required fields")
 
@@ -148,6 +150,11 @@ def get_certificates():
                         f"{name}\n{datetimesigned}\n{stamp}\n{area}",
                         encoded_image
                     )   
+
+        signed_pdf_base64_closed = None
+
+        print("Before match")
+        print(isdigital, isclosing)
 
         match (isdigital, isclosing):
             case (True, True):
@@ -160,13 +167,17 @@ def get_certificates():
                 print("Entro Firma propia")
                 signed_pdf_base64 = signown(pdf_b64, False)
                 print("Mando a Cerrar PDF")
-                lastpdf = get_number_and_date_then_close(signed_pdf_base64, idDoc)
+                lastpdf, code = get_number_and_date_then_close(signed_pdf_base64, idDoc)
+                if code == 500:
+                    response = lastpdf.get_json()
+                    if response['status'] == "error":
+                        return jsonify({"status": "error", "message": "Error al cerrar PDF: " + response['message']}), 500
                 print("Cierro PDF con firma yunga")
                 signed_pdf_base64_closed = signown(lastpdf, True)
                 save_signed_pdf(signed_pdf_base64_closed, signed_pdf_filename+"signEandclose.pdf")
             case (False, False):
                 signed_pdf_base64_closed = signown(pdf_b64, False)
-                save_signed_pdf(lastpdf, signed_pdf_filename+"signE.pdf")
+                save_signed_pdf(signed_pdf_base64_closed, signed_pdf_filename+"signE.pdf")
         
         if isdigital:
             return jsonify({"status": "success", "data_to_sign": data_to_sign}), 200
@@ -189,7 +200,11 @@ def sign_pdf_firmas():
 
         match (isdigital, isclosing):
             case (True, True):
-                lastpdf = get_number_and_date_then_close(signed_pdf_base64, idDoc)
+                lastpdf, code = get_number_and_date_then_close(signed_pdf_base64, idDoc)
+                if code == 500:
+                    response = lastpdf.get_json()
+                    if response['status'] == "error":
+                        return jsonify({"status": "error", "message": "Error al cerrar PDF: " + response['message']}), 500
                 lastsignedpdf = signown(lastpdf, True)
                 save_signed_pdf(lastsignedpdf, signed_pdf_filename+"signDandclose.pdf")
                 return jsonify({"status": "success", "pdf": lastsignedpdf}), 200
@@ -303,8 +318,8 @@ def get_number_and_date_then_close(pdfToClose, idDoc):
                 "fecha": datos_json['fecha']
             }
             json_fieldValues = json.dumps(json_fieldValues1)
-            #datos_json['status'] == False
-            if False:
+            
+            if datos_json['status'] == False:
                 raise Exception("Error al obtener fecha y numero: " + datos_json['message'])
             else:
                 print("Cierro el documento")
@@ -315,7 +330,7 @@ def get_number_and_date_then_close(pdfToClose, idDoc):
                 print("Listo para firmar")
                 conn.commit()
                 print(type(pdf))
-                return pdf
+                return pdf, 200
         except Exception as e:
             print("Error en la transaccion")
             conn.rollback()
