@@ -1,48 +1,46 @@
+##################################################
+###              Imports externos              ###
+##################################################
+
 from flask import Flask, request, jsonify, send_from_directory
-import re
 import base64
 import time as tiempo
-import PyPDF2
-from PyPDF2 import PdfReader, PdfWriter
-import io
 import logging
-from werkzeug.utils import secure_filename
-from dss_sign import *
-from dss_sign_own import *
-from dss_sign_tapir import *
-from manage_pdf import *
-from localcerts import *
-from certificates import *
-from nexu import *
-from errors import PDFSignatureError
 import os
 import json
-from imagecomp import *
-from datetime import *
+import datetime
 import pytz
-import pikepdf
-from io import BytesIO
-from pdfrw import *
-import fitz
-import pdfrw
-from signimagepregenerated import *
-from signnewendpoints import firma_bp
+import psycopg2
 
 ##################################################
-###     Configuracion de aplicacion Flask     ###
-app = Flask(__name__)
+###              Imports propios               ###
+##################################################
 
-# Register the Blueprint
-app.register_blueprint(firma_bp, url_prefix='/firma')
+from dss_sign import *
+from localcerts import *
+from certificates import *
+from errors import PDFSignatureError
+from imagecomp import *
+from createimagetostamp import *
+
+load_dotenv()
+
+##################################################
+###      Configuracion de aplicacion Flask     ###
+##################################################
+
+app = Flask(__name__)
 
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', debug=True, port=5000)
+
+##################################################
+###            Variables globales              ###
 ##################################################
 
-###    Variables globales     ###
 datetimesigned = None
 pdf = None
 current_time = None
@@ -53,231 +51,279 @@ stamp = None
 area = None
 name = None
 custom_image = None
+pdf_b64 = None
+isdigital = None
+isclosing = None
+closingplace = None
+closing_number = None
+closing_date = None
+fieldValues = None
+json_fieldValues = None
+idDoc = None
+
+##################################################
+###         Imagen de firma en base64          ###
 ##################################################
 
-###    Funcion de guardado de PDF     ###
+encoded_image = encode_image("logo_tribunal_para_tapir.png")
+compressedimage = compressed_image_encoded("logo_tribunal_para_tapir.png")
+
+##################################################
+###         Funcion de guardado de PDF         ###
+##################################################
+
 def save_signed_pdf(signed_pdf_base64, filename):
     try:
+        print("Guardando PDF")
         signed_pdf_bytes = base64.b64decode(signed_pdf_base64)
         with open(filename, 'wb') as f:
+            print("Guardando PDF with")
             f.write(signed_pdf_bytes)
     except Exception as e:
         logging.error(f"Error in save_signed_pdf: {str(e)}")
         raise PDFSignatureError("Failed to save signed PDF.")
-###################################################
 
-### Imagen de firma en base64 ###
-encoded_image = encode_image("logo_tribunal_para_tapir.png")
-compressedimage = compressed_image_encoded("logo_tribunal_para_tapir.png")
+##################################################
+###     Rutas de la aplicacion para Tapir      ###
+##################################################
 
-###    Rutas de la aplicacion para Tapir     ###
-# Ruta para obtener PDF y certificados para firmar
-@app.route('/certificados', methods=['POST'])
+@app.route('/firma_init', methods=['POST'])
 def get_certificates():
-    global pdf, current_time, certificates, signed_pdf_filename, field_id, stamp, area, name, datetimesigned, custom_image
+    global pdf_b64, current_time, certificates, signed_pdf_filename, field_id, stamp, area, name, datetimesigned, custom_image, isdigital, isclosing, closingplace, closing_number, closing_date, fieldValues, signed_pdf_filename, json_fieldValues, idDoc
     
-    try:
-        if 'file' not in request.files:
-            raise PDFSignatureError("No file part in the request")
-        
-        pdf_file = request.files['file']
-        if pdf_file.filename == '':
-            raise PDFSignatureError("No selected file")
-
-        if not pdf_file.filename.endswith('.pdf'):
-            raise PDFSignatureError("File is not a PDF")
-        
+    try:   
         request._load_form_data()
-        certificates = json.loads(request.form['certificados'])
+        pdf_b64 = request.form.get('pdf')
+        now = datetime.now()
+        signed_pdf_filename = now.strftime("pdf_%d/%m/%Y_%H%M%S")
+
+        firma_info_str = request.form.get('firma_info', '')
+        if not firma_info_str:
+            raise PDFSignatureError("El campo 'firma_info' está vacío o falta.")
 
         try:
-            sign_info = json.loads(request.form['firma_info'])
+            sign_info = json.loads(firma_info_str)
         except json.JSONDecodeError:
-            raise PDFSignatureError("Invalid JSON format for firma_info")
+            raise PDFSignatureError("Formato JSON inválido para 'firma_info'.")
+        
+        isdigital = sign_info.get('firma_digital')
 
+        # Solo intentar cargar y verificar 'certificados' si 'isdigital' es verdadero
+        if isdigital:
+        # Verificar que el campo 'certificados' esté presente y no esté vacío
+            certificados_str = request.form.get('certificados', '')
+            if not certificados_str and isdigital:
+                raise PDFSignatureError("El campo 'certificados' está vacío o falta.")
+
+            # Intentar analizar el campo 'certificados' como JSON
+            try:
+                certificates = json.loads(certificados_str)
+            except json.JSONDecodeError:
+                raise PDFSignatureError("Formato JSON inválido para 'certificados'.")
+        
+        try:
+            signed_pdf_filename = request.form.get('file_name')
+        except KeyError:
+            raise PDFSignatureError("El campo file_name is missing")
+        
         field_id = sign_info.get('firma_lugar')
+        name = sign_info.get('firma_nombre')
         stamp = sign_info.get('firma_sello')
         area = sign_info.get('firma_area')
+        
+        isclosing = sign_info.get('firma_cierra')
+        closingplace = sign_info.get('firma_lugarcierre')
+        idDoc = sign_info.get('id_doc')
+
+        current_time = int(tiempo.time() * 1000)
+        datetimesigned = datetime.now(pytz.utc).astimezone(pytz.timezone('America/Argentina/Buenos_Aires')).strftime("%Y-%m-%d %H:%M:%S")
 
         if not field_id or not stamp or not area:
             raise PDFSignatureError("firma_info is missing required fields")
 
-        name = extract_certificate_info_name(certificates['certificate'])
-
-        pdfname = secure_filename(re.sub(r'\.pdf$', '', pdf_file.filename))
-        signed_pdf_filename = pdfname + "_signed.pdf"
-        pdf = pdf_file.read()
-
-        current_time = int(tiempo.time() * 1000)
-
-        datetimesigned = datetime.now(pytz.utc).astimezone(pytz.timezone('America/Argentina/Buenos_Aires')).strftime("%Y-%m-%d %H:%M:%S")
+        if isdigital:
+            name = extract_certificate_info_name(certificates['certificate'])
 
         custom_image = create_signature_image(
-          f"{name}\n{datetimesigned}\n{stamp}\n{area}",
-          encoded_image
-        )
+                        f"{name}\n{datetimesigned}\n{stamp}\n{area}",
+                        encoded_image
+                    )   
 
-        data_to_sign_response = get_data_to_sign_tapir(pdf, certificates, current_time, field_id, stamp, custom_image)
-        data_to_sign = data_to_sign_response["bytes"]
-
-        return jsonify({"status": "success", "data_to_sign": data_to_sign})
+        match (isdigital, isclosing):
+            case (True, True):
+                data_to_sign_response = get_data_to_sign_tapir(pdf_b64, certificates, current_time, field_id, stamp, custom_image)
+                data_to_sign = data_to_sign_response["bytes"]
+            case (True, False):
+                data_to_sign_response = get_data_to_sign_tapir(pdf_b64, certificates, current_time, field_id, stamp, custom_image)
+                data_to_sign = data_to_sign_response["bytes"]
+            case (False, True):
+                print("Entro Firma propia")
+                signed_pdf_base64 = signown(pdf_b64, False)
+                print("Mando a Cerrar PDF")
+                lastpdf = get_number_and_date_then_close(signed_pdf_base64, idDoc)
+                print("Cierro PDF con firma yunga")
+                signed_pdf_base64_closed = signown(lastpdf, True)
+                save_signed_pdf(signed_pdf_base64_closed, signed_pdf_filename+"signEandclose.pdf")
+            case (False, False):
+                signed_pdf_base64_closed = signown(pdf_b64, False)
+                save_signed_pdf(lastpdf, signed_pdf_filename+"signE.pdf")
+        
+        if isdigital:
+            return jsonify({"status": "success", "data_to_sign": data_to_sign}), 200
+        else:
+            return jsonify({"status": "success", "pdf": signed_pdf_base64_closed}), 200
+        
     except PDFSignatureError as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"status": "error", "message": "Error en get_certificates: " + str(e)}), 500
     except Exception as e:
         logging.error(f"Unexpected error in get_certificates: {str(e)}")
-        return jsonify({"status": "error", "message": "An unexpected error occurred."}), 500
+        return jsonify({"status": "error", "message": "An unexpected error occurred in get_certificates."}), 500
 
-# Ruta para firmar PDF con valor de firma
-@app.route('/firmas', methods=['POST'])
+@app.route('/firma_valor', methods=['POST'])
 def sign_pdf_firmas():
     try:
 
         signature_value = request.get_json()['signatureValue']
-
-        signed_pdf_response = sign_document_tapir(pdf, signature_value, certificates, current_time, field_id, stamp, custom_image)
-        
+        signed_pdf_response = sign_document_tapir(pdf_b64, signature_value, certificates, current_time, field_id, stamp, custom_image)
         signed_pdf_base64 = signed_pdf_response['bytes']
-        
-        save_signed_pdf(signed_pdf_base64, signed_pdf_filename)
-        
-        response = send_from_directory(os.getcwd(), signed_pdf_filename, as_attachment=True)
-        response.headers["Content-Disposition"] = "attachment; filename={}".format(signed_pdf_filename)
-        return response
+
+        match (isdigital, isclosing):
+            case (True, True):
+                lastpdf = get_number_and_date_then_close(signed_pdf_base64, idDoc)
+                lastsignedpdf = signown(lastpdf, True)
+                save_signed_pdf(lastsignedpdf, signed_pdf_filename+"signDandclose.pdf")
+                return jsonify({"status": "success", "pdf": lastsignedpdf}), 200
+            case (True, False):
+                save_signed_pdf(signed_pdf_base64, signed_pdf_filename+"signD.pdf")
+                return jsonify({"status": "success", "pdf": signed_pdf_base64}), 200
+
     except Exception as e:
         logging.error(f"Unexpected error in sign_pdf_firmas: {str(e)}")
-        return jsonify({"status": "error", "message": "An unexpected error occurred."}), 500
+        return jsonify({"status": "error", "message": "An unexpected error occurred in sign_pdf_firmas."}), 500
+
+##################################################
+###       Función para firmar el PDF con       ###
+###       certificado propio del servidor      ###
+##################################################
+
+def signown(pdf, isYungaSign):
+    print("Firma propia")
+    try:
+        if not isYungaSign and isclosing or not isYungaSign and not isclosing:
+            custom_image = create_signature_image(
+                f"{name}\n{datetimesigned}\n{stamp}\n{area}",
+                encoded_image
+            )
+            print("Firma propia cert")
+            certificates = get_certificate_from_local()
+            data_to_sign_response = get_data_to_sign_own(pdf, certificates, current_time, field_id, stamp, custom_image)
+            data_to_sign = data_to_sign_response["bytes"]
+            signature_value = get_signature_value_own(data_to_sign)
+            signed_pdf_response = sign_document_own(pdf, signature_value, certificates, current_time, field_id, stamp, custom_image)
+            signed_pdf_base64 = signed_pdf_response['bytes']
+            return signed_pdf_base64
+        else:
+            custom_image = create_signature_image(
+                f"Sistema Yunga TC Tucumán\n{datetimesigned}",
+                encoded_image
+            )
+            print("Firma propia yunga")
+            certificates = get_certificate_from_local()
+            print("Getdatatosign yunga")
+            data_to_sign_response = get_data_to_sign_own(pdf, certificates, current_time, closingplace, stamp, custom_image)
+            print(data_to_sign_response)
+            data_to_sign = data_to_sign_response["bytes"]
+            print(data_to_sign)
+            print("Get signature value yunga")
+            signature_value = get_signature_value_own(data_to_sign)
+            print("Sign document yunga")
+            signed_pdf_response = sign_document_own(pdf, signature_value, certificates, current_time, closingplace, stamp, custom_image)
+            signed_pdf_base64 = signed_pdf_response['bytes']
+            return signed_pdf_base64
+    except PDFSignatureError as e:
+        return jsonify({"status": "error", "message": "Error en signown: " + str(e)}), 500
+
+##################################################
+###         Función para cerrar el PDF         ###
+##################################################
+
+def closePDF(pdfToClose):
+    try:
+        data = {
+                    'fileBase64': pdfToClose,
+                    'fileName': signed_pdf_filename,
+                    'fieldValues': json_fieldValues
+                }
+        print(data)
+        response = requests.post('http://java-webapp:5555/pdf/update', data=data)
+        response.raise_for_status()
+        signed_pdf_base64 = base64.b64encode(response.content).decode("utf-8")
+        return signed_pdf_base64
+    except PDFSignatureError as e:
+        return jsonify({"status": "error", "message": "Error cerrando el PDF: " + str(e)}), 500
+    except Exception as e:
+        logging.error(f"Unexpected error in closePDF: {str(e)}")
+        return jsonify({"status": "error", "message": "An unexpected error occurred in closePDF"}), 500
+
+###################################################
+###      Función para obtener el número de      ###
+###         cierre y la fecha de cierre         ###
 ###################################################
 
+def get_number_and_date_then_close(pdfToClose, idDoc):
+    global json_fieldValues
+    dbname = os.getenv('DB_NAME')
+    user = os.getenv('DB_USER')
+    password = os.getenv('DB_PASSWORD')
+    host = os.getenv('DB_HOST')
+    port = os.getenv('DB_PORT')
 
-###    Ruta de la aplicacion para firmar con certificado de sistema     ###
-@app.route('/signown', methods=['POST'])
-def sign_own_pdf():
+    # Detalles de conexión
+    conn_params = {
+        'dbname': dbname,
+        'user': user,
+        'password': password,
+        'host': host,
+        'port': port  # Puerto por defecto de PostgreSQL
+    }
     try:
-        if 'file' not in request.files:
-            raise PDFSignatureError("No file part in the request")
-        
-        pdf_file = request.files['file']
-        if pdf_file.filename == '':
-            raise PDFSignatureError("No selected file")
-
-        if not pdf_file.filename.endswith('.pdf'):
-            raise PDFSignatureError("File is not a PDF")
-    
-        request._load_form_data()
-        pdfname = secure_filename(re.sub(r'\.pdf$', '', pdf_file.filename))
-        signed_pdf_filename = pdfname + "_signed.pdf"
-        pdf = pdf_file.read()
-
+        # Establecer la conexión
+        conn = psycopg2.connect(**conn_params)
+        cursor = conn.cursor()
         try:
-            sign_info = json.loads(request.form['firma_info'])
-        except json.JSONDecodeError:
-            raise PDFSignatureError("Invalid JSON format for firma_info")
+            cursor.execute("SELECT f_documento_protocolizar(%s)", (idDoc,))
 
-        field_id = sign_info.get('firma_lugar')
-        stamp = sign_info.get('firma_sello')
-        area = sign_info.get('firma_area')
-        name = sign_info.get('firma_nombre')
-
-        if not field_id or not name:
-            raise PDFSignatureError("firma_info is missing required fields")
-        
-        current_time = int(tiempo.time() * 1000)
-        datetimesigned = datetime.now(pytz.utc).astimezone(pytz.timezone('America/Argentina/Buenos_Aires')).strftime("%Y-%m-%d %H:%M:%S")
-
-        custom_image = create_signature_image(
-          f"{name}\n{datetimesigned}\n{stamp}\n{area}",
-          encoded_image
-        )
-
-        certificates = get_certificate_from_local()
-
-        data_to_sign_response = get_data_to_sign_own(pdf, certificates, current_time, field_id, stamp, custom_image)
-        data_to_sign = base64.b64decode(data_to_sign_response['bytes'])
-
-        signature_value = get_signature_value_own(data_to_sign)
-
-        signed_pdf_response = sign_document_own(pdf, signature_value, certificates, current_time, field_id, stamp, custom_image)
-        signed_pdf_base64 = signed_pdf_response['bytes']
-
-        field_values = json.loads(request.form['pdf_form'])
-        if field_values:
-            data = {
-                'fileBase64': signed_pdf_base64,
-                'fileName': signed_pdf_filename,
-                'fieldValues': json.dumps(field_values)
+            datos = cursor.fetchone()
+            datos_json = json.loads(json.dumps(datos[0]))
+            print(datos)
+            print(datos_json)
+            print(type(datos_json))
+            json_fieldValues1 = {
+                "numero": datos_json['numero'],
+                "fecha": datos_json['fecha']
             }
-            response = requests.post('http://java-webapp:5555/pdf/update', data=data)
-            response.raise_for_status()
-            signed_pdf_base64 = base64.b64encode(response.content).decode('utf-8')
-            signed_pdf_filename = f"{pdfname}_closed.pdf"
-
-        save_signed_pdf(signed_pdf_base64, signed_pdf_filename)
-
-        response = send_from_directory(os.getcwd(), signed_pdf_filename, as_attachment=True)
-        response.headers["Content-Disposition"] = "attachment; filename={}".format(signed_pdf_filename)
-        return response
-
-    except PDFSignatureError as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+            json_fieldValues = json.dumps(json_fieldValues1)
+            #datos_json['status'] == False
+            if False:
+                raise Exception("Error al obtener fecha y numero: " + datos_json['message'])
+            else:
+                print("Cierro el documento")
+                ###########################
+                print("Llamo a closePDF")
+                pdf = closePDF(pdfToClose)
+                ###########################
+                print("Listo para firmar")
+                conn.commit()
+                print(type(pdf))
+                return pdf
+        except Exception as e:
+            print("Error en la transaccion")
+            conn.rollback()
+            return jsonify({"status": "error", "message": "Error transaccion: " + str(e)}), 500
+        finally:
+            cursor.close()
     except Exception as e:
-        logging.error(f"Unexpected error in sign_own_pdf: {str(e)}")
-        return jsonify({"status": "error", "message": "An unexpected error occurred."}), 500
-###################################################
-
-###    Ruta de la aplicacion para firmar con certificado de NexU (comunicandose con host) y calculando posicion de firma    ###
-@app.route('/sign', methods=['POST'])
-def sign_pdf():
-    host = request.headers.get('X-Real-IP')
-    try:
-        if 'file' not in request.files:
-            raise PDFSignatureError("No file part in the request")
-        
-        pdf_file = request.files['file']
-        if pdf_file.filename == '':
-            raise PDFSignatureError("No selected file")
-
-        if not pdf_file.filename.endswith('.pdf'):
-            raise PDFSignatureError("File is not a PDF")
-
-        pdfname = secure_filename(re.sub(r'\.pdf$', '', pdf_file.filename))
-        signed_pdf_filename = pdfname + "_signed.pdf"
-        pdf_bytes = pdf_file.read()
-
-        # Step 1: Prepare PDF
-        prepared_pdf_bytes, x, y = check_and_prepare_pdf(pdf_bytes)
-
-        # Step 2: Get certificate from NexU
-        certificate_data = get_certificate_from_nexu(host)
-
-        # Step 3: Extract certificate info (CUIL, name, email)
-        cert_base64 = certificate_data['response']['certificate']
-        cuil, name, email = extract_certificate_info(cert_base64)
-        current_time = int(tiempo.time() * 1000)
-
-        datetimesigned = datetime.now(pytz.utc).astimezone(pytz.timezone('America/Argentina/Buenos_Aires')).strftime("%Y-%m-%d %H:%M:%S")
-
-        # Step 4: Get data to sign from DSS API
-        data_to_sign_response = get_data_to_sign(prepared_pdf_bytes, certificate_data, x, y, len(PdfReader(io.BytesIO(prepared_pdf_bytes)).pages), name, cuil, email, current_time, datetimesigned)
-        data_to_sign = data_to_sign_response['bytes']
-        
-        # Step 5: Get signature value from NexU
-        signature_value = get_signature_value(data_to_sign, certificate_data, host)
-
-        # Step 6: Apply signature to document
-        signed_pdf_response = sign_document(prepared_pdf_bytes, signature_value, certificate_data, x, y, len(PdfReader(io.BytesIO(prepared_pdf_bytes)).pages), name, cuil, email, current_time, datetimesigned)
-        signed_pdf_base64 = signed_pdf_response['bytes']
-
-
-        save_signed_pdf(signed_pdf_base64, signed_pdf_filename)
-
-        response = send_from_directory(os.getcwd(), signed_pdf_filename, as_attachment=True)
-        response.headers["Content-Disposition"] = "attachment; filename={}".format(signed_pdf_filename)
-        return response
-
-
-    except PDFSignatureError as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
-    except Exception as e:
-        logging.error(f"Unexpected error in sign_pdf: {str(e)}")
-        return jsonify({"status": "error", "message": "An unexpected error occurred."}), 500
-###################################################
+        return jsonify({"status": "error", "message": "Error al conectar a la base de datos: " + str(e)}), 500
+    finally:
+        if conn:
+            conn.close()

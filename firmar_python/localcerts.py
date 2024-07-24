@@ -15,7 +15,6 @@ private_key_path = os.getenv('PRIVATE_KEY_PATH')
 certificate_path = os.getenv('CERTIFICATE_PATH')
 
 def get_signature_value_own(data_to_sign):
-
     # Cargar la clave privada desde un archivo
     with open(private_key_path, "rb") as key_file:
         private_key = load_pem_private_key(key_file.read(), password=private_key_password.encode(), backend=default_backend())

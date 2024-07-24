@@ -10,7 +10,7 @@ def create_signature_image(text, encoded_image, width=233, height=56, scale_fact
     
     # Try to use the PTSerif font, falling back to default if not available
     try:
-        font = ImageFont.truetype("./PTSerif-Regular.ttf", 8 * scale_factor)
+        font = ImageFont.truetype("./fonts/PTSerif-Regular.ttf", 8 * scale_factor)
     except IOError:
         font = ImageFont.load_default()
         print("Warning: Using default font. Text size may not be as expected.")

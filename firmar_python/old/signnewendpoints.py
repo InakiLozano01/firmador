@@ -3,7 +3,7 @@ from flask import Flask, request, jsonify, send_from_directory, Blueprint
 import base64
 import time as tiempo
 import logging
-from dss_sign import *
+from firmador.firmar_python.old.dss_sign import *
 from dss_sign_own import *
 from dss_sign_tapir import *
 from manage_pdf import *

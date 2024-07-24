@@ -1,21 +1,17 @@
-# Descripcion: Este modulo contiene las funciones necesarias para firmar un documento PDF con la API de DSS y certificado propio
-
 import requests
 import base64
 import logging
 from errors import PDFSignatureError
-import io 
-from PyPDF2 import PdfReader
 
-def get_data_to_sign_own(pdf, certificates, current_time, field_id, stamp, encoded_image):
+def get_data_to_sign(pdf_bytes, certificate_data, x, y, page, name, cuil, email, current_time, datetimesigned):
     try:
         body = {
             "parameters": {
                 "signingCertificate": {
-                    "encodedCertificate": certificates['certificate']
+                    "encodedCertificate": certificate_data['response']['certificate']
                 },
                 "certificateChain": [
-                    {"encodedCertificate": cert} for cert in certificates['certificateChain']
+                    {"encodedCertificate": cert} for cert in certificate_data['response']['certificateChain']
                 ],
                 "detachedContents": None,
                 "asicContainerType": None,
@@ -51,30 +47,48 @@ def get_data_to_sign_own(pdf, certificates, current_time, field_id, stamp, encod
                 "imageParameters": {
                     "alignmentHorizontal": None,
                     "alignmentVertical": None,
-                    "imageScaling": "STRETCH",
+                    "imageScaling": None,
                     "backgroundColor": None,
-                    "dpi": 600,
-                    "image": {
-                        "bytes": encoded_image,
-                        "name": "image.png"
-                    },
+                    "dpi": None,
+                    "image": None,
                     "fieldParameters": {
-                        "fieldId": f"{field_id}",
-                        "originX": 0,
-                        "originY": 0,
-                        "width": None,
-                        "height": None,
+                        "fieldId": None,
+                        "originX": x,
+                        "originY": y,
+                        "width": 185.0,
+                        "height": 50.0,
                         "rotation": None,
-                        "page": len(PdfReader(io.BytesIO(base64.b64decode(pdf))).pages)
+                        "page": page
                     },
-                    "textParameters": None,
+                    "textParameters": {
+                        "backgroundColor": {
+                            "red": 255,
+                            "green": 255,
+                            "blue": 255,
+                            "alpha": 255
+                        },
+                        "font": None,
+                        "textWrapping": None,
+                        "padding": None,
+                        "signerTextHorizontalAlignment": "CENTER",
+                        "signerTextVerticalAlignment": None,
+                        "signerTextPosition": "TOP",
+                        "size": 7,
+                        "text": f"Signed by: {name}\nDate: {datetimesigned}\nE-mail: {email}\nCUIL: {cuil}",
+                        "textColor": {
+                            "red": 0,
+                            "green": 0,
+                            "blue": 0,
+                            "alpha": 255
+                        }
+                    },
                     "zoom": None
                 },
                 "signatureIdToCounterSign": None,
                 "blevelParams": {
                     "trustAnchorBPPolicy": True,
                     "signingDate": current_time,  # Current time in milliseconds
-                    "claimedSignerRoles": [f"{stamp}"],
+                    "claimedSignerRoles": None,
                     "policyId": None,
                     "policyQualifier": None,
                     "policyDescription": None,
@@ -82,21 +96,16 @@ def get_data_to_sign_own(pdf, certificates, current_time, field_id, stamp, encod
                     "policyDigestValue": None,
                     "policySpuri": None,
                     "commitmentTypeIndications": None,
-                    "signerLocationPostalAddress": [
-                        "Congreso 180",
-                        "4000 San Miguel de Tucumán",
-                        "Tucumán",
-                        "AR"
-                    ],
-                    "signerLocationPostalCode": "4000",
-                    "signerLocationLocality": "San Miguel de Tucumán",
-                    "signerLocationStateOrProvince": "Tucumán",
+                    "signerLocationPostalAddress": [],
+                    "signerLocationPostalCode": None,
+                    "signerLocationLocality": None,
+                    "signerLocationStateOrProvince": None,
                     "signerLocationCountry": "AR",
-                    "signerLocationStreet": "Congreso 180"
+                    "signerLocationStreet": None
                 }
             },
             "toSignDocument": {
-                "bytes": pdf,
+                "bytes": base64.b64encode(pdf_bytes).decode('utf-8'),
                 "digestAlgorithm": None,
                 "name": "document.pdf"
             }
@@ -108,15 +117,15 @@ def get_data_to_sign_own(pdf, certificates, current_time, field_id, stamp, encod
         logging.error(f"Error in get_data_to_sign: {str(e)}")
         raise PDFSignatureError("Failed to get data to sign from DSS API.")
 
-def sign_document_own(pdf, signature_value, certificates, current_time, field_id, stamp, encoded_image):
+def sign_document(pdf_bytes, signature_value, certificate_data, x, y, page, name, cuil, email, current_time, datetimesigned):
     try:
         body = {
             "parameters": {
                 "signingCertificate": {
-                    "encodedCertificate": certificates['certificate']
+                    "encodedCertificate": certificate_data['response']['certificate']
                 },
                 "certificateChain": [
-                    {"encodedCertificate": cert} for cert in certificates['certificateChain']
+                    {"encodedCertificate": cert} for cert in certificate_data['response']['certificateChain']
                 ],
                 "detachedContents": None,
                 "asicContainerType": None,
@@ -148,30 +157,48 @@ def sign_document_own(pdf, signature_value, certificates, current_time, field_id
                 "imageParameters": {
                     "alignmentHorizontal": None,
                     "alignmentVertical": None,
-                    "imageScaling": "STRETCH",
+                    "imageScaling": None,
                     "backgroundColor": None,
-                    "dpi": 600,
-                    "image": {
-                        "bytes": encoded_image,
-                        "name": "image.png"
-                    },
+                    "dpi": None,
+                    "image": None,
                     "fieldParameters": {
-                        "fieldId": f"{field_id}",
-                        "originX": 0,
-                        "originY": 0,
-                        "width": None,
-                        "height": None,
+                        "fieldId": None,
+                        "originX": x,
+                        "originY": y,
+                        "width": 185.0,
+                        "height": 50.0,
                         "rotation": None,
-                        "page": len(PdfReader(io.BytesIO(base64.b64decode(pdf))).pages)
+                        "page": page
                     },
-                    "textParameters": None,
+                    "textParameters": {
+                        "backgroundColor": {
+                            "red": 255,
+                            "green": 255,
+                            "blue": 255,
+                            "alpha": 255
+                        },
+                        "font": None,
+                        "textWrapping": None,
+                        "padding": None,
+                        "signerTextHorizontalAlignment": "CENTER",
+                        "signerTextVerticalAlignment": None,
+                        "signerTextPosition": "TOP",
+                        "size": 7,
+                        "text": f"Signed by: {name}\nDate: {datetimesigned}\nE-mail: {email}\nCUIL: {cuil}",
+                        "textColor": {
+                            "red": 0,
+                            "green": 0,
+                            "blue": 0,
+                            "alpha": 255
+                        }
+                    },
                     "zoom": None
                 },
                 "signatureIdToCounterSign": None,
                 "blevelParams": {
                     "trustAnchorBPPolicy": True,
                     "signingDate": current_time,  # Current time in milliseconds
-                    "claimedSignerRoles": [f"{stamp}"],
+                    "claimedSignerRoles": None,
                     "policyId": None,
                     "policyQualifier": None,
                     "policyDescription": None,
@@ -179,17 +206,12 @@ def sign_document_own(pdf, signature_value, certificates, current_time, field_id
                     "policyDigestValue": None,
                     "policySpuri": None,
                     "commitmentTypeIndications": None,
-                    "signerLocationPostalAddress": [
-                        "Congreso 180",
-                        "4000 San Miguel de Tucumán",
-                        "Tucumán",
-                        "AR"
-                    ],
-                    "signerLocationPostalCode": "4000",
-                    "signerLocationLocality": "San Miguel de Tucumán",
-                    "signerLocationStateOrProvince": "Tucumán",
+                    "signerLocationPostalAddress": [],
+                    "signerLocationPostalCode": None,
+                    "signerLocationLocality": None,
+                    "signerLocationStateOrProvince": None,
                     "signerLocationCountry": "AR",
-                    "signerLocationStreet": "Congreso 180"
+                    "signerLocationStreet": None
                 }
             },
             "signatureValue": {
@@ -197,7 +219,7 @@ def sign_document_own(pdf, signature_value, certificates, current_time, field_id
                 "value": signature_value
             },
             "toSignDocument": {
-                "bytes": pdf,
+                "bytes": base64.b64encode(pdf_bytes).decode('utf-8'),
                 "digestAlgorithm": None,
                 "name": "document.pdf"
             }
@@ -208,3 +230,4 @@ def sign_document_own(pdf, signature_value, certificates, current_time, field_id
     except requests.RequestException as e:
         logging.error(f"Error in sign_document: {str(e)}")
         raise PDFSignatureError("Failed to sign document with DSS API.")
+
