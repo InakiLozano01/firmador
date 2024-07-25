@@ -74,10 +74,8 @@ encoded_image = encode_image("logo_tribunal_para_tapir_250px.png")
 
 def save_signed_pdf(signed_pdf_base64, filename):
     try:
-        print("Guardando PDF")
         signed_pdf_bytes = base64.b64decode(signed_pdf_base64)
         with open(filename, 'wb') as f:
-            print("Guardando PDF with")
             f.write(signed_pdf_bytes)
     except Exception as e:
         logging.error(f"Error in save_signed_pdf: {str(e)}")
@@ -138,8 +136,6 @@ def get_certificates():
         current_time = int(tiempo.time() * 1000)
         datetimesigned = datetime.now(pytz.utc).astimezone(pytz.timezone('America/Argentina/Buenos_Aires')).strftime("%Y-%m-%d %H:%M:%S")
 
-        print (sign_info)
-
         if not field_id or not stamp or not area:
             raise PDFSignatureError("firma_info is missing required fields")
 
@@ -152,11 +148,6 @@ def get_certificates():
                         "token"
                     )   
 
-        signed_pdf_base64_closed = None
-
-        print("Before match")
-        print(isdigital, isclosing)
-
         match (isdigital, isclosing):
             case (True, True):
                 data_to_sign_response = get_data_to_sign_tapir(pdf_b64, certificates, current_time, field_id, stamp, custom_image)
@@ -165,15 +156,12 @@ def get_certificates():
                 data_to_sign_response = get_data_to_sign_tapir(pdf_b64, certificates, current_time, field_id, stamp, custom_image)
                 data_to_sign = data_to_sign_response["bytes"]
             case (False, True):
-                print("Entro Firma propia")
                 signed_pdf_base64 = signown(pdf_b64, False)
-                print("Mando a Cerrar PDF")
                 lastpdf, code = get_number_and_date_then_close(signed_pdf_base64, idDoc)
                 if code == 500:
                     response = lastpdf.get_json()
                     if response['status'] == "error":
                         return jsonify({"status": "error", "message": "Error al cerrar PDF: " + response['message']}), 500
-                print("Cierro PDF con firma yunga")
                 signed_pdf_base64_closed = signown(lastpdf, True)
                 save_signed_pdf(signed_pdf_base64_closed, signed_pdf_filename+"signEandclose.pdf")
             case (False, False):
@@ -223,7 +211,6 @@ def sign_pdf_firmas():
 ##################################################
 
 def signown(pdf, isYungaSign):
-    print("Firma propia")
     try:
         if not isYungaSign and isclosing or not isYungaSign and not isclosing:
             custom_image = create_signature_image(
@@ -231,7 +218,6 @@ def signown(pdf, isYungaSign):
                 encoded_image,
                 "cert"
             )
-            print("Firma propia cert")
             certificates = get_certificate_from_local()
             data_to_sign_response = get_data_to_sign_own(pdf, certificates, current_time, field_id, stamp, custom_image)
             data_to_sign = data_to_sign_response["bytes"]
@@ -245,16 +231,10 @@ def signown(pdf, isYungaSign):
                 encoded_image,
                 "yunga"
             )
-            print("Firma propia yunga")
             certificates = get_certificate_from_local()
-            print("Getdatatosign yunga")
             data_to_sign_response = get_data_to_sign_own(pdf, certificates, current_time, closingplace, stamp, custom_image)
-            print(data_to_sign_response)
             data_to_sign = data_to_sign_response["bytes"]
-            print(data_to_sign)
-            print("Get signature value yunga")
             signature_value = get_signature_value_own(data_to_sign)
-            print("Sign document yunga")
             signed_pdf_response = sign_document_own(pdf, signature_value, certificates, current_time, closingplace, stamp, custom_image)
             signed_pdf_base64 = signed_pdf_response['bytes']
             return signed_pdf_base64
@@ -272,7 +252,6 @@ def closePDF(pdfToClose):
                     'fileName': signed_pdf_filename,
                     'fieldValues': json_fieldValues
                 }
-        print(data)
         response = requests.post('http://java-webapp:5555/pdf/update', data=data)
         response.raise_for_status()
         signed_pdf_base64 = base64.b64encode(response.content).decode("utf-8")
@@ -325,17 +304,10 @@ def get_number_and_date_then_close(pdfToClose, idDoc):
             if datos_json['status'] == False:
                 raise Exception("Error al obtener fecha y numero: " + datos_json['message'])
             else:
-                print("Cierro el documento")
-                ###########################
-                print("Llamo a closePDF")
                 pdf = closePDF(pdfToClose)
-                ###########################
-                print("Listo para firmar")
                 conn.commit()
-                print(type(pdf))
                 return pdf, 200
         except Exception as e:
-            print("Error en la transaccion")
             conn.rollback()
             return jsonify({"status": "error", "message": "Error transaccion: " + str(e)}), 500
         finally:
