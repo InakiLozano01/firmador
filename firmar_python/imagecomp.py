@@ -3,7 +3,7 @@ import base64
 import io
 
 # Función para comprimir la imagen y obtener los bytes
-def compressed_image_encoded(image_path, size=(50, 50)):
+'''def compressed_image_encoded(image_path, size=(50, 50)):
     try:
         # Abrir la imagen
         with Image.open(image_path) as img:
@@ -22,14 +22,14 @@ def compressed_image_encoded(image_path, size=(50, 50)):
         return compressed_image_encoded
     except Exception as e:
         print(f"Error: {str(e)}")
-        return None
+        return None'''
 
-def encode_image(image_path, dpi=(600, 600)):
+def encode_image(image_path, dpi=(200, 200)):
     try:
         # Abrir la imagen
         with Image.open(image_path) as img:
             # Convertir la imagen a modo RGBA para mantener la transparencia
-            img = img.convert("RGBA")
+            img = img.convert("L")
         
             # Comprimir la imagen
             buffer = io.BytesIO()

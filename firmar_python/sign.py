@@ -65,8 +65,8 @@ idDoc = None
 ###         Imagen de firma en base64          ###
 ##################################################
 
-encoded_image = encode_image("logo_tribunal_para_tapir.png")
-compressedimage = compressed_image_encoded("logo_tribunal_para_tapir.png")
+encoded_image = encode_image("logo_tribunal_para_tapir_250px.png")
+#compressedimage = compressed_image_encoded("logo_tribunal_para_tapir.png")
 
 ##################################################
 ###         Funcion de guardado de PDF         ###
@@ -148,7 +148,8 @@ def get_certificates():
 
         custom_image = create_signature_image(
                         f"{name}\n{datetimesigned}\n{stamp}\n{area}",
-                        encoded_image
+                        encoded_image,
+                        "token"
                     )   
 
         signed_pdf_base64_closed = None
@@ -227,7 +228,8 @@ def signown(pdf, isYungaSign):
         if not isYungaSign and isclosing or not isYungaSign and not isclosing:
             custom_image = create_signature_image(
                 f"{name}\n{datetimesigned}\n{stamp}\n{area}",
-                encoded_image
+                encoded_image,
+                "cert"
             )
             print("Firma propia cert")
             certificates = get_certificate_from_local()
@@ -240,7 +242,8 @@ def signown(pdf, isYungaSign):
         else:
             custom_image = create_signature_image(
                 f"Sistema Yunga TC Tucumán\n{datetimesigned}",
-                encoded_image
+                encoded_image,
+                "yunga"
             )
             print("Firma propia yunga")
             certificates = get_certificate_from_local()
