@@ -100,7 +100,7 @@ def get_data_to_sign_own(pdf, certificates, current_time, field_id, stamp, encod
                 "name": "document.pdf"
             }
         }
-        response = requests.post('http://java-webapp:5555/services/rest/signature/one-document/getDataToSign', json=body)
+        response = requests.post('http://localhost:5555/services/rest/signature/one-document/getDataToSign', json=body)
         response.raise_for_status()
         return response.json()
     except requests.RequestException as e:
@@ -201,7 +201,7 @@ def sign_document_own(pdf, signature_value, certificates, current_time, field_id
                 "name": "document.pdf"
             }
         }
-        response = requests.post('http://java-webapp:5555/services/rest/signature/one-document/signDocument', json=body)
+        response = requests.post('http://localhost:5555/services/rest/signature/one-document/signDocument', json=body)
         response.raise_for_status()
         return response.json()
     except requests.RequestException as e:
@@ -291,7 +291,7 @@ def sign_document_own(pdf, signature_value, certificates, current_time, field_id
                 "name": "document.pdf"
             }
         }
-        response = requests.post('http://java-webapp:5555/services/rest/signature/one-document/getDataToSign', json=body)
+        response = requests.post('http://localhost:5555/services/rest/signature/one-document/getDataToSign', json=body)
         response.raise_for_status()
         return response.json()
     except requests.RequestException as e:
@@ -381,7 +381,7 @@ def sign_document_own(pdf, signature_value, certificates, current_time, field_id
                 "name": "document.pdf"
             }
         }
-        response = requests.post('http://java-webapp:5555/services/rest/signature/one-document/signDocument', json=body)
+        response = requests.post('http://localhost:5555/services/rest/signature/one-document/signDocument', json=body)
         response.raise_for_status()
         return response.json()
     except requests.RequestException as e:
@@ -482,7 +482,7 @@ def get_data_to_sign_tapir(pdf, certificates, current_time, field_id, stamp, enc
                 "name": "document.pdf"
             }
         }
-        response = requests.post('http://java-webapp:5555/services/rest/signature/one-document/getDataToSign', json=body)
+        response = requests.post('http://localhost:5555/services/rest/signature/one-document/getDataToSign', json=body)
         response.raise_for_status()
         return response.json()
     except requests.RequestException as e:
@@ -583,7 +583,7 @@ def sign_document_tapir(pdf, signature_value, certificates, current_time, field_
                 "name": "document.pdf"
             }
         }
-        response = requests.post('http://java-webapp:5555/services/rest/signature/one-document/signDocument', json=body)
+        response = requests.post('http://localhost:5555/services/rest/signature/one-document/signDocument', json=body)
         response.raise_for_status()
         return response.json()
     except requests.RequestException as e:

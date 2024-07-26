@@ -252,7 +252,7 @@ def closePDF(pdfToClose):
                     'fileName': signed_pdf_filename,
                     'fieldValues': json_fieldValues
                 }
-        response = requests.post('http://java-webapp:5555/pdf/update', data=data)
+        response = requests.post('http://localhost:5555/pdf/update', data=data)
         response.raise_for_status()
         signed_pdf_base64 = base64.b64encode(response.content).decode("utf-8")
         return signed_pdf_base64
