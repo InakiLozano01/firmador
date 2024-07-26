@@ -1,5 +1,6 @@
 services:
   java-webapp:
+    container_name: firmador-java
     build:
       context: ./dssapp
       dockerfile: Dockerfile
@@ -9,6 +10,7 @@ services:
       - signnet
 
   flask-app:
+    container_name: firmador-python
     build:
       context: ./firmar_python
       dockerfile: Dockerfile
