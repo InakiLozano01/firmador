@@ -255,7 +255,7 @@ def closePDF(pdfToClose):
         response = requests.post('http://java-webapp:5555/pdf/update', data=data)
         response.raise_for_status()
         signed_pdf_base64 = base64.b64encode(response.content).decode("utf-8")
-        return signed_pdf_base64
+        return signed_pdf_base64, 200
     except PDFSignatureError as e:
         return jsonify({"status": "error", "message": "Error cerrando el PDF: " + str(e)}), 500
     except Exception as e:
@@ -304,7 +304,16 @@ def get_number_and_date_then_close(pdfToClose, idDoc):
             if datos_json['status'] == False:
                 raise Exception("Error al obtener fecha y numero: " + datos_json['message'])
             else:
-                pdf = closePDF(pdfToClose)
+                try:
+                    pdf, code = closePDF(pdfToClose)
+                    if code == 500:
+                        response = pdf.get_json()
+                        if response['status'] == "error":
+                            conn.rollback()
+                            return jsonify({"status": "error", "message": "Error al cerrar PDF: " + response['message']}), 500
+                except Exception as e:
+                    conn.rollback()
+                    return jsonify({"status": "error", "message": "Error al cerrar PDF: " + str(e)}), 500
                 conn.commit()
                 return pdf, 200
         except Exception as e:
