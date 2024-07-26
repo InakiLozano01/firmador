@@ -9,8 +9,8 @@ services:
     volumes:
       - ./firmar_python:/app
     networks:
-      - signnet
+      - firmador_signnet
 
 networks:
-  signnet:
-    driver: bridge
+  firmador_signnet:
+    external: true
