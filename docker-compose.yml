@@ -1,5 +1,6 @@
 services:
-  flask-app:
+  flask-app-test:
+    container_name: flask-test
     build:
       context: ./firmar_python
       dockerfile: Dockerfile
@@ -7,8 +8,6 @@ services:
       - "5005:5000"
     volumes:
       - ./firmar_python:/app
-    depends_on:
-      - java-webapp
     networks:
       - signnet
 
