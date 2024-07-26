@@ -1,19 +1,10 @@
 services:
-  java-webapp:
-    build:
-      context: ./dssapp
-      dockerfile: Dockerfile
-    ports:
-      - "5555:5555"
-    networks:
-      - signnet
-
   flask-app:
     build:
       context: ./firmar_python
       dockerfile: Dockerfile
     ports:
-      - "5000:5000"
+      - "5005:5000"
     volumes:
       - ./firmar_python:/app
     depends_on:

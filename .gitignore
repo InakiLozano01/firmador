@@ -5,3 +5,4 @@ firmar_python/*.pem
 firmar_python/*.png
 firmar_python/*.ttf
 firmar_python/*.pdf
+firmar_python/__pycache__
