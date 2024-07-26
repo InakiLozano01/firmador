@@ -1,16 +1,28 @@
 services:
-  flask-app-test:
-    container_name: flask-test
+  java-webapp:
+    container_name: firmador-java
+    build:
+      context: ./dssapp
+      dockerfile: Dockerfile
+    ports:
+      - "5555:5555"
+    networks:
+      - signnet
+
+  flask-app:
+    container_name: firmador-python
     build:
       context: ./firmar_python
       dockerfile: Dockerfile
     ports:
-      - "5005:5000"
+      - "5000:5000"
     volumes:
       - ./firmar_python:/app
+    depends_on:
+      - java-webapp
     networks:
-      - firmador_signnet
+      - signnet
 
 networks:
-  firmador_signnet:
-    external: true
+  signnet:
+    driver: bridge
