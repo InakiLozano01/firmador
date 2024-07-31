@@ -15,11 +15,21 @@ from smartcard.System import readers
 from smartcard.Exceptions import NoCardException
 from flask import Flask, jsonify, request
 from threading import Thread
+import subprocess
+import atexit
+from PyPDF2 import PdfFileReader
+import io
+from flask_cors import CORS
+
 
 app = Flask(__name__)
+CORS(app)
 
 # Path to the JSON file that stores token-library correspondences
 TOKEN_LIB_FILE = "token_lib.json"
+
+java_process = None
+java_process_started = False
 
 def load_token_library_mapping():
     try:
@@ -173,8 +183,7 @@ def select_token_slot(token_info, result):
     token_window = Toplevel(root)
     token_window.title("Seleccionar un Slot de Token")
     token_window.geometry("500x400")
-    token_window.resizable(False, False)
-    token_window.grab_set()
+    token_window.resizable(True, True)  # Allow resizing
 
     # Ensure the window opens in the foreground and centered
     token_window.attributes('-topmost', True)
@@ -221,8 +230,7 @@ def select_certificate(certificates, result):
     cert_window = Toplevel(root)
     cert_window.title("Seleccionar un Certificado")
     cert_window.geometry("600x500")
-    cert_window.resizable(False, False)
-    cert_window.grab_set()
+    cert_window.resizable(True, True)  # Allow resizing
 
     # Ensure the window opens in the foreground and centered
     cert_window.attributes('-topmost', True)
@@ -254,6 +262,22 @@ def select_certificate(certificates, result):
     select_button.pack(pady=10)
     cert_window.wait_window()
     root.destroy()
+
+@app.before_request
+def start_java_process():
+    global java_process_started
+    global java_process
+
+    if not java_process_started:
+        print("Starting Java process...")
+        java_process = subprocess.Popen(['java', '-jar', r'C:\Users\kakit\OneDrive\Downloads\Projects\Firmador\firmar_python\firma_cliente\dssapp\dss-demo-webapp\target\dss-signature-rest-6.1.RC1.jar'])
+        java_process_started = True
+
+        # Ensure Java process is terminated when Flask app shuts down
+        def cleanup():
+            java_process.terminate()
+
+        atexit.register(cleanup)
 
 @app.route('/rest/certificates', methods=['GET'])
 def get_certificates():
@@ -338,5 +362,109 @@ def get_certificates():
     except Exception as e:
         return jsonify({"success": False, "message": f"Error inesperado en get_certificates: {str(e)}"}), 500
 
+def digestpdf(pdf, certificates, stamp, field_id, encoded_image, current_time):
+    body = {
+            "parameters": {
+                "signingCertificate": {
+                    "encodedCertificate": certificates['certificate']
+                },
+                "certificateChain": [
+                    {"encodedCertificate": cert} for cert in certificates['certificateChain']
+                ],
+                "detachedContents": None,
+                "asicContainerType": None,
+                "signatureLevel": "PAdES_BASELINE_B",
+                "signaturePackaging": "ENVELOPED",
+                "embedXML": False,
+                "manifestSignature": False,
+                "jwsSerializationType": None,
+                "sigDMechanism": None,
+                "signatureAlgorithm": "RSA_SHA256",
+                "digestAlgorithm": "SHA256",
+                "encryptionAlgorithm": "RSA",
+                "referenceDigestAlgorithm": None,
+                "maskGenerationFunction": None,
+                "contentTimestamps": None,
+                "contentTimestampParameters": {
+                    "digestAlgorithm": "SHA256",
+                    "canonicalizationMethod": "http://www.w3.org/2001/10/xml-exc-c14n#",
+                    "timestampContainerForm": None
+                },
+                "signatureTimestampParameters": {
+                    "digestAlgorithm": "SHA256",
+                    "canonicalizationMethod": "http://www.w3.org/2001/10/xml-exc-c14n#",
+                    "timestampContainerForm": None
+                },
+                "archiveTimestampParameters": {
+                    "digestAlgorithm": "SHA256",
+                    "canonicalizationMethod": "http://www.w3.org/2001/10/xml-exc-c14n#",
+                    "timestampContainerForm": None
+                },
+                "signWithExpiredCertificate": False,
+                "generateTBSWithoutCertificate": False,
+                "imageParameters": {
+                    "alignmentHorizontal": None,
+                    "alignmentVertical": None,
+                    "imageScaling": "ZOOM_AND_CENTER",
+                    "backgroundColor": None,
+                    "dpi": 200,
+                    "image": {
+                        "bytes": encoded_image,
+                        "name": "image.png"
+                    },
+                    "fieldParameters": {
+                        "fieldId": f"{field_id}",
+                        "originX": 0,
+                        "originY": 0,
+                        "width": None,
+                        "height": None,
+                        "rotation": None,
+                        "page": len(PdfFileReader(io.BytesIO(base64.b64decode(pdf))).pages)
+                    },
+                    "textParameters": None,
+                    "zoom": None
+                },
+                "signatureIdToCounterSign": None,
+                "blevelParams": {
+                    "trustAnchorBPPolicy": True,
+                    "signingDate": current_time,  # Current time in milliseconds
+                    "claimedSignerRoles": [f"{stamp}"],
+                    "policyId": None,
+                    "policyQualifier": None,
+                    "policyDescription": None,
+                    "policyDigestAlgorithm": None,
+                    "policyDigestValue": None,
+                    "policySpuri": None,
+                    "commitmentTypeIndications": None,
+                    "signerLocationPostalAddress": [
+                        "Congreso 180",
+                        "4000 San Miguel de Tucumán",
+                        "Tucumán",
+                        "AR"
+                    ],
+                    "signerLocationPostalCode": "4000",
+                    "signerLocationLocality": "San Miguel de Tucumán",
+                    "signerLocationStateOrProvince": "Tucumán",
+                    "signerLocationCountry": "AR",
+                    "signerLocationStreet": "Congreso 180"
+                }
+            },
+            "toSignDocument": {
+                "bytes": pdf,
+                "digestAlgorithm": None,
+                "name": "document.pdf"
+            }
+        }
+    response = requests.post('http://localhost:8080/services/rest/getDataToSign', json=body)
+    return response
+
 if __name__ == "__main__":
+    java_process = subprocess.Popen(['java', '-jar', r'C:\Users\kakit\OneDrive\Downloads\Projects\Firmador\firmar_python\firma_cliente\dssapp\dss-demo-webapp\target\dss-signature-rest-6.1.RC1.jar'])
+    java_process_started = True
+
+    def cleanup():
+        java_process.terminate()
+
+    atexit.register(cleanup)
+
     app.run(host='127.0.0.1', port=9795)
