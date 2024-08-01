@@ -27,6 +27,7 @@ from certificates import *
 from digest import *
 from imagecomp import *
 from createimagetostamp import *
+from signing import *
 
 ##################################################
 ###      Configuracion de aplicacion Flask     ###
@@ -137,7 +138,7 @@ def get_certificates():
         if not pin or code != 200:
             return jsonify({"status": "error", "message": "Entrada de PIN cancelada."}), 400
 
-        certificates, code = get_certificates_from_token(lib_path, pin, selected_slot_index)
+        certificates, session, code = get_certificates_from_token(lib_path, pin, selected_slot_index)
         if not certificates or code != 200:
             return jsonify({"status": "error", "message": "Problema al traer certificados del token."}), 404
 
@@ -186,6 +187,7 @@ def get_certificates():
 
         for pdf in pdfs:
             for field, name, stamp, area in zip(fields, names, stamps, areas):
+                print(f"Procesando PDF")
                 encoded_image = encode_image("logo_tribunal_para_tapir_250px.png")
                 current_time = int(tiempo.time() * 1000)
                 datetimesigned = datetime.now(pytz.utc).astimezone(pytz.timezone('America/Argentina/Buenos_Aires')).strftime("%Y-%m-%d %H:%M:%S")
@@ -195,11 +197,15 @@ def get_certificates():
                         "token"
                     )
                 data_to_sign_response = digestpdf(pdf, certificate, certificate_chain, stamp, field, custom_image, current_time)
+                if data_to_sign_response is None or 'bytes' not in data_to_sign_response or data_to_sign_response['status'] != 'success':
+                    return jsonify({"status": "error", "message": "Error al obtener datos para firmar."}), 500
                 data_to_sign = data_to_sign_response['bytes']
                 data_to_sign_list.append(data_to_sign)
-        
 
+        signatureValues = sign_multiple_data(session, data_to_sign_list)
         
+        response["response"]["signatureValues"] = signatureValues
+
         responsejson = json.loads(json.dumps(response))
 
         return jsonify(responsejson), 200
