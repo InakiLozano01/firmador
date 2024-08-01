@@ -326,3 +326,7 @@ def get_number_and_date_then_close(pdfToClose, idDoc):
     finally:
         if conn:
             conn.close()
+
+@app.route('/firmalote', methods=['POST'])
+def firmalote():
+    return "En desarrollo"
