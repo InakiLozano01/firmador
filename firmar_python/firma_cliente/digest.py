@@ -53,7 +53,12 @@ def digestpdf(pdf, certificate, certchain, stamp, field_id, encoded_image, curre
                         "alignmentHorizontal": "NONE",
                         "alignmentVertical": "NONE",
                         "imageScaling": "ZOOM_AND_CENTER",
-                        "backgroundColor": None,
+                        "backgroundColor": {
+                            "red": 255,
+                            "green": 255,
+                            "blue": 255,
+                            "alpha": 255
+                        },
                         "dpi": 200,
                         "image": {
                             "bytes": encoded_image,
@@ -63,13 +68,13 @@ def digestpdf(pdf, certificate, certchain, stamp, field_id, encoded_image, curre
                             "fieldId": f"{field_id}",
                             "originX": 0,
                             "originY": 0,
-                            "width": None,
-                            "height": None,
-                            "rotation": None,
+                            "width": 0,
+                            "height": 0,
+                            "rotation": 0,
                             "page": len(PdfFileReader(io.BytesIO(base64.b64decode(pdf))).pages)
                         },
                         "textParameters": None,
-                        "zoom": 0
+                        "zoom": 100
                     },
                     "signatureIdToCounterSign": None,
                     "blevelParams": {
