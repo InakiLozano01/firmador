@@ -48,6 +48,11 @@ public class RestDocumentSignatureServiceImpl {
 
     private PAdESService service = (PAdESService) servicio.getPAdESService();
 
+    @GetMapping("/serviceStatus")
+    public String serviceStatus() {
+        return "OK";
+    }
+
     @PostMapping("/getDataToSign")
     public ToBeSigned getDataToSign(@RequestBody DataToSignOneDocumentDTO dataToSignDto) {
         DSSDocument toSignDocument = new InMemoryDocument(dataToSignDto.getToSignDocument().getBytes());
