@@ -48,6 +48,11 @@ public class RestDocumentSignatureServiceImpl {
 
     private PAdESService service = (PAdESService) servicio.getPAdESService();
 
+    @GetMapping("/serviceStatus")
+    public String serviceStatus() {
+        return "OK";
+    }
+
     @PostMapping("/getDataToSign")
     public ToBeSigned getDataToSign(@RequestBody DataToSignOneDocumentDTO dataToSignDto) {
         DSSDocument toSignDocument = new InMemoryDocument(dataToSignDto.getToSignDocument().getBytes());
@@ -81,10 +86,15 @@ public class RestDocumentSignatureServiceImpl {
 
         signatureParameters.setBLevelParams(bLevelParams);
         SignatureImageParameters imageParameters = new SignatureImageParameters();
-        imageParameters.setImage((DSSDocument) dataToSignDto.getParameters().getImageParameters().getImage());
+        DSSDocument image = new InMemoryDocument(
+                dataToSignDto.getParameters().getImageParameters().getImage().getBytes());
+        image.setName(dataToSignDto.getParameters().getImageParameters().getImage().getName());
+        imageParameters
+                .setImage(image);
         imageParameters
                 .setAlignmentHorizontal(dataToSignDto.getParameters().getImageParameters().getAlignmentHorizontal());
         imageParameters.setAlignmentVertical(dataToSignDto.getParameters().getImageParameters().getAlignmentVertical());
+
         /*
          * Color color = new
          * Color(dataToSignDto.getParameters().getImageParameters().getBackgroundColor()
