@@ -23,6 +23,7 @@ package eu.europa.esig.dss.web.controller;
 import java.io.Serializable;
 
 import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
@@ -38,12 +39,17 @@ import eu.europa.esig.dss.ws.signature.dto.SignOneDocumentDTO;
 import eu.europa.esig.dss.ws.signature.dto.TimestampOneDocumentDTO;
 
 /**
- * This REST interface provides operations for the signature creation and for its extension.
+ * This REST interface provides operations for the signature creation and for
+ * its extension.
  */
 @Path("/")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
 public interface RestDocumentSignatureService extends Serializable {
+
+	@GET
+	@Path("serviceStatus")
+	String serviceStatus();
 
 	/**
 	 * Retrieves the bytes of the data that need to be signed based on the
@@ -81,7 +87,7 @@ public interface RestDocumentSignatureService extends Serializable {
 	@POST
 	@Path("extendDocument")
 	RemoteDocument extendDocument(ExtendDocumentDTO extendDocument);
-	
+
 	/**
 	 * Timestamps a toTimestampDocument with the provided parameters.
 	 * 
