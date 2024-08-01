@@ -1,6 +1,6 @@
 import PyKCS11
 import tkinter as tk
-from tkinter import simpledialog, messagebox, Listbox, Scrollbar, Toplevel, Label, filedialog
+from tkinter import Listbox, Scrollbar, Toplevel, Label, filedialog, Frame, PhotoImage
 from tkinter.ttk import Button, Style
 from cryptography import x509
 from cryptography.hazmat.primitives import serialization, hashes
@@ -14,9 +14,12 @@ import os
 from smartcard.System import readers
 from smartcard.Exceptions import NoCardException
 from flask import Flask, jsonify, request
+from flask_cors import CORS
 from threading import Thread
+from PIL import Image, ImageTk
 
 app = Flask(__name__)
+CORS(app)
 
 # Path to the JSON file that stores token-library correspondences
 TOKEN_LIB_FILE = "token_lib.json"
@@ -39,7 +42,7 @@ def save_token_library_mapping(mapping):
 
 def get_token_unique_id(token_info):
     try:
-        return ''.join(format(x, '02x') for x in token_info["ATR"])
+        return ''.join(format(x, '02x') for x in token_info["ATR"]), token_info['reader']
     except Exception as e:
         print(f"Error getting token unique ID: {str(e)}")
         return None
@@ -50,17 +53,76 @@ def select_library_file():
     except Exception as e:
         print(f"Error selecting library file: {str(e)}")
         return None
-
+    
 def get_pin_from_user():
-    try:
-        root = tk.Tk()
-        root.withdraw()
-        pin = simpledialog.askstring("PIN del Token", "Ingrese el PIN para el token:", show='*')
-        root.destroy()
-        return pin
-    except Exception as e:
-        print(f"Error getting PIN from user: {str(e)}")
-        return None
+    global getpin
+    getpin = None
+
+    def aceptar():
+        global getpin
+        getpin = entry_pin.get()
+        pinwindow.destroy()
+
+    def cancelar():
+        global getpin
+        getpin = None
+        pinwindow.destroy()
+
+    pinwindow = tk.Tk()
+
+    pinwindow.title("Introduzca su pin")
+    pinwindow.geometry(f"500x165")
+    pinwindow.resizable(False, False)
+    pinwindow.grab_set()
+
+    # Ensure the window opens in the foreground and centered
+    pinwindow.attributes('-topmost', True)
+    pinwindow.update_idletasks()
+    x = (pinwindow.winfo_screenwidth() - pinwindow.winfo_reqwidth()) // 2
+    y = (pinwindow.winfo_screenheight() - pinwindow.winfo_reqheight()) // 2
+    pinwindow.geometry(f"+{x}+{y}")
+    pinwindow.focus_force()
+
+
+    pin_frame = tk.Frame(pinwindow)
+    pin_frame.pack(pady=10)
+
+    # Crear un campo de entrada para el PIN
+    label_pin = tk.Label(pin_frame, text="Introduzca su PIN: ", font=("Arial", 14, "bold"))
+    label_pin.pack(side="left", pady=10)
+
+    entry_pin = tk.Entry(pin_frame, show="o", width=20, font=("Arial", 14))
+    entry_pin.pack(side="left", pady=10)
+    entry_pin.focus_set()
+
+    button_frame = Frame(pinwindow)
+    button_frame.pack(pady=10)
+    style = Style()
+    style.configure("TButton", font=("Arial", 12), padding=10)
+
+
+    original_image = Image.open("./images/aceptar.png")
+    resized_image = original_image.resize((25, 25))  # Resize to 50x50 pixels
+    iconaceptar = ImageTk.PhotoImage(resized_image)
+    original_image = Image.open("./images/cancelar.png")
+    resized_image = original_image.resize((25, 25))  # Resize to 50x50 pixels
+    iconcancelar = ImageTk.PhotoImage(resized_image)
+
+
+    # Crear el botón de aceptar
+    btn_aceptar = Button(button_frame, text="Aceptar", style="TButton", image=iconaceptar, compound='left', command=aceptar)
+    btn_aceptar.pack(side=tk.LEFT, padx=5)
+
+    # Crear el botón de cancelar
+    btn_cancelar = Button(button_frame, text="Cancelar", style="TButton", image=iconcancelar, compound='left', command=cancelar)
+    btn_cancelar.pack(side=tk.LEFT, padx=5)
+
+    button_frame.pack(pady=10, anchor=tk.CENTER)
+
+    # Ejecutar el bucle principal de la ventana
+    pinwindow.mainloop()
+
+    return getpin
 
 def get_issuer_cert(cert):
     try:
@@ -155,24 +217,33 @@ def list_tokens():
             pass
         except Exception as e:
             print(f"Error accessing reader {reader}: {str(e)}")
+    
     return token_info
 
 def select_token_slot(token_info, result):
     def on_select(evt):
         w = evt.widget
-        index = int(w.curselection()[0])
+        index = w.grid_info()['row']
         slot_info = token_info[index]
         slot_label.config(text=f"Slot Seleccionado {index + 1}\nLector: {slot_info['reader']}\nATR: {' '.join(format(x, '02X') for x in slot_info['ATR'])}")
         selected_slot.set(index)
         result.append(index)
         token_window.destroy()
 
-    root = tk.Tk()
-    root.withdraw()  # Hide the root window
 
-    token_window = Toplevel(root)
-    token_window.title("Seleccionar un Slot de Token")
-    token_window.geometry("500x400")
+    
+
+    mainwindow = tk.Tk()
+    mainwindow.withdraw()  # Hide the mainwindow window
+
+    windows_base_height = 100
+    button_height = 65
+    total_height = windows_base_height + len(token_info) * button_height
+    
+    
+    token_window = Toplevel(mainwindow)
+    token_window.title("Ventana de selección de Token")
+    token_window.geometry(f"500x{total_height}")
     token_window.resizable(False, False)
     token_window.grab_set()
 
@@ -185,27 +256,32 @@ def select_token_slot(token_info, result):
     token_window.focus_force()
 
     # Add instruction label
-    instruction_label = Label(token_window, text="Seleccione un Slot de Token:", font=("Arial", 12))
+    instruction_label = Label(token_window, text="Seleccione un Token:", font=("Arial", 18, "bold"))
     instruction_label.pack(pady=10)
 
-    scrollbar = Scrollbar(token_window)
-    scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+    frame = Frame(token_window)
+    frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+    style = Style()
+    style.configure("TButton", font=("Arial", 12), padding=10)
 
-    listbox = Listbox(token_window, yscrollcommand=scrollbar.set, width=100, height=15)
+    icon = PhotoImage(file="./images/icono_token.png")
+
     for i, info in enumerate(token_info):
-        listbox.insert(tk.END, f"Slot {i + 1}: Lector: {info['reader']}")
-    listbox.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-    listbox.bind('<<ListboxSelect>>', on_select)
-    scrollbar.config(command=listbox.yview)
+        button = Button(frame, text=f"   Puerto USB numero: {i + 1}\n   Nombre del Token: {info['reader']}", style="TButton", image=icon, compound='left')
+        button.grid(row=i, column=0, columnspan=2, pady=10, padx=30, sticky='ew')
+        button.bind("<Button-1>", on_select)
+
+
+    # Add a single column with weight to center the buttons
+    frame.grid_columnconfigure(0, weight=1)
+    frame.grid_columnconfigure(1, weight=1)
 
     slot_label = Label(token_window, text="", justify=tk.LEFT, anchor='w', wraplength=400)
     slot_label.pack(side=tk.BOTTOM, fill=tk.BOTH, expand=True, padx=10, pady=10)
 
     selected_slot = tk.IntVar(value=-1)
-    select_button = Button(token_window, text="Seleccionar Slot", command=token_window.destroy)
-    select_button.pack(pady=10)
     token_window.wait_window()
-    root.destroy()
+    mainwindow.destroy()
 
 def select_certificate(certificates, result):
     def on_select(evt):
@@ -266,24 +342,24 @@ def get_certificates():
 
         # Slot selection logic
         selected_slot = []
-        thread = Thread(target=select_token_slot, args=(token_info, selected_slot))
-        thread.start()
-        thread.join()
+        thread1 = Thread(target=select_token_slot, args=(token_info, selected_slot))
+        thread1.start()
+        thread1.join()
 
         if not selected_slot:
             return jsonify({"success": False, "message": "No se seleccionó ningún slot."}), 400
 
         selected_slot_index = selected_slot[0]
-        token_unique_id = get_token_unique_id(token_info[selected_slot_index])
-        if token_unique_id in token_library_mapping:
-            lib_path = token_library_mapping[token_unique_id]
+        token_unique_id, token_name = get_token_unique_id(token_info[selected_slot_index])
+        if token_name in token_library_mapping:
+            lib_path = token_library_mapping[token_name]
         else:
             lib_path = select_library_file()
             if not lib_path:
                 return jsonify({"success": False, "message": "No se seleccionó ninguna biblioteca."}), 400
-            token_library_mapping[token_unique_id] = lib_path
-            save_token_library_mapping(token_library_mapping)
+            token_library_mapping[token_name] = lib_path
 
+            save_token_library_mapping(token_library_mapping)
         pin = get_pin_from_user()
         if not pin:
             return jsonify({"success": False, "message": "Entrada de PIN cancelada."}), 400
@@ -294,9 +370,9 @@ def get_certificates():
 
         # Certificate selection logic
         selected_cert = []
-        thread = Thread(target=select_certificate, args=(certificates, selected_cert))
-        thread.start()
-        thread.join()
+        thread2 = Thread(target=select_certificate, args=(certificates, selected_cert))
+        thread2.start()
+        thread2.join()
 
         if not selected_cert:
             return jsonify({"success": False, "message": "No se seleccionó ningún certificado."}), 400
