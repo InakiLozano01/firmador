@@ -26,6 +26,7 @@ from usbcard import *
 from certificates import *
 from digest import *
 from imagecomp import *
+from createimagetostamp import *
 
 ##################################################
 ###      Configuracion de aplicacion Flask     ###
