@@ -120,7 +120,7 @@ def get_certificates():
         data_to_sign_response = get_data_to_sign_tapir(pdf, certificates, current_time, field_id, stamp, custom_image)
         data_to_sign = data_to_sign_response["bytes"]
 
-        return jsonify({"status": "success", "data_to_sign": data_to_sign})
+        return jsonify({"status": True, "data_to_sign": data_to_sign})
     except PDFSignatureError as e:
         return jsonify({"status": "error", "message": str(e)}), 500
     except Exception as e:

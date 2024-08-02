@@ -2,16 +2,16 @@
 ###              Imports externos              ###
 ##################################################
 
-from cryptography.hazmat.primitives import hashes
 import json
-from uuid import uuid4
 import platform
+import requests
+from cryptography.hazmat.primitives import hashes
+from uuid import uuid4
 from flask import Flask, jsonify, request
 from threading import Thread
-import subprocess
-import atexit
+from subprocess import Popen
+from atexit import register
 from flask_cors import CORS
-import requests
 import time as tiempo
 from datetime import datetime
 from pytz import utc, timezone
@@ -21,7 +21,6 @@ from pytz import utc, timezone
 ##################################################
 
 from tokenmg import *
-from usbcard import *
 from certificates import *
 from digest import *
 from imagecomp import *
@@ -58,13 +57,13 @@ def start_java_process():
     if not java_process_started:
         print("Arrancando proceso Java...")
         try:
-            java_process = subprocess.Popen(['java', '-jar', r'.\dssapp\dss-demo-webapp\target\dss-signature-rest-6.1.RC1.jar'])
+            java_process = Popen(['java', '-jar', r'.\dssapp\dss-demo-webapp\target\dss-signature-rest-6.1.RC1.jar'])
             java_process_started = True
         except Exception as e:
             return jsonify({"status": False, "message": f"Error al iniciar el proceso Java: {str(e)}"}), 500
 
         # Terminar el proceso de Java al cerrar la aplicacion de Python
-        atexit.register(lambda: java_process.terminate())
+        register(lambda: java_process.terminate())
 
 ##################################################
 ###                 Endpoints                  ###
@@ -124,7 +123,7 @@ def get_certificates():
         else:
             lib_path = select_library_file()
             if not lib_path:
-                return jsonify({"success": False, "message": "No se seleccionó ninguna biblioteca."}), 400
+                return jsonify({True: False, "message": "No se seleccionó ninguna biblioteca."}), 400
             token_library_mapping[token_name] = lib_path
             try:
                 message, code = save_token_library_mapping(token_library_mapping)
@@ -160,7 +159,7 @@ def get_certificates():
         chain_base64 = [cert_to_base64(c) for c in cert_chain]
 
         response = {
-            "status": "success",
+            "status": True,
             "response": {
                 "tokenId": {
                     "id": str(uuid4())
@@ -229,12 +228,12 @@ if __name__ == "__main__":
     if not java_process_started:
         print("Arrancando Java process...")
         try:
-            java_process = subprocess.Popen(['java', '-jar', r'.\dssapp\dss-demo-webapp\target\dss-signature-rest-6.1.RC1.jar'])
+            java_process = Popen(['java', '-jar', r'.\dssapp\dss-demo-webapp\target\dss-signature-rest-6.1.RC1.jar'])
             java_process_started = True
         except Exception as e:
             print(f"Error al iniciar el proceso Java: {str(e)}")
 
     # Terminar el proceso de Java al cerrar la aplicacion de Python
-    atexit.register(lambda: java_process.terminate())
+    register(lambda: java_process.terminate())
 
     app.run(host='127.0.0.1', port=9795)

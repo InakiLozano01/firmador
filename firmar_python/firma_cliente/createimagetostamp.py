@@ -1,6 +1,6 @@
 from PIL import Image, ImageDraw, ImageFont
-import io
-import base64
+from io import BytesIO
+from base64 import b64decode, b64encode
 
 def create_signature_image(text, encoded_image, path, width=233, height=56, scale_factor=3):
     # Create a new image with white background at higher resolution
@@ -16,8 +16,8 @@ def create_signature_image(text, encoded_image, path, width=233, height=56, scal
         print("Warning: Using default font. Text size may not be as expected.")
     
     # Decode and open the stamp image
-    stamp_data = base64.b64decode(encoded_image)
-    stamp = Image.open(io.BytesIO(stamp_data))
+    stamp_data = b64decode(encoded_image)
+    stamp = Image.open(BytesIO(stamp_data))
 
     # Calculate new dimensions for the stamp image to fit within the final dimensions
     stamp_max_width = high_res_width * 0.25  # Up to 25% of the width for the stamp
@@ -43,10 +43,10 @@ def create_signature_image(text, encoded_image, path, width=233, height=56, scal
     
     # Function to save and encode image
     def save_and_encode(image, filename, dpi):
-        buffered = io.BytesIO()
+        buffered = BytesIO()
         image.save(buffered, format="PNG", optimize=True, dpi=dpi)
         """ image.save(filename, format='PNG', dpi=dpi, optimize=True) """
-        return base64.b64encode(buffered.getvalue()).decode('utf-8')
+        return b64encode(buffered.getvalue()).decode('utf-8')
     
     # Save and encode high resolution image
     high_res_base64 = save_and_encode(img, "high_res_image" + path + ".png", (200, 200))

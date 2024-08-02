@@ -2,8 +2,8 @@
 ###              Imports externos              ###
 ##################################################
 
-import base64
-import io
+from base64 import b64decode
+from io import BytesIO
 import requests
 from PyPDF2 import PdfFileReader
 from flask import jsonify
@@ -66,7 +66,7 @@ def digestpdf(pdf, certificate, certchain, stamp, field_id, encoded_image, curre
                             "width": None,
                             "height": None,
                             "rotation": None,
-                            "page": len(PdfFileReader(io.BytesIO(base64.b64decode(pdf))).pages)
+                            "page": len(PdfFileReader(BytesIO(b64decode(pdf))).pages)
                         },
                         "textParameters": None,
                         "zoom": 0
