@@ -2,7 +2,7 @@
 ###              Imports externos              ###
 ##################################################
 
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify
 import base64
 import time as tiempo
 import logging
@@ -347,9 +347,6 @@ def firmalote():
 
         current_time = int(tiempo.time() * 1000)
         datetimesigned = datetime.now(pytz.utc).astimezone(pytz.timezone('America/Argentina/Buenos_Aires')).strftime("%Y-%m-%d %H:%M:%S")
-
-        if not field_id or not stamp or not area:
-            raise PDFSignatureError("firma_info is missing required fields")
 
         if isdigital:
             name = extract_certificate_info_name(certificates['certificate'])
