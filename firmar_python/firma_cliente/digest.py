@@ -2,8 +2,8 @@
 ###              Imports externos              ###
 ##################################################
 
-import base64
-import io
+from base64 import b64decode
+from io import BytesIO
 import requests
 from PyPDF2 import PdfFileReader
 from flask import jsonify
