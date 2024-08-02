@@ -6,3 +6,5 @@ firmar_python/*.png
 firmar_python/*.ttf
 firmar_python/*.pdf
 firmar_python/__pycache__
+firmar_python/*.cer
+firmar_python/*.key
