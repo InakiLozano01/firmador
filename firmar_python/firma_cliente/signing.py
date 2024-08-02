@@ -1,5 +1,5 @@
 import PyKCS11
-import base64
+from base64 import b64encode, b64decode
 from flask import jsonify
 
 def get_private_key_and_certificate(session):
@@ -36,7 +36,7 @@ def sign_data_with_private_key(session, private_key, data_to_sign_base64):
     Firma los datos con la clave privada recuperada de la sesion.
     """
     data_to_sign_base64 = correct_base64_padding(data_to_sign_base64)
-    data_to_sign_bytes = base64.b64decode(data_to_sign_base64)
+    data_to_sign_bytes = b64decode(data_to_sign_base64)
     
     mechanism = PyKCS11.Mechanism(PyKCS11.CKM_SHA256_RSA_PKCS, None)
     try:
@@ -47,7 +47,7 @@ def sign_data_with_private_key(session, private_key, data_to_sign_base64):
         return jsonify({"status": "error", "message": f"Error al firmar los datos: {str(e)}"}), 500
     
     # Convertir la firma a base64 para enviar a DSS
-    signature_base64 = base64.b64encode(signature).decode("utf-8")
+    signature_base64 = b64encode(signature).decode("utf-8")
     return signature_base64, 200
 
 def sign_multiple_data(session, data_to_sign_list):
