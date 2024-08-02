@@ -146,7 +146,7 @@ def select_token_slot(token_info):
     return selected_slot.get()
 
 def select_from_token():
-    lib_path = r"C:\Windows\System32\cryptoide_pkcs11.dll"  # Adjust this path if needed
+    lib_path = r"C:\Windows\System32\opensc_pkcs11.dll"  # Adjust this path if needed
     token_info = list_tokens(lib_path)
     if not token_info:
         messagebox.showerror("Error", "No tokens found.")
