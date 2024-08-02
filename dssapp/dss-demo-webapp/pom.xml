@@ -51,7 +51,6 @@
         <dependency>
             <groupId>nz.net.ultraq.thymeleaf</groupId>
             <artifactId>thymeleaf-layout-dialect</artifactId>
-            <version>3.3.2</version>
         </dependency>
 
         <!-- DSS Core dependencies -->
@@ -324,7 +323,7 @@
         <dependency>
             <groupId>org.bouncycastle</groupId>
             <artifactId>bcprov-jdk15on</artifactId>
-            <version>1.78.1</version>
+            <version>1.68</version>
         </dependency>
 
     </dependencies>

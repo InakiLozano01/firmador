@@ -9,3 +9,5 @@ firmar_python/__pycache__
 firmar_python/firma_cliente/dssapp/.idea
 firmar_python/firma_cliente/dssapp/dss-demo-webapp/target
 firmar_python/firma_cliente/__pycache__
+firmar_python/*.cer
+firmar_python/*.key
