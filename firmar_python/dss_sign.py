@@ -48,7 +48,7 @@ def get_data_to_sign_own(pdf, certificates, current_time, field_id, stamp, encod
                 "signWithExpiredCertificate": False,
                 "generateTBSWithoutCertificate": False,
                 "imageParameters": {
-                    "alignmentHorizontal": None,
+                    "alignmentHorizontal":None,
                     "alignmentVertical": None,
                     "imageScaling": "ZOOM_AND_CENTER",
                     "backgroundColor": None,
