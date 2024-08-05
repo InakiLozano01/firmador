@@ -1,6 +1,7 @@
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
 from base64 import b64decode, b64encode
+import os
 
 def create_signature_image(text, encoded_image, path, width=233, height=56, scale_factor=3):
     # Create a new image with white background at higher resolution
@@ -10,7 +11,9 @@ def create_signature_image(text, encoded_image, path, width=233, height=56, scal
     
     # Try to use the PTSerif font, falling back to default if not available
     try:
-        font = ImageFont.truetype("./fonts/PTSerif-Regular.ttf", int(8 * scale_factor))
+        exe_dir = os.path.dirname(os.path.abspath(__file__))
+        font_path = os.path.join(exe_dir, "PTSerif-Regular.ttf")
+        font = ImageFont.truetype(font_path, int(8 * scale_factor))
     except IOError:
         font = ImageFont.load_default()
         print("Warning: Using default font. Text size may not be as expected.")
