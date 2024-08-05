@@ -15,6 +15,7 @@ from flask_cors import CORS
 import time as tiempo
 from datetime import datetime
 from pytz import utc, timezone
+import os
 
 ##################################################
 ###              Imports propios               ###
@@ -57,8 +58,16 @@ def start_java_process():
     if not java_process_started:
         print("Arrancando proceso Java...")
         try:
-            java_process = Popen(['java', '-jar', r'.\dssapp\dss-demo-webapp\target\dss-signature-rest-6.1.RC1.jar'])
+             # Get the path to the directory containing the executable
+            exe_dir = os.path.dirname(os.path.abspath(__file__))
+            
+            # Construct the path to the JAR file relative to the executable directory
+            jar_path = os.path.join(exe_dir, 'dss-signature-rest-6.1.RC1.jar')
+            
+            # Start the Java process
+            java_process = Popen(['java', '-jar', jar_path])
             java_process_started = True
+
         except Exception as e:
             return jsonify({"status": False, "message": f"Error al iniciar el proceso Java: {str(e)}"}), 500
 
@@ -228,8 +237,16 @@ if __name__ == "__main__":
     if not java_process_started:
         print("Arrancando Java process...")
         try:
-            java_process = Popen(['java', '-jar', r'.\dssapp\dss-demo-webapp\target\dss-signature-rest-6.1.RC1.jar'])
+            # Get the path to the directory containing the executable
+            exe_dir = os.path.dirname(os.path.abspath(__file__))
+
+            # Construct the path to the JAR file relative to the executable directory
+            jar_path = os.path.join(exe_dir, 'dss-signature-rest-6.1.RC1.jar')
+
+            # Start the Java process
+            java_process = Popen(['java', '-jar', jar_path])
             java_process_started = True
+            
         except Exception as e:
             print(f"Error al iniciar el proceso Java: {str(e)}")
 
