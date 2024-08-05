@@ -253,4 +253,4 @@ if __name__ == "__main__":
     # Terminar el proceso de Java al cerrar la aplicacion de Python
     register(lambda: java_process.terminate())
 
-    app.run(host='127.0.0.1', port=9795)
+    app.run(host='127.0.0.1', port=9795, threaded=True)
