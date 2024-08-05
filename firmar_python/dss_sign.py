@@ -4,7 +4,7 @@ import base64
 import logging
 from errors import PDFSignatureError
 import io 
-from PyPDF2 import PdfReader
+from PyPDF2 import PdfFileReader
 
 def get_data_to_sign_own(pdf, certificates, current_time, field_id, stamp, encoded_image):
     try:
@@ -64,7 +64,7 @@ def get_data_to_sign_own(pdf, certificates, current_time, field_id, stamp, encod
                         "width": None,
                         "height": None,
                         "rotation": None,
-                        "page": len(PdfReader(io.BytesIO(base64.b64decode(pdf))).pages)
+                        "page": len(PdfFileReader(io.BytesIO(base64.b64decode(pdf))).pages)
                     },
                     "textParameters": None,
                     "zoom": None
