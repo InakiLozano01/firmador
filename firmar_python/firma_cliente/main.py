@@ -48,7 +48,7 @@ def start_java_process():
     global java_process
 
     try:
-        response = requests.get("http://localhost:8080/services/rest/serviceStatus")
+        response = requests.get("http://localhost:5555/services/rest/serviceStatus")
         if response.status_code == 200 and response.text == "OK":
             java_process_started = True
     except Exception as e:
@@ -219,7 +219,7 @@ def get_certificates():
 
 if __name__ == "__main__":
     try:
-        response = requests.get("http://localhost:8080/services/rest/serviceStatus")
+        response = requests.get("http://localhost:5555/services/rest/serviceStatus")
         if response.status_code == 200 and response.text == "OK":
             java_process_started = True
     except Exception as e:
