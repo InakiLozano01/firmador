@@ -1,4 +1,6 @@
 import tkinter as tk
+from tkinter import filedialog
+from tkinter.ttk import Button, Style
 from flask import jsonify
 
 def select_token_slot(token_info, result):
@@ -14,7 +16,7 @@ def select_token_slot(token_info, result):
     mainwindow.withdraw()  # Hide the mainwindow window
 
     windows_base_height = 100
-    button_height = 65
+    button_height = 75
     total_height = windows_base_height + len(token_info) * button_height
     
     
@@ -38,13 +40,13 @@ def select_token_slot(token_info, result):
 
     frame = tk.Frame(token_window)
     frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-    style = tk.Style()
+    style = Style()
     style.configure("TButton", font=("Arial", 12), padding=10)
 
     icon = tk.PhotoImage(file="./images/icono_token.png")
 
     for i, info in enumerate(token_info):
-        button = tk.Button(frame, text=f"   Puerto USB numero: {i + 1}\n   Nombre del Token: {info['reader']}", style="TButton", image=icon, compound='left')
+        button = Button(frame, text=f"   Puerto USB numero: {i + 1}\n   Nombre del Token: {info['reader']}", style="TButton", image=icon, compound='left')
         button.grid(row=i, column=0, columnspan=2, pady=10, padx=30, sticky='ew')
         button.bind("<Button-1>", on_select)
 
@@ -59,7 +61,7 @@ def select_token_slot(token_info, result):
 
 def select_library_file():
     try:
-        return tk.filedialog.askopenfilename(initialdir="C:\\Windows\\System32\\", title="Seleccione la biblioteca DLL", filetypes=[("DLL files", "*.dll")]), 200
+        return filedialog.askopenfilename(initialdir="C:\\Windows\\System32\\", title="Seleccione la biblioteca DLL", filetypes=[("DLL files", "*.dll")]), 200
     except Exception as e:
         return jsonify({"status": False, "message": f"Error al seleccionar la biblioteca DLL: {str(e)}"}), 500
 
@@ -106,7 +108,7 @@ def get_pin_from_user():
 
     button_frame = tk.Frame(pinwindow)
     button_frame.pack(pady=10)
-    style = tk.Style()
+    style = Style()
     style.configure("TButton", font=("Arial", 12), padding=10)
 
 
@@ -119,11 +121,11 @@ def get_pin_from_user():
 
 
     # Crear el botón de aceptar
-    btn_aceptar = tk.Button(button_frame, text="Aceptar", style="TButton", image=iconaceptar, compound='left', command=aceptar)
+    btn_aceptar = Button(button_frame, text="Aceptar", style="TButton", image=iconaceptar, compound='left', command=aceptar)
     btn_aceptar.pack(side=tk.LEFT, padx=5)
 
     # Crear el botón de cancelar
-    btn_cancelar = tk.Button(button_frame, text="Cancelar", style="TButton", image=iconcancelar, compound='left', command=cancelar)
+    btn_cancelar = Button(button_frame, text="Cancelar", style="TButton", image=iconcancelar, compound='left', command=cancelar)
     btn_cancelar.pack(side=tk.LEFT, padx=5)
 
     button_frame.pack(pady=10, anchor=tk.CENTER)
@@ -149,7 +151,7 @@ def select_certificate(certificates, result):
     certs.withdraw()  # Hide the root window
 
     windows_base_height = 100
-    button_height = 65
+    button_height = 75
     total_height = windows_base_height + len(certificates) * button_height
         
     cert_window = tk.Toplevel(certs)
@@ -172,32 +174,36 @@ def select_certificate(certificates, result):
 
     frame = tk.Frame(cert_window)
     frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-    style = tk.Style()
+    style = Style()
     style.configure("TButton", font=("Arial", 10), padding=10)
 
     original_image = tk.Image.open("./images/certificado.png")
     resized_image = original_image.resize((50, 50))  # Resize to 50x50 pixels
     iconcertificado = tk.ImageTk.PhotoImage(resized_image)
 
-    for i, (cert, _) in enumerate(certificates):
+    try:
+        for i, (cert, _) in enumerate(certificates):
 
-        input_string = str(cert.subject)
-        start_cuil = input_string.find("CUIL")
-        start_cn = input_string.find("CN")
-        end_cuil = input_string.find(",", start_cuil)
-        end_cn = input_string.find(")", start_cn)
-        cuil = input_string[start_cuil:end_cuil]
-        cn = input_string[start_cn:end_cn]
-        resultado = f"{cuil} - {cn}"
+            input_string = str(cert.subject)
+            start_cuil = input_string.find("CUIL")
+            start_cn = input_string.find("CN")
+            end_cuil = input_string.find(",", start_cuil)
+            end_cn = input_string.find(")", start_cn)
+            cuil = input_string[start_cuil:end_cuil]
+            cn = input_string[start_cn:end_cn]
+            resultado = f"{cuil} - {cn}"
 
-        button = tk.Button(frame, text=f"{resultado}", style="TButton", image=iconcertificado, compound='left')
-        button.grid(row=i, column=0, pady=10, padx=10, sticky='ew')
-        button.bind("<Button-1>", on_select)
+            button = Button(frame, text=f"{resultado}", style="TButton", image=iconcertificado, compound='left')
+            button.grid(row=i, column=0, pady=10, padx=10, sticky='ew')
+            button.bind("<Button-1>", on_select)
 
-    # Add a single column with weight to center the buttons
-    frame.grid_columnconfigure(0, weight=1)
+        # Add a single column with weight to center the buttons
+        frame.grid_columnconfigure(0, weight=1)
 
-    selected_cert = tk.IntVar(value=-1)
-    cert_window.bind('<Escape>', lambda event: cert_window.destroy())
-    cert_window.wait_window()
-    certs.destroy()
+        selected_cert = tk.IntVar(value=-1)
+        cert_window.bind('<Escape>', lambda event: cert_window.destroy())
+        cert_window.wait_window()
+        certs.destroy()
+    
+    except:
+        certs.destroy()
