@@ -11,3 +11,6 @@ firmar_python/firma_cliente/dssapp/dss-demo-webapp/target
 firmar_python/firma_cliente/__pycache__
 firmar_python/*.cer
 firmar_python/*.key
+firmar_python/firma_cliente/*.spec
+firmar_python/firma_cliente/dist
+firmar_python/firma_cliente/build
