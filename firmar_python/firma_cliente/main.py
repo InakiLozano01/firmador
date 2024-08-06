@@ -61,7 +61,7 @@ def start_java_process():
             # Get the path to the directory containing the executable
             current_file_path = os.path.abspath(__file__)
 
-            if 'TEMP' in current_file_path or 'temp' in current_file_path:
+            if 'temp' not in current_file_path.lower():
                 jar_path = r'.\dssapp\dss-demo-webapp\target\dss-signature-rest-6.1.RC1.jar'
             else:
                 exe_dir = os.path.dirname(os.path.abspath(__file__))
@@ -88,7 +88,7 @@ def get_certificates():
     try:
 
         current_file_path = os.path.abspath(__file__)
-        if 'TEMP' in current_file_path or 'temp' in current_file_path:
+        if 'temp' not in current_file_path.lower():
             mode = 'python'
         else:
             mode = 'exe'
@@ -211,7 +211,7 @@ def get_certificates():
         for pdf, field, name, stamp, area in zip(pdfs, fields, names, stamps, areas):
             print(f"Procesando PDF....")
             current_file_path = os.path.abspath(__file__)
-            if'TEMP' in current_file_path or 'temp' in current_file_path:
+            if 'temp' not in current_file_path.lower():
                 mode = 'python'
                 image_path = r'.\images\logo_tribunal_para_tapir_250px.png'
             else:
@@ -260,7 +260,7 @@ if __name__ == "__main__":
             # Get the path to the directory containing the executable
             current_file_path = os.path.abspath(__file__)
 
-            if 'TEMP' in current_file_path or 'temp' in current_file_path:
+            if 'temp' not in current_file_path.lower():
                 jar_path = r'.\dssapp\dss-demo-webapp\target\dss-signature-rest-6.1.RC1.jar'
             else:
                 exe_dir = os.path.dirname(os.path.abspath(__file__))
