@@ -5,7 +5,7 @@
 import base64
 import io
 import requests
-from PyPDF2 import PdfFileReader
+from PyPDF2 import PdfReader
 from flask import jsonify
 
 def digestpdf(pdf, certificate, certchain, stamp, field_id, encoded_image, current_time):
@@ -71,7 +71,7 @@ def digestpdf(pdf, certificate, certchain, stamp, field_id, encoded_image, curre
                             "width": 0,
                             "height": 0,
                             "rotation": 0,
-                            "page": len(PdfFileReader(io.BytesIO(base64.b64decode(pdf))).pages)
+                            "page": len(PdfReader(io.BytesIO(base64.b64decode(pdf))).pages)
                         },
                         "textParameters": None,
                         "zoom": 100

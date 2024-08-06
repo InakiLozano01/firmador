@@ -61,8 +61,13 @@ def sign_multiple_data(session, data_to_sign_list):
         for data_to_sign_base64 in data_to_sign_list:
             signature_base64, code = sign_data_with_private_key(session, private_key, data_to_sign_base64)
             if code != 200:
+                session.logout()
+                session.closeSession()
                 return jsonify({"status": "error", "message": "Error al firmar los datos."}), code
             signatures.append(signature_base64)
+        
+        session.logout()
+        session.closeSession()
         
         return signatures, 200
     except Exception as e:
