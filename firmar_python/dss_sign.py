@@ -4,7 +4,7 @@ import base64
 import logging
 from errors import PDFSignatureError
 import io 
-from PyPDF2 import PdfFileReader
+from PyPDF2 import PdfReader
 
 def get_data_to_sign_own(pdf, certificates, current_time, field_id, stamp, encoded_image):
     try:
@@ -64,7 +64,7 @@ def get_data_to_sign_own(pdf, certificates, current_time, field_id, stamp, encod
                         "width": None,
                         "height": None,
                         "rotation": None,
-                        "page": len(PdfFileReader(io.BytesIO(base64.b64decode(pdf))).pages)
+                        "page": len(PdfReader(io.BytesIO(base64.b64decode(pdf))).pages)
                     },
                     "textParameters": None,
                     "zoom": None
@@ -161,7 +161,7 @@ def sign_document_own(pdf, signature_value, certificates, current_time, field_id
                         "width": None,
                         "height": None,
                         "rotation": None,
-                        "page": len(PdfFileReader(io.BytesIO(base64.b64decode(pdf))).pages)
+                        "page": len(PdfReader(io.BytesIO(base64.b64decode(pdf))).pages)
                     },
                     "textParameters": None,
                     "zoom": None
@@ -446,7 +446,7 @@ def get_data_to_sign_tapir(pdf, certificates, current_time, field_id, stamp, enc
                         "width": None,
                         "height": None,
                         "rotation": None,
-                        "page": len(PdfFileReader(io.BytesIO(base64.b64decode(pdf))).pages)
+                        "page": len(PdfReader(io.BytesIO(base64.b64decode(pdf))).pages)
                     },
                     "textParameters": None,
                     "zoom": None
@@ -543,7 +543,7 @@ def sign_document_tapir(pdf, signature_value, certificates, current_time, field_
                         "width": None,
                         "height": None,
                         "rotation": None,
-                        "page": len(PdfFileReader(io.BytesIO(base64.b64decode(pdf))).pages)
+                        "page": len(PdfReader(io.BytesIO(base64.b64decode(pdf))).pages)
                     },
                     "textParameters": None,
                     "zoom": None

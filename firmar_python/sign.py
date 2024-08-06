@@ -326,17 +326,19 @@ def get_number_and_date_then_close(pdfToClose, idDoc):
 
 @app.route('/firmalote', methods=['POST'])
 def firmalote():
-    global pdf_b64, current_time, certificates,  field_id, stamp, area, name, datetimesigned, custom_image, isdigital, isclosing, closingplace, idDoc
+    global pdf_b64, current_time, certificates,  field_id, stamp, area, name, datetimesigned, custom_image, isdigital, isclosing, closingplace, idDoc, signed_pdf_filename
+    signed_pdf_filename = datetime.now().strftime("pdf_%d_%m_%Y_%H%M%S")
     data = request.get_json()
     pdfs = data['pdfs']
     certificates = data['certificates']
+    array_pdfs = []
 
     for pdf in pdfs:
         pdf_b64 = pdf['pdf']
-        field_id = pdfs['firma_lugar']
-        name = pdfs['firma_nombre']
-        stamp = pdfs['firma_sello']
-        area = pdfs['firma_area']
+        field_id = pdf['firma_lugar']
+        name = pdf['firma_nombre']
+        stamp = pdf['firma_sello']
+        area = pdf['firma_area']
         
         isclosing = pdf['firma_cierra']        
         closingplace = pdf['firma_lugarcierre']
@@ -372,16 +374,16 @@ def firmalote():
                 if code == 500:
                     response = lastpdf.get_json()
                     if response['status'] == "error":
-                        return jsonify({"status": "error", "message": "Error al cerrar PDF: " + response['message']}), 500
+                        return jsonify({"status": False, "message": "Error al cerrar PDF: " + response['message']}), 500
                 lastsignedpdf = signown(lastpdf, True)
                 save_signed_pdf(lastsignedpdf, signed_pdf_filename+"signDandclose.pdf")
-                return jsonify({"status": "success", "pdf": lastsignedpdf}), 200
+                array_pdfs.append(lastsignedpdf)
             
             case (True, False):
                 signed_pdf_response = sign_document_tapir(pdf_b64, signatureValue, certificates, current_time, field_id, stamp, custom_image)
                 signed_pdf_base64 = signed_pdf_response['bytes']
                 save_signed_pdf(signed_pdf_base64, signed_pdf_filename+"signD.pdf")
-                return jsonify({"status": "success", "pdf": signed_pdf_base64}), 200
+                array_pdfs.append(signed_pdf_base64)
             
             case (False, True):
                 signed_pdf_base64 = signown(pdf_b64, False)
@@ -389,12 +391,14 @@ def firmalote():
                 if code == 500:
                     response = lastpdf.get_json()
                     if response['status'] == "error":
-                        return jsonify({"status": "error", "message": "Error al cerrar PDF: " + response['message']}), 500
+                        return jsonify({"status": False, "message": "Error al cerrar PDF: " + response['message']}), 500
                 signed_pdf_base64_closed = signown(lastpdf, True)
                 save_signed_pdf(signed_pdf_base64_closed, signed_pdf_filename+"signEandclose.pdf")
-                return jsonify({"status": "success", "pdf": signed_pdf_base64_closed}), 200
+                array_pdfs.append(signed_pdf_base64_closed)
             
             case (False, False):
                 signed_pdf_base64 = signown(pdf_b64, False)
                 save_signed_pdf(signed_pdf_base64, signed_pdf_filename+"signE.pdf")
-                return jsonify({"status": "success", "pdf": signed_pdf_base64}), 200
+                array_pdfs.append(signed_pdf_base64)
+
+    return jsonify({"status": True, "pdfs": array_pdfs}), 200
