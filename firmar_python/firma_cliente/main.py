@@ -59,9 +59,9 @@ def start_java_process():
         print("Arrancando proceso Java...")
         try:
             # Get the path to the directory containing the executable
-            current_file = os.path.abspath(__file__)
+            current_file_path = os.path.abspath(__file__)
 
-            if (current_file.endwith('.py') or current_file.endwith('.pyc')):
+            if 'TEMP' in current_file_path or 'temp' in current_file_path:
                 jar_path = r'.\dssapp\dss-demo-webapp\target\dss-signature-rest-6.1.RC1.jar'
             else:
                 exe_dir = os.path.dirname(os.path.abspath(__file__))
@@ -87,8 +87,8 @@ def start_java_process():
 def get_certificates():
     try:
 
-        current_file = os.path.abspath(__file__)
-        if (current_file.endswith('.py') or current_file.endswith('.pyc')):
+        current_file_path = os.path.abspath(__file__)
+        if 'TEMP' in current_file_path or 'temp' in current_file_path:
             mode = 'python'
         else:
             mode = 'exe'
@@ -210,8 +210,8 @@ def get_certificates():
 
         for pdf, field, name, stamp, area in zip(pdfs, fields, names, stamps, areas):
             print(f"Procesando PDF....")
-            current_file = os.path.abspath(__file__)
-            if (current_file.endswith('.py') or current_file.endswith('.pyc')):
+            current_file_path = os.path.abspath(__file__)
+            if'TEMP' in current_file_path or 'temp' in current_file_path:
                 mode = 'python'
                 image_path = r'.\images\logo_tribunal_para_tapir_250px.png'
             else:
@@ -258,9 +258,9 @@ if __name__ == "__main__":
         print("Arrancando Java process...")
         try:
             # Get the path to the directory containing the executable
-            current_file = os.path.abspath(__file__)
+            current_file_path = os.path.abspath(__file__)
 
-            if (current_file.endswith('.py') or current_file.endswith('.pyc')):
+            if 'TEMP' in current_file_path or 'temp' in current_file_path:
                 jar_path = r'.\dssapp\dss-demo-webapp\target\dss-signature-rest-6.1.RC1.jar'
             else:
                 exe_dir = os.path.dirname(os.path.abspath(__file__))
