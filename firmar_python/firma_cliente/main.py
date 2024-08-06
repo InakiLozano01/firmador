@@ -215,9 +215,9 @@ def get_certificates():
                 mode = 'python'
                 image_path = r'.\images\logo_tribunal_para_tapir_250px.png'
             else:
+                mode = 'exe'
                 exe_dir = os.path.dirname(os.path.abspath(__file__))
                 image_path = os.path.join(exe_dir, 'logo_tribunal_para_tapir_250px.png')
-                mode = 'exe'
             encoded_image = encode_image(image_path)
             current_time = int(tiempo.time() * 1000)
             datetimesigned = datetime.now(utc).astimezone(timezone('America/Argentina/Buenos_Aires')).strftime("%Y-%m-%d %H:%M:%S")
