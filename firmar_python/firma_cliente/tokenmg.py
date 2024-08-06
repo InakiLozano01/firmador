@@ -15,7 +15,7 @@ def load_token_library_mapping():
     try:
         if path.exists(TOKEN_LIB_FILE):
             with open(TOKEN_LIB_FILE, 'r') as file:
-                return json.load(file)
+                return json.load(file), 200
         return {}, 200
     except (json.JSONDecodeError, ValueError):
         return jsonify({"status": False, "message": "Error al cargar el mapeo de drivers de tokens."}), 500
@@ -52,6 +52,8 @@ def list_tokens():
 
 def get_token_unique_id(token_info):
     try:
+        print(token_info)
         return ''.join(format(x, '02x') for x in token_info["ATR"]), token_info['reader'], 200
     except Exception as e:
+        print("error")
         return jsonify({"status": False, "message": f"Error al obtener el ID único del token: {str(e)}"}), 500

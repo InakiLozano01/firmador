@@ -58,11 +58,16 @@ def start_java_process():
     if not java_process_started:
         print("Arrancando proceso Java...")
         try:
-             # Get the path to the directory containing the executable
-            exe_dir = os.path.dirname(os.path.abspath(__file__))
-            
-            # Construct the path to the JAR file relative to the executable directory
-            jar_path = os.path.join(exe_dir, 'dss-signature-rest-6.1.RC1.jar')
+            # Get the path to the directory containing the executable
+            current_file = os.path.abspath(__file__)
+
+            if (current_file.endwith('.py') or current_file.endwith('.pyc')):
+                jar_path = r'.\dssapp\dss-demo-webapp\target\dss-signature-rest-6.1.RC1.jar'
+            else:
+                exe_dir = os.path.dirname(os.path.abspath(__file__))
+
+                # Construct the path to the JAR file relative to the executable directory
+                jar_path = os.path.join(exe_dir, 'dss-signature-rest-6.1.RC1.jar')
             
             # Start the Java process
             java_process = Popen(['java', '-jar', jar_path])
@@ -81,6 +86,13 @@ def start_java_process():
 @app.route('/rest/certificates', methods=['POST'])
 def get_certificates():
     try:
+
+        current_file = os.path.abspath(__file__)
+        if (current_file.endswith('.py') or current_file.endswith('.pyc')):
+            mode = 'python'
+        else:
+            mode = 'exe'
+
         # Recuperar los datos JSON de la request
         data = request.get_json()
         if not data or 'pdfs' not in data:
@@ -107,7 +119,7 @@ def get_certificates():
             return jsonify({"status": False, "message": "El campo 'areas' debe ser una lista."}), 400
 
         # Carga el mapeo de drivers previamente usados
-        token_library_mapping = load_token_library_mapping()
+        token_library_mapping, code = load_token_library_mapping()
 
         # Listar los tokens conectados
         token_info, code = list_tokens()
@@ -116,7 +128,7 @@ def get_certificates():
 
         # Seleccionar el slot del token
         selected_slot = []
-        thread_slot = Thread(target=select_token_slot, args=(token_info, selected_slot))
+        thread_slot = Thread(target=select_token_slot, args=(token_info, selected_slot, mode))
         thread_slot.start()
         thread_slot.join()
 
@@ -126,11 +138,11 @@ def get_certificates():
         selected_slot_index = selected_slot[0]
 
         # Cotejamos el nombre del token para determinar el driver a utilizar
-        token_unique_id, token_name = get_token_unique_id(token_info[selected_slot_index])
+        token_unique_id, token_name, code = get_token_unique_id(token_info[selected_slot_index])
         if token_name in token_library_mapping:
-            lib_path = token_library_mapping[token_name]
+            lib_path = token_library_mapping[token_name][0]
         else:
-            lib_path = select_library_file()
+            lib_path, code = select_library_file()
             if not lib_path:
                 return jsonify({True: False, "message": "No se seleccionó ninguna biblioteca."}), 400
             token_library_mapping[token_name] = lib_path
@@ -142,7 +154,7 @@ def get_certificates():
                 return jsonify({"status": False, "message": f"Error al guardar el mapeo de bibliotecas de tokens: {str(e)}"}), 500
 
         # Ingresar el PIN del token
-        pin, code = get_pin_from_user()
+        pin, code = get_pin_from_user(mode)
         if not pin or code != 200:
             return jsonify({"status": False, "message": "Entrada de PIN cancelada."}), 400
 
@@ -153,7 +165,7 @@ def get_certificates():
 
         # Seleccionar el certificado alojado en el token
         selected_cert = []
-        thread_cert = Thread(target=select_certificate, args=(certificates, selected_cert))
+        thread_cert = Thread(target=select_certificate, args=(certificates, selected_cert, mode))
         thread_cert.start()
         thread_cert.join()
 
@@ -196,24 +208,30 @@ def get_certificates():
 
         data_to_sign_list = []
 
-        for pdf in pdfs:
-            for field, name, stamp, area in zip(fields, names, stamps, areas):
-                print(f"Procesando PDF....")
+        for pdf, field, name, stamp, area in zip(pdfs, fields, names, stamps, areas):
+            print(f"Procesando PDF....")
+            current_file = os.path.abspath(__file__)
+            if (current_file.endswith('.py') or current_file.endswith('.pyc')):
+                mode = 'python'
+                image_path = r'.\images\logo_tribunal_para_tapir_250px.png'
+            else:
                 exe_dir = os.path.dirname(os.path.abspath(__file__))
                 image_path = os.path.join(exe_dir, 'logo_tribunal_para_tapir_250px.png')
-                encoded_image = encode_image(image_path)
-                current_time = int(tiempo.time() * 1000)
-                datetimesigned = datetime.now(utc).astimezone(timezone('America/Argentina/Buenos_Aires')).strftime("%Y-%m-%d %H:%M:%S")
-                custom_image = create_signature_image(
-                        f"{name}\n{datetimesigned}\n{stamp}\n{area}",
-                        encoded_image,
-                        "token"
-                    )
-                data_to_sign_response = digestpdf(pdf, certificate, certificate_chain, stamp, field, custom_image, current_time)
-                if data_to_sign_response is None or 'bytes' not in data_to_sign_response or data_to_sign_response['status'] != 'success':
-                    return jsonify({"status": False, "message": "Error al obtener datos para firmar."}), 500
-                data_to_sign = data_to_sign_response['bytes']
-                data_to_sign_list.append(data_to_sign)
+                mode = 'exe'
+            encoded_image = encode_image(image_path)
+            current_time = int(tiempo.time() * 1000)
+            datetimesigned = datetime.now(utc).astimezone(timezone('America/Argentina/Buenos_Aires')).strftime("%Y-%m-%d %H:%M:%S")
+            custom_image = create_signature_image(
+                    f"{name}\n{datetimesigned}\n{stamp}\n{area}",
+                    encoded_image,
+                    "token",
+                    mode
+                )
+            data_to_sign_response = digestpdf(pdf, certificate, certificate_chain, stamp, field, custom_image, current_time)
+            if data_to_sign_response is None or 'bytes' not in data_to_sign_response:
+                return jsonify({"status": False, "message": "Error al obtener datos para firmar."}), 500
+            data_to_sign = data_to_sign_response['bytes']
+            data_to_sign_list.append(data_to_sign)
 
         signatureValues = sign_multiple_data(session, data_to_sign_list)
         
@@ -240,10 +258,15 @@ if __name__ == "__main__":
         print("Arrancando Java process...")
         try:
             # Get the path to the directory containing the executable
-            exe_dir = os.path.dirname(os.path.abspath(__file__))
+            current_file = os.path.abspath(__file__)
 
-            # Construct the path to the JAR file relative to the executable directory
-            jar_path = os.path.join(exe_dir, 'dss-signature-rest-6.1.RC1.jar')
+            if (current_file.endswith('.py') or current_file.endswith('.pyc')):
+                jar_path = r'.\dssapp\dss-demo-webapp\target\dss-signature-rest-6.1.RC1.jar'
+            else:
+                exe_dir = os.path.dirname(os.path.abspath(__file__))
+
+                # Construct the path to the JAR file relative to the executable directory
+                jar_path = os.path.join(exe_dir, 'dss-signature-rest-6.1.RC1.jar')
 
             # Start the Java process
             java_process = Popen(['java', '-jar', jar_path])

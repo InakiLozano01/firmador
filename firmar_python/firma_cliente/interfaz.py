@@ -2,8 +2,9 @@ import tkinter as tk
 from tkinter import filedialog
 from tkinter.ttk import Button, Style
 from flask import jsonify
-
-def select_token_slot(token_info, result):
+import os
+from PIL import Image, ImageTk
+def select_token_slot(token_info, result, mode):
     def on_select(evt):
         w = evt.widget
         index = w.grid_info()['row']
@@ -43,7 +44,11 @@ def select_token_slot(token_info, result):
     style = Style()
     style.configure("TButton", font=("Arial", 12), padding=10)
 
-    icon = tk.PhotoImage(file="./images/icono_token.png")
+    if mode == 'python':
+        icon = tk.PhotoImage(file="./images/icono_token.png")
+    else:
+        exe_dir = os.path.dirname(os.path.abspath(__file__))
+        icon = tk.PhotoImage(file=os.path.join(exe_dir, "icono_token.png"))
 
     for i, info in enumerate(token_info):
         button = Button(frame, text=f"   Puerto USB numero: {i + 1}\n   Nombre del Token: {info['reader']}", style="TButton", image=icon, compound='left')
@@ -65,7 +70,7 @@ def select_library_file():
     except Exception as e:
         return jsonify({"status": False, "message": f"Error al seleccionar la biblioteca DLL: {str(e)}"}), 500
 
-def get_pin_from_user():
+def get_pin_from_user(mode):
     global getpin
     getpin = None
 
@@ -111,13 +116,18 @@ def get_pin_from_user():
     style = Style()
     style.configure("TButton", font=("Arial", 12), padding=10)
 
-
-    original_image = tk.Image.open("./images/aceptar.png")
-    resized_image = original_image.resize((25, 25))  # Resize to 50x50 pixels
-    iconaceptar = tk.ImageTk.PhotoImage(resized_image)
-    original_image = tk.Image.open("./images/cancelar.png")
-    resized_image = original_image.resize((25, 25))  # Resize to 50x50 pixels
-    iconcancelar = tk.ImageTk.PhotoImage(resized_image)
+    if mode == 'python':
+        original_aceptar = Image.open("./images/aceptar.png")
+        original_cancelar = Image.open("./images/cancelar.png")
+    else:
+        exe_dir = os.path.dirname(os.path.abspath(__file__))
+        original_aceptar = Image.open(os.path.join(exe_dir, "aceptar.png"))
+        original_cancelar = Image.open(os.path.join(exe_dir, "cancelar.png"))
+    
+    resized_aceptar = original_aceptar.resize((25, 25))  # Resize to 50x50 pixels
+    iconaceptar = ImageTk.PhotoImage(resized_aceptar)
+    resized_cancelar = original_cancelar.resize((25, 25))  # Resize to 50x50 pixels
+    iconcancelar = ImageTk.PhotoImage(resized_cancelar)
 
 
     # Crear el botón de aceptar
@@ -136,9 +146,9 @@ def get_pin_from_user():
     # Ejecutar el bucle principal de la ventana
     pinwindow.mainloop()
 
-    return getpin
+    return getpin, 200
 
-def select_certificate(certificates, result):
+def select_certificate(certificates, result, mode):
     def on_select(evt):
         w = evt.widget
         index = w.grid_info()['row']
@@ -177,9 +187,13 @@ def select_certificate(certificates, result):
     style = Style()
     style.configure("TButton", font=("Arial", 10), padding=10)
 
-    original_image = tk.Image.open("./images/certificado.png")
+    if mode == 'python':
+        original_image = Image.open("./images/certificado.png")
+    else:
+        exe_dir = os.path.dirname(os.path.abspath(__file__))
+        original_image = Image.open(os.path.join(exe_dir, "certificado.png"))
     resized_image = original_image.resize((50, 50))  # Resize to 50x50 pixels
-    iconcertificado = tk.ImageTk.PhotoImage(resized_image)
+    iconcertificado = ImageTk.PhotoImage(resized_image)
 
     try:
         for i, (cert, _) in enumerate(certificates):
