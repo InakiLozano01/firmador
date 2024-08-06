@@ -31,6 +31,7 @@ def get_issuer_cert(cert):
 def get_certificates_from_token(lib_path, pin, slot_index):
     pkcs11 = PyKCS11.PyKCS11Lib()
     try:
+        print(f"Cargando biblioteca PKCS#11: {lib_path}")
         pkcs11.load(lib_path)
     except Exception as e:
         return jsonify({"status": False, "message": f"Error al cargar la biblioteca PKCS#11: {str(e)}"}), 500

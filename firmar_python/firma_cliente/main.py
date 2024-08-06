@@ -10,7 +10,7 @@ from uuid import uuid4
 from flask import Flask, jsonify, request
 from threading import Thread
 from subprocess import Popen
-from atexit import register
+import atexit
 from flask_cors import CORS
 import time as tiempo
 from datetime import datetime
@@ -76,8 +76,10 @@ def start_java_process():
         except Exception as e:
             return jsonify({"status": False, "message": f"Error al iniciar el proceso Java: {str(e)}"}), 500
 
+    
+        killjava = java_process.terminate
         # Terminar el proceso de Java al cerrar la aplicacion de Python
-        register(lambda: java_process.terminate())
+        atexit.register(killjava)
 
 ##################################################
 ###                 Endpoints                  ###
@@ -140,7 +142,7 @@ def get_certificates():
         # Cotejamos el nombre del token para determinar el driver a utilizar
         token_unique_id, token_name, code = get_token_unique_id(token_info[selected_slot_index])
         if token_name in token_library_mapping:
-            lib_path = token_library_mapping[token_name][0]
+            lib_path = token_library_mapping[token_name]
         else:
             lib_path, code = select_library_file()
             if not lib_path:
@@ -275,7 +277,9 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"Error al iniciar el proceso Java: {str(e)}")
 
+    killjava = java_process.terminate
     # Terminar el proceso de Java al cerrar la aplicacion de Python
-    register(lambda: java_process.terminate())
+    atexit.register(killjava)
 
     app.run(host='127.0.0.1', port=9795, threaded=True)
+
