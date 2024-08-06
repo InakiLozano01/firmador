@@ -3,7 +3,7 @@ from io import BytesIO
 from base64 import b64decode, b64encode
 import os
 
-def create_signature_image(text, encoded_image, path, width=233, height=56, scale_factor=3):
+def create_signature_image(text, encoded_image, path, mode, width=233, height=56, scale_factor=3):
     # Create a new image with white background at higher resolution
     high_res_width, high_res_height = width * scale_factor, height * scale_factor
     img = Image.new('L', (int(high_res_width), int(high_res_height)), color='white')
@@ -11,8 +11,11 @@ def create_signature_image(text, encoded_image, path, width=233, height=56, scal
     
     # Try to use the PTSerif font, falling back to default if not available
     try:
-        exe_dir = os.path.dirname(os.path.abspath(__file__))
-        font_path = os.path.join(exe_dir, "PTSerif-Regular.ttf")
+        if mode == 'python':
+            font_path = r'.\fonts\PTSerif-Regular.ttf'
+        else:
+            exe_dir = os.path.dirname(os.path.abspath(__file__))
+            font_path = os.path.join(exe_dir, "PTSerif-Regular.ttf")
         font = ImageFont.truetype(font_path, int(8 * scale_factor))
     except IOError:
         font = ImageFont.load_default()
