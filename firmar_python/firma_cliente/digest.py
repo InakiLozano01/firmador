@@ -107,6 +107,7 @@ def digestpdf(pdf, certificate, certchain, stamp, field_id, encoded_image, curre
                     "name": "document.pdf"
                 }
             }
+        
         print(body)
         response = requests.post('http://localhost:5555/services/rest/getDataToSign', json=body)
         print(response.json())
