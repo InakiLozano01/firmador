@@ -8,8 +8,6 @@ services:
       - "5005:5000"
     volumes:
       - ./firmar_python:/app
-    depends_on:
-      - java-webapp
     networks:
       - signnet
 
