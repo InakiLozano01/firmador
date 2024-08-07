@@ -16,6 +16,9 @@ import time as tiempo
 from datetime import datetime
 from pytz import utc, timezone
 import os
+import pystray
+from pystray import MenuItem
+from PIL import Image
 
 ##################################################
 ###              Imports propios               ###
@@ -71,15 +74,16 @@ def start_java_process():
             
             # Start the Java process
             java_process = Popen(['java', '-jar', jar_path])
+            print("Id de proceso: ",java_process.pid)
             java_process_started = True
 
         except Exception as e:
             return jsonify({"status": False, "message": f"Error al iniciar el proceso Java: {str(e)}"}), 500
 
-    
-        killjava = java_process.terminate
-        # Terminar el proceso de Java al cerrar la aplicacion de Python
-        atexit.register(killjava)
+        if java_process is not None:
+            killjava = java_process.terminate
+            # Terminar el proceso de Java al cerrar la aplicacion de Python
+            atexit.register(killjava)
 
 ##################################################
 ###                 Endpoints                  ###
@@ -247,39 +251,42 @@ def get_certificates():
     except Exception as e:
         return jsonify({"status": False, "message": f"Error inesperado en get_certificates: {str(e)}"}), 500
 
-
-if __name__ == "__main__":
-    try:
-        response = requests.get("http://localhost:5555/services/rest/serviceStatus")
-        if response.status_code == 200 and response.text == "OK":
-            java_process_started = True
-    except Exception as e:
-        pass
-
-    if not java_process_started:
-        print("Arrancando Java process...")
-        try:
-            # Get the path to the directory containing the executable
-            current_file_path = os.path.abspath(__file__)
-
-            if 'temp' not in current_file_path.lower():
-                jar_path = r'.\dssapp\dss-demo-webapp\target\dss-signature-rest-6.1.RC1.jar'
-            else:
-                exe_dir = os.path.dirname(os.path.abspath(__file__))
-
-                # Construct the path to the JAR file relative to the executable directory
-                jar_path = os.path.join(exe_dir, 'dss-signature-rest-6.1.RC1.jar')
-
-            # Start the Java process
-            java_process = Popen(['java', '-jar', jar_path])
-            java_process_started = True
-            
-        except Exception as e:
-            print(f"Error al iniciar el proceso Java: {str(e)}")
-
-    killjava = java_process.terminate
-    # Terminar el proceso de Java al cerrar la aplicacion de Python
-    atexit.register(killjava)
-
+def run_flask_app():
     app.run(host='127.0.0.1', port=9795, threaded=True)
 
+def on_quit(icon, item):
+    icon.stop()
+    if java_process:
+        java_process.terminate()  # Terminate the Java process
+        java_process.wait()  # Wait for the process to terminate
+    os._exit(0)
+
+def setup(icon):
+    icon.visible = True
+
+# Create an icon for the system tray
+def run_tray_icon():
+    current_file_path = os.path.abspath(__file__)
+    if 'temp' not in current_file_path.lower():
+        image = './images/app_icon_dragon.png'
+    else:
+        exe_dir = os.path.dirname(os.path.abspath(__file__))
+        image = os.path.join(exe_dir, 'app_icon_dragon.png')
+    image = Image.open(image)  # Replace with the path to your icon image
+    menu = (MenuItem('Salir...', on_quit),)
+    icon = pystray.Icon("name", image, "SyraxApp", menu)
+    icon.run(setup)
+
+if __name__ == "__main__":
+
+    java_thread = Thread(target=start_java_process)
+    tray_icon_thread = Thread(target=run_tray_icon)
+    flask_thread = Thread(target=run_flask_app)
+
+    java_thread.start()
+    tray_icon_thread.start()
+    flask_thread.start()
+
+    java_thread.join()
+    tray_icon_thread.join()
+    flask_thread.join()
