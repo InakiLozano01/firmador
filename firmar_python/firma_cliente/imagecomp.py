@@ -1,6 +1,6 @@
 from PIL import Image
-import base64
-import io
+from base64 import b64encode
+from io import BytesIO
 
 def encode_image(image_path, dpi=(200, 200)):
     try:
@@ -10,14 +10,14 @@ def encode_image(image_path, dpi=(200, 200)):
             img = img.convert("L")
         
             # Comprimir la imagen
-            buffer = io.BytesIO()
+            buffer = BytesIO()
             img.save(buffer, format="PNG", optimize=True, dpi=dpi)
             
             # Obtener los bytes de la imagen comprimida
             encoded_image_bytes = buffer.getvalue()
         
         # Codificar la imagen comprimida a base64
-        encoded_image = base64.b64encode(encoded_image_bytes).decode('utf-8')
+        encoded_image = b64encode(encoded_image_bytes).decode('utf-8')
         return encoded_image
     except Exception as e:
         print(f"Error: {str(e)}")
