@@ -53,6 +53,11 @@
             <artifactId>thymeleaf-layout-dialect</artifactId>
         </dependency>
 
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+        </dependency>
+
         <!-- DSS Core dependencies -->
         <dependency>
             <groupId>eu.europa.ec.joinup.sd-dss</groupId>
