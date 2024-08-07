@@ -15,8 +15,8 @@
 
     <properties>
         <java.version>21</java.version>
-        <spring.boot.version>3.1.0</spring.boot.version>
-        <logback.version>1.4.11</logback.version>
+        <spring.boot.version>3.3.2</spring.boot.version>
+        <logback.version>1.5.6</logback.version>
     </properties>
 
     <dependencyManagement>
@@ -46,26 +46,32 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-security</artifactId>
+            <version>3.3.2</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
+            <version>3.3.2</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-thymeleaf</artifactId>
+            <version>3.3.2</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
+            <version>3.3.2</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-validation</artifactId>
+            <version>3.3.2</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-jdbc</artifactId>
+            <version>3.3.2</version>
         </dependency>
         <dependency>
             <groupId>eu.europa.ec.joinup.sd-dss</groupId>
@@ -86,10 +92,12 @@
         <dependency>
             <groupId>ch.qos.logback</groupId>
             <artifactId>logback-classic</artifactId>
+            <version>1.5.6</version>
         </dependency>
         <dependency>
             <groupId>ch.qos.logback</groupId>
             <artifactId>logback-core</artifactId>
+            <version>1.5.6</version>
         </dependency>
         <dependency>
             <groupId>org.digidoc4j.dss</groupId>
@@ -150,7 +158,7 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
-                <version>${spring.boot.version}</version>
+                <version>3.3.2</version>
                 <executions>
                     <execution>
                         <goals>
@@ -191,12 +199,13 @@
                 <dependency>
                     <groupId>org.springframework.boot</groupId>
                     <artifactId>spring-boot-starter-tomcat</artifactId>
+                    <version>3.3.2</version>
                     <scope>provided</scope>
                 </dependency>
                 <dependency>
                     <groupId>org.hsqldb</groupId>
                     <artifactId>hsqldb</artifactId>
-                    <version>2.6.0</version>
+                    <version>2.7.3</version>
                     <scope>runtime</scope>
                 </dependency>
             </dependencies>

@@ -152,9 +152,9 @@ def get_certificates():
                 save_signed_pdf(lastpdf, signed_pdf_filename+"signE.pdf")
         
         if isdigital:
-            return jsonify({"status": "success", "data_to_sign": data_to_sign}), 200
+            return jsonify({"status": True, "data_to_sign": data_to_sign}), 200
         else:
-            return jsonify({"status": "success", "pdf": signed_pdf_base64_closed}), 200
+            return jsonify({"status": True, "pdf": signed_pdf_base64_closed}), 200
         
     except PDFSignatureError as e:
         return jsonify({"status": "error", "message": "Error en get_certificates: " + str(e)}), 500
@@ -177,10 +177,10 @@ def sign_pdf_firmas():
                 lastpdf = get_number_and_date_then_close(signed_pdf_base64, idDoc)
                 lastsignedpdf = signown(lastpdf, True)
                 save_signed_pdf(lastsignedpdf, signed_pdf_filename+"signDandclose.pdf")
-                return jsonify({"status": "success", "pdf": lastsignedpdf}), 200
+                return jsonify({"status": True, "pdf": lastsignedpdf}), 200
             case (True, False):
                 save_signed_pdf(signed_pdf_base64, signed_pdf_filename+"signD.pdf")
-                return jsonify({"status": "success", "pdf": signed_pdf_base64}), 200
+                return jsonify({"status": True, "pdf": signed_pdf_base64}), 200
 
     except Exception as e:
         logging.error(f"Unexpected error in sign_pdf_firmas: {str(e)}")

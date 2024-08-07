@@ -5,7 +5,7 @@
 import base64
 import io
 import requests
-from PyPDF2 import PdfFileReader
+from PyPDF2 import PdfReader
 from flask import jsonify
 
 def digestpdf(pdf, certificate, certchain, stamp, field_id, encoded_image, current_time):
@@ -53,7 +53,12 @@ def digestpdf(pdf, certificate, certchain, stamp, field_id, encoded_image, curre
                         "alignmentHorizontal": "NONE",
                         "alignmentVertical": "NONE",
                         "imageScaling": "ZOOM_AND_CENTER",
-                        "backgroundColor": None,
+                        "backgroundColor": {
+                            "red": 255,
+                            "green": 255,
+                            "blue": 255,
+                            "alpha": 255
+                        },
                         "dpi": 200,
                         "image": {
                             "bytes": encoded_image,
@@ -63,13 +68,13 @@ def digestpdf(pdf, certificate, certchain, stamp, field_id, encoded_image, curre
                             "fieldId": f"{field_id}",
                             "originX": 0,
                             "originY": 0,
-                            "width": None,
-                            "height": None,
-                            "rotation": None,
-                            "page": len(PdfFileReader(io.BytesIO(base64.b64decode(pdf))).pages)
+                            "width": 0,
+                            "height": 0,
+                            "rotation": 0,
+                            "page": len(PdfReader(io.BytesIO(base64.b64decode(pdf))).pages)
                         },
                         "textParameters": None,
-                        "zoom": 0
+                        "zoom": 100
                     },
                     "signatureIdToCounterSign": None,
                     "blevelParams": {
@@ -102,6 +107,7 @@ def digestpdf(pdf, certificate, certchain, stamp, field_id, encoded_image, curre
                     "name": "document.pdf"
                 }
             }
+        
         print(body)
         response = requests.post('http://localhost:5555/services/rest/getDataToSign', json=body)
         print(response.json())

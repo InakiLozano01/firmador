@@ -48,14 +48,14 @@
 		<slf4j.version>2.0.9</slf4j.version>
 		<logback-classic.version>1.3.14</logback-classic.version> <!-- Version 1.4+ supports only Java 11+ -->
 
-		<cxf.version>4.0.3</cxf.version>
+		<cxf.version>4.0.5</cxf.version>
 		<swagger-ui.version>5.10.3</swagger-ui.version>
 		<jackson-jakarta-rs-json-provider.version>2.16.0</jackson-jakarta-rs-json-provider.version>
 		<jakarta.xml.bind-api.version>3.0.1</jakarta.xml.bind-api.version>
 		<commons-io.version>2.15.1</commons-io.version>
 		<hikaricp.version>4.0.3</hikaricp.version> <!-- Higher version does not support Java 8 -->
 		<freemarker.version>2.3.32</freemarker.version>
-		<hsqldb.version>2.5.2</hsqldb.version> <!-- Higher version does not support Java 8 -->
+		<hsqldb.version>2.7.3</hsqldb.version> <!-- Higher version does not support Java 8 -->
 		<fop-core.version>2.9</fop-core.version>
 		<nexu.version>1.22</nexu.version>
 		
@@ -245,7 +245,7 @@
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-dependencies</artifactId>
 				<type>pom</type>
-				<version>3.2.0</version>
+				<version>3.3.2</version>
 				<scope>import</scope>
 			</dependency>
 
@@ -377,42 +377,42 @@
 			<dependency>
 				<groupId>com.itextpdf</groupId>
 				<artifactId>itext7-core</artifactId>
-				<version>7.1.16</version>
+				<version>8.0.4</version>
 			</dependency>
 			<dependency>
 				<groupId>com.itextpdf</groupId>
 				<artifactId>kernel</artifactId>
-				<version>7.1.16</version>
+				<version>8.0.4</version>
 			</dependency>
 			<dependency>
 				<groupId>com.itextpdf</groupId>
 				<artifactId>forms</artifactId>
-				<version>7.1.16</version>
+				<version>8.0.4</version>
 			</dependency>
 			<dependency>
 				<groupId>com.itextpdf</groupId>
 				<artifactId>layout</artifactId>
-				<version>7.1.16</version>
+				<version>8.0.4</version>
 			</dependency>
 			<dependency>
 				<groupId>com.itextpdf</groupId>
 				<artifactId>kernel</artifactId>
-				<version>7.1.16</version>
+				<version>8.0.4</version>
 			</dependency>
 			<dependency>
 				<groupId>com.itextpdf</groupId>
 				<artifactId>layout</artifactId>
-				<version>7.1.16</version>
+				<version>8.0.4</version>
 			</dependency>
 			<dependency>
 				<groupId>com.itextpdf</groupId>
 				<artifactId>forms</artifactId>
-				<version>7.1.16</version>
+				<version>8.0.4</version>
 			</dependency>
 			<dependency>
 				<groupId>com.itextpdf</groupId>
 				<artifactId>sign</artifactId>
-				<version>7.1.16</version>
+				<version>8.0.4</version>
 			</dependency>
 			<dependency>
 				<groupId>org.bouncycastle</groupId>

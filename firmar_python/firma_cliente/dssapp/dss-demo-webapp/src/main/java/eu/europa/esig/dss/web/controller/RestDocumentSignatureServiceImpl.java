@@ -86,11 +86,13 @@ public class RestDocumentSignatureServiceImpl {
 
         signatureParameters.setBLevelParams(bLevelParams);
         SignatureImageParameters imageParameters = new SignatureImageParameters();
-        DSSDocument image = new InMemoryDocument(
-                dataToSignDto.getParameters().getImageParameters().getImage().getBytes());
-        image.setName(dataToSignDto.getParameters().getImageParameters().getImage().getName());
-        imageParameters
-                .setImage(image);
+        if (dataToSignDto.getParameters().getImageParameters().getImage() != null) {
+            DSSDocument image = new InMemoryDocument(
+                    dataToSignDto.getParameters().getImageParameters().getImage().getBytes());
+            image.setName(dataToSignDto.getParameters().getImageParameters().getImage().getName());
+            imageParameters
+                    .setImage(image);
+        }
         imageParameters
                 .setAlignmentHorizontal(dataToSignDto.getParameters().getImageParameters().getAlignmentHorizontal());
         imageParameters.setAlignmentVertical(dataToSignDto.getParameters().getImageParameters().getAlignmentVertical());
@@ -112,6 +114,13 @@ public class RestDocumentSignatureServiceImpl {
         fieldParameters
                 .setFieldId(dataToSignDto.getParameters().getImageParameters().getFieldParameters().getFieldId());
         fieldParameters.setPage(dataToSignDto.getParameters().getImageParameters().getFieldParameters().getPage());
+        fieldParameters.setHeight(dataToSignDto.getParameters().getImageParameters().getFieldParameters().getHeight());
+        fieldParameters.setWidth(dataToSignDto.getParameters().getImageParameters().getFieldParameters().getWidth());
+        fieldParameters
+                .setOriginX(dataToSignDto.getParameters().getImageParameters().getFieldParameters().getOriginX());
+        fieldParameters
+                .setOriginY(dataToSignDto.getParameters().getImageParameters().getFieldParameters().getOriginY());
+        fieldParameters.setRotation(null);
         imageParameters.setFieldParameters(fieldParameters);
         imageParameters.setImageScaling(dataToSignDto.getParameters().getImageParameters().getImageScaling());
         SignatureImageTextParameters textParameters = new SignatureImageTextParameters();
