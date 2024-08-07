@@ -15,3 +15,4 @@ firmar_python/firma_cliente/*.spec
 firmar_python/firma_cliente/dist
 firmar_python/firma_cliente/build
 firmar_python/firma_cliente/token_lib.json
+
