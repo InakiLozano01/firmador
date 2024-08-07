@@ -1,18 +1,18 @@
 import PyKCS11
-import base64
+from base64 import b64encode, b64decode
 from flask import jsonify
 
 def get_private_key_and_certificate(session):
     """
-    Retrieve the private key and certificate from the token session.
+    Recupera la clave privada y el certificado de la sesion.
     """
     try:
-        # Retrieve objects (private key and certificate)
+        # Recuperar objetos (clave privada y certificado)
         private_key_objects = session.findObjects([(PyKCS11.CKA_CLASS, PyKCS11.CKO_PRIVATE_KEY)])
         certificate_objects = session.findObjects([(PyKCS11.CKA_CLASS, PyKCS11.CKO_CERTIFICATE)])
         
         if not private_key_objects or not certificate_objects:
-            return jsonify({"status": "error", "message": "No se encontraron claves privadas o certificados en el token."}), 404
+            return jsonify({"status": "error", "message": "No se encontraron claves privadas o certificados en la sesion."}), 404
         
         private_key = private_key_objects[0]
         
@@ -24,7 +24,7 @@ def get_private_key_and_certificate(session):
 
 def correct_base64_padding(data):
     """
-    Correct the base64 padding of the given data.
+    Correcion del pading en base64 de los datos.
     """
     missing_padding = len(data) % 4
     if missing_padding != 0:
@@ -33,10 +33,10 @@ def correct_base64_padding(data):
 
 def sign_data_with_private_key(session, private_key, data_to_sign_base64):
     """
-    Sign the given data with the private key from the token session.
+    Firma los datos con la clave privada recuperada de la sesion.
     """
     data_to_sign_base64 = correct_base64_padding(data_to_sign_base64)
-    data_to_sign_bytes = base64.b64decode(data_to_sign_base64)
+    data_to_sign_bytes = b64decode(data_to_sign_base64)
     
     mechanism = PyKCS11.Mechanism(PyKCS11.CKM_SHA256_RSA_PKCS, None)
     try:
@@ -46,13 +46,13 @@ def sign_data_with_private_key(session, private_key, data_to_sign_base64):
     except Exception as e:
         return jsonify({"status": "error", "message": f"Error al firmar los datos: {str(e)}"}), 500
     
-    # Convert the signature to base64 for sending to DSS
-    signature_base64 = base64.b64encode(signature).decode("utf-8")
+    # Convertir la firma a base64 para enviar a DSS
+    signature_base64 = b64encode(signature).decode("utf-8")
     return signature_base64, 200
 
 def sign_multiple_data(session, data_to_sign_list):
     """
-    Sign multiple data items using the private key from the token session.
+    Firmar datos multiples usando la clave privada recuperada de la sesion.
     """
     try:
         private_key = get_private_key_and_certificate(session)
@@ -61,8 +61,13 @@ def sign_multiple_data(session, data_to_sign_list):
         for data_to_sign_base64 in data_to_sign_list:
             signature_base64, code = sign_data_with_private_key(session, private_key, data_to_sign_base64)
             if code != 200:
+                session.logout()
+                session.closeSession()
                 return jsonify({"status": "error", "message": "Error al firmar los datos."}), code
             signatures.append(signature_base64)
+        
+        session.logout()
+        session.closeSession()
         
         return signatures, 200
     except Exception as e:

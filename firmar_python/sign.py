@@ -2,7 +2,7 @@
 ###              Imports externos              ###
 ##################################################
 
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify
 import base64
 import time as tiempo
 import logging
@@ -55,9 +55,6 @@ pdf_b64 = None
 isdigital = None
 isclosing = None
 closingplace = None
-closing_number = None
-closing_date = None
-fieldValues = None
 json_fieldValues = None
 idDoc = None
 
@@ -87,7 +84,7 @@ def save_signed_pdf(signed_pdf_base64, filename):
 
 @app.route('/firma_init', methods=['POST'])
 def get_certificates():
-    global pdf_b64, current_time, certificates, signed_pdf_filename, field_id, stamp, area, name, datetimesigned, custom_image, isdigital, isclosing, closingplace, closing_number, closing_date, fieldValues, signed_pdf_filename, json_fieldValues, idDoc
+    global pdf_b64, current_time, certificates, field_id, stamp, area, name, datetimesigned, custom_image, isdigital, isclosing, closingplace, signed_pdf_filename, idDoc
     
     try:   
         request._load_form_data()
@@ -169,9 +166,9 @@ def get_certificates():
                 save_signed_pdf(signed_pdf_base64_closed, signed_pdf_filename+"signE.pdf")
         
         if isdigital:
-            return jsonify({"status": "success", "data_to_sign": data_to_sign}), 200
+            return jsonify({"status": True, "data_to_sign": data_to_sign}), 200
         else:
-            return jsonify({"status": "success", "pdf": signed_pdf_base64_closed}), 200
+            return jsonify({"status": True, "pdf": signed_pdf_base64_closed}), 200
         
     except PDFSignatureError as e:
         return jsonify({"status": "error", "message": "Error en get_certificates: " + str(e)}), 500
@@ -196,10 +193,10 @@ def sign_pdf_firmas():
                         return jsonify({"status": "error", "message": "Error al cerrar PDF: " + response['message']}), 500
                 lastsignedpdf = signown(lastpdf, True)
                 save_signed_pdf(lastsignedpdf, signed_pdf_filename+"signDandclose.pdf")
-                return jsonify({"status": "success", "pdf": lastsignedpdf}), 200
+                return jsonify({"status": True, "pdf": lastsignedpdf}), 200
             case (True, False):
                 save_signed_pdf(signed_pdf_base64, signed_pdf_filename+"signD.pdf")
-                return jsonify({"status": "success", "pdf": signed_pdf_base64}), 200
+                return jsonify({"status": True, "pdf": signed_pdf_base64}), 200
 
     except Exception as e:
         logging.error(f"Unexpected error in sign_pdf_firmas: {str(e)}")
@@ -326,3 +323,82 @@ def get_number_and_date_then_close(pdfToClose, idDoc):
     finally:
         if conn:
             conn.close()
+
+@app.route('/firmalote', methods=['POST'])
+def firmalote():
+    global pdf_b64, current_time, certificates,  field_id, stamp, area, name, datetimesigned, custom_image, isdigital, isclosing, closingplace, idDoc, signed_pdf_filename
+    signed_pdf_filename = datetime.now().strftime("pdf_%d_%m_%Y_%H%M%S")
+    data = request.get_json()
+    pdfs = data['pdfs']
+    certificates = data['certificates']
+    array_pdfs = []
+
+    for pdf in pdfs:
+        pdf_b64 = pdf['pdf']
+        field_id = pdf['firma_lugar']
+        name = pdf['firma_nombre']
+        stamp = pdf['firma_sello']
+        area = pdf['firma_area']
+        
+        isclosing = pdf['firma_cierra']        
+        closingplace = pdf['firma_lugarcierre']
+        idDoc = pdf['id_doc']
+        isdigital = pdf['firma_digital']
+
+        signatureValue = pdf['signatureValue']
+
+        current_time = int(tiempo.time() * 1000)
+        datetimesigned = datetime.now(pytz.utc).astimezone(pytz.timezone('America/Argentina/Buenos_Aires')).strftime("%Y-%m-%d %H:%M:%S")
+
+        if isdigital:
+            name = extract_certificate_info_name(certificates['certificate'])
+
+        if isdigital:
+            custom_image = create_signature_image(
+                            f"{name}\n{datetimesigned}\n{stamp}\n{area}",
+                            encoded_image,
+                            "token"
+                        )
+        else:
+            custom_image = create_signature_image(
+                            f"Sistema Yunga TC Tucumán\n{datetimesigned}",
+                            encoded_image,
+                            "cert"
+                        )
+            
+        match (isdigital, isclosing):
+            case (True, True):
+                signed_pdf_response = sign_document_tapir(pdf_b64, signatureValue, certificates, current_time, field_id, stamp, custom_image)
+                signed_pdf_base64 = signed_pdf_response['bytes']
+                lastpdf, code = get_number_and_date_then_close(signed_pdf_base64, idDoc)
+                if code == 500:
+                    response = lastpdf.get_json()
+                    if response['status'] == "error":
+                        return jsonify({"status": False, "message": "Error al cerrar PDF: " + response['message']}), 500
+                lastsignedpdf = signown(lastpdf, True)
+                save_signed_pdf(lastsignedpdf, signed_pdf_filename+"signDandclose.pdf")
+                array_pdfs.append(lastsignedpdf)
+            
+            case (True, False):
+                signed_pdf_response = sign_document_tapir(pdf_b64, signatureValue, certificates, current_time, field_id, stamp, custom_image)
+                signed_pdf_base64 = signed_pdf_response['bytes']
+                save_signed_pdf(signed_pdf_base64, signed_pdf_filename+"signD.pdf")
+                array_pdfs.append(signed_pdf_base64)
+            
+            case (False, True):
+                signed_pdf_base64 = signown(pdf_b64, False)
+                lastpdf, code = get_number_and_date_then_close(signed_pdf_base64, idDoc)
+                if code == 500:
+                    response = lastpdf.get_json()
+                    if response['status'] == "error":
+                        return jsonify({"status": False, "message": "Error al cerrar PDF: " + response['message']}), 500
+                signed_pdf_base64_closed = signown(lastpdf, True)
+                save_signed_pdf(signed_pdf_base64_closed, signed_pdf_filename+"signEandclose.pdf")
+                array_pdfs.append(signed_pdf_base64_closed)
+            
+            case (False, False):
+                signed_pdf_base64 = signown(pdf_b64, False)
+                save_signed_pdf(signed_pdf_base64, signed_pdf_filename+"signE.pdf")
+                array_pdfs.append(signed_pdf_base64)
+
+    return jsonify({"status": True, "pdfs": array_pdfs}), 200
