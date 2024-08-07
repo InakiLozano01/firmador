@@ -15,7 +15,6 @@ def select_token_slot(token_info, result, mode):
         result.append(index)
         token_window.destroy()
 
-    time.sleep(1)
     mainwindow = tk.Tk()
     mainwindow.withdraw()  # Hide the mainwindow window
 
