@@ -1,6 +1,6 @@
 services:
   flask-app:
-    container_name: firmador-python
+    container_name: firmador-python-prod
     build:
       context: ./firmar_python
       dockerfile: Dockerfile
