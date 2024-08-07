@@ -4,6 +4,8 @@ from tkinter.ttk import Button, Style
 from flask import jsonify
 import os
 from PIL import Image, ImageTk
+import time
+
 def select_token_slot(token_info, result, mode):
     def on_select(evt):
         w = evt.widget
@@ -13,6 +15,7 @@ def select_token_slot(token_info, result, mode):
         result.append(index)
         token_window.destroy()
 
+    time.sleep(1)
     mainwindow = tk.Tk()
     mainwindow.withdraw()  # Hide the mainwindow window
 
@@ -65,6 +68,7 @@ def select_token_slot(token_info, result, mode):
     mainwindow.destroy()
 
 def select_library_file():
+    time.sleep(1)
     try:
         return filedialog.askopenfilename(initialdir="C:\\Windows\\System32\\", title="Seleccione la biblioteca DLL", filetypes=[("DLL files", "*.dll")]), 200
     except Exception as e:
@@ -73,6 +77,7 @@ def select_library_file():
 def get_pin_from_user(mode):
     global getpin
     getpin = None
+    time.sleep(1)
 
     def aceptar():
         global getpin
@@ -157,6 +162,7 @@ def select_certificate(certificates, result, mode):
         result.append(index)
         cert_window.destroy()
 
+    time.sleep(1)
     certs = tk.Tk()
     certs.withdraw()  # Hide the root window
 
