@@ -1,6 +1,7 @@
 services:
   flask-app:
-    container_name: firmador-python-prod
+    container_name: firmador-python-test
+    restart: always
     build:
       context: ./firmar_python
       dockerfile: Dockerfile
@@ -8,9 +9,10 @@ services:
       - "5005:5000"
     volumes:
       - ./firmar_python:/app
+      - ../devenv/documentos:/var/documentos
     networks:
-      - firmador_signnet
+      - firmador_firmador_signnet
 
 networks:
-  firmador_signnet:
+  firmador_firmador_signnet:
     external: true

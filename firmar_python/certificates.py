@@ -28,7 +28,7 @@ def extract_certificate_info(cert_base64):
         return cuil, common_name, email, 200
     except Exception as e:
         logging.error(f"Error al extraer información del certificado: {str(e)}")
-        raise jsonify({"status": False, "message": "Failed to extract certificate information."}), 400
+        return jsonify({"status": False, "message": "Failed to extract certificate information."}), 400
     
 ###    Funcion para extraer el nombre de un certificado X.509    ###
 def extract_certificate_info_name(cert_base64):
