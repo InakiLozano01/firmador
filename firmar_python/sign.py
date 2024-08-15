@@ -346,28 +346,49 @@ def get_number_and_date_then_close(pdfToClose, idDoc):
 
 def unlockPDF_and_close_task(idDoc, idUser, hashDoc, isClosed, isSigned=1):
     global conn
-    if conn:
-        cursor = conn.cursor()
-    else:
-        dbname = os.getenv('DB_NAME')
-        user = os.getenv('DB_USER')
-        password = os.getenv('DB_PASSWORD')
-        host = os.getenv('DB_HOST')
-        port = os.getenv('DB_PORT')
-        # Detalles de conexión
-        conn_params = {
-            'dbname': dbname,
-            'user': user,
-            'password': password,
-            'host': host,
-            'port': port  # Puerto por defecto de PostgreSQL
-        }
-        try:
-            # Establecer la conexión
-            conn = psycopg2.connect(**conn_params)
+    try:
+        if conn:
             cursor = conn.cursor()
-        except Exception as e:
-            return jsonify({"status": "error", "message": "Error al conectar a la base de datos: " + str(e)}), 500
+        else:
+            dbname = os.getenv('DB_NAME')
+            user = os.getenv('DB_USER')
+            password = os.getenv('DB_PASSWORD')
+            host = os.getenv('DB_HOST')
+            port = os.getenv('DB_PORT')
+            # Detalles de conexión
+            conn_params = {
+                'dbname': dbname,
+                'user': user,
+                'password': password,
+                'host': host,
+                'port': port  # Puerto por defecto de PostgreSQL
+            }
+            try:
+                # Establecer la conexión
+                conn = psycopg2.connect(**conn_params)
+                cursor = conn.cursor()
+            except Exception as e:
+                return jsonify({"status": "error", "message": "Error al conectar a la base de datos: " + str(e)}), 500
+    except psycopg2.InterfaceError as e:
+            dbname = os.getenv('DB_NAME')
+            user = os.getenv('DB_USER')
+            password = os.getenv('DB_PASSWORD')
+            host = os.getenv('DB_HOST')
+            port = os.getenv('DB_PORT')
+            # Detalles de conexión
+            conn_params = {
+                'dbname': dbname,
+                'user': user,
+                'password': password,
+                'host': host,
+                'port': port  # Puerto por defecto de PostgreSQL
+            }
+            try:
+                # Establecer la conexión
+                conn = psycopg2.connect(**conn_params)
+                cursor = conn.cursor()
+            except Exception as e:
+                return jsonify({"status": "error", "message": "Error al conectar a la base de datos: " + str(e)}), 500
 
     try:
         print (idDoc, idUser, isSigned, isClosed, hashDoc)
@@ -391,6 +412,7 @@ def firmalote():
         certificates = data['certificates']
         array_pdfs = []
         idDocsSigneds = []
+        errorsStack = []
     except Exception as e:
         return jsonify({"status": False, "message": "Error al obtener los datos de la request: " + str(e)}), 500
 
@@ -413,13 +435,17 @@ def firmalote():
             idUSer = pdf['id_usuario']
             filepath = pdf['path_file']
 
-            current_time = int(tiempo.time() * 1000)
+            if pdf['currentTime']:
+                current_time = pdf['currentTime']
+            else:
+                current_time = int(tiempo.time() * 1000)
             datetimesigned = datetime.now(pytz.utc).astimezone(pytz.timezone('America/Argentina/Buenos_Aires')).strftime("%Y-%m-%d %H:%M:%S")
 
             if isdigital:
                 name, code = extract_certificate_info_name(certificates['certificate'])
                 if code != 200:
-                    raise PDFSignatureError("Error al extraer el nombre del certificado")
+                    errorsStack.append({"idDocFailed": idDoc, "message": "Error al extraer nombre del certificado"})
+                    raise PDFSignatureError("Error al extraer nombre del certificado")
 
             if isdigital:
                 custom_image, code = create_signature_image(
@@ -428,6 +454,7 @@ def firmalote():
                                 "token"
                             )
                 if code != 200:
+                    errorsStack.append({"idDocFailed": idDoc, "message": "Error al crear imagen de firma"})
                     raise PDFSignatureError("Error al crear imagen de firma")
                 
             else:
@@ -437,7 +464,8 @@ def firmalote():
                                 "cert"
                             )
                 if code != 200:
-                    raise PDFSignatureError("Error al crear imagen de firma")
+                   errorsStack.append({"idDocFailed": idDoc, "message": "Error al crear imagen de firma"})
+                   raise PDFSignatureError("Error al crear imagen de firma")
                 
                 
             match (isdigital, isclosing):
@@ -446,17 +474,19 @@ def firmalote():
                     print("main")
                     print(code)
                     if code == 500:
+                        errorsStack.append({"idDocFailed": idDoc, "message": "Error al firmar PDF: Error en sign_document_tapir"})
                         raise PDFSignatureError("Error al firmar PDF: Error en sign_document_tapir")
                     signed_pdf_base64 = signed_pdf_response['bytes']
                     lastpdf, code = get_number_and_date_then_close(signed_pdf_base64, idDoc)
                     if code == 500:
                         response = lastpdf.get_json()
                         if response['status'] == "error":
+                            errorsStack.append({"idDocFailed": idDoc, "message": "Error al cerrar PDF: Error en get_number_and_date_then_close"})
                             raise PDFSignatureError("Error al cerrar PDF: Error en get_number_and_date_then_close")
                     lastsignedpdf, code = signown(lastpdf, True)
                     print(code)
                     if code != 200:
-                        print("Error en signown")
+                        errorsStack.append({"idDocFailed": idDoc, "message": "Error al firmar PDF: Error en signown"})
                         raise PDFSignatureError("Error al firmar PDF: Error en signown")
                     finalpdf = lastsignedpdf
                     isClosed = True
@@ -465,6 +495,7 @@ def firmalote():
                 case (True, False):
                     signed_pdf_response, code = sign_document_tapir(pdf_b64, signatureValue, certificates, current_time, field_id, stamp, custom_image)
                     if code == 500:
+                        errorsStack.append({"idDocFailed": idDoc, "message": "Error al firmar PDF: Error en sign_document_tapir"})
                         raise PDFSignatureError("Error al firmar PDF: Error en sign_document_tapir")
                     signed_pdf_base64 = signed_pdf_response['bytes']
                     finalpdf = signed_pdf_base64
@@ -474,14 +505,17 @@ def firmalote():
                 case (False, True):
                     signed_pdf_base64, code = signown(pdf_b64, False)
                     if code != 200:
+                        errorsStack.append({"idDocFailed": idDoc, "message": "Error al firmar PDF: Error en signown"})
                         raise PDFSignatureError("Error al firmar PDF: Error en signown")
                     lastpdf, code = get_number_and_date_then_close(signed_pdf_base64, idDoc)
                     if code == 500:
                         response = lastpdf.get_json()
                         if response['status'] == "error":
+                            errorsStack.append({"idDocFailed": idDoc, "message": "Error al cerrar PDF: Error en get_number_and_date_then_close"})
                             raise PDFSignatureError("Error al cerrar PDF: Error en get_number_and_date_then_close")
                     signed_pdf_base64_closed, code = signown(lastpdf, True)
                     if code != 200:
+                        errorsStack.append({"idDocFailed": idDoc, "message": "Error al firmar PDF: Error en signown"})
                         raise PDFSignatureError("Error al firmar PDF: Error en signown")
                     finalpdf = signed_pdf_base64_closed
                     isClosed = True
@@ -490,6 +524,7 @@ def firmalote():
                 case (False, False):
                     signed_pdf_base64, code = signown(pdf_b64, False)
                     if code != 200:
+                        errorsStack.append({"idDocFailed": idDoc, "message": "Error al firmar PDF: Error en signown"})
                         raise PDFSignatureError("Error al firmar PDF: Error en signown")
                     finalpdf = signed_pdf_base64
                     isClosed = False
@@ -498,24 +533,28 @@ def firmalote():
 
             hash_object = hashlib.sha256(io.BytesIO(base64.b64decode(finalpdf)).getvalue())
             hashDoc = hash_object.hexdigest()
-            print(hashDoc)
 
             message, code = unlockPDF_and_close_task(idDoc, idUSer, hashDoc, isClosed)
             if code != 200:
-                raise PDFSignatureError("Error al finalizar proceso: Error en unlockPDF_and_close_task")
-            else:
-                idDocsSigneds.append(idDoc)
+                errorsStack.append({"idDocFailed": idDoc, "message": "Error en unlockPDF_and_close_task"})
+                raise PDFSignatureError("Error en unlockPDF_and_close_task")
 
             message, code = save_signed_pdf(finalpdf, filepath)
             if code != 200:
-                raise PDFSignatureError("Error al guardar PDF firmado: Error en save_signed_pdf")
+                errorsStack.append({"idDocFailed": idDoc, "message": "Error al guardar PDF firmado"})
+                raise PDFSignatureError("Error al guardar PDF firmado")
+            else:
+                idDocsSigneds.append(idDoc)
             
-        except Exception as e:
+        except PDFSignatureError as e:
             conn.rollback()
             conn.close()
-            return jsonify({"status": False, "message": "Error al firmar PDF: " + str(e)}), 500
         
         conn.commit()
         conn.close()
 
-    return jsonify({"status": True, "docsSigned": idDocsSigneds}), 200
+    docsNotSigned = []
+    for error in errorsStack:
+        docsNotSigned.append(error['idDocFailed'])
+
+    return jsonify({"status": True, "docsSigned": idDocsSigneds, "docsNotSigned": docsNotSigned}), 200
