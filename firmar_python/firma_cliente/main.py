@@ -211,7 +211,7 @@ def get_certificates():
 
         certificate = response["response"]["certificate"]
         certificate_chain = response["response"]["certificateChain"]
-
+        response["response"]["currentTimes"] = []
         data_to_sign_list = []
 
         for pdf, field, name, stamp, area in zip(pdfs, fields, names, stamps, areas):
@@ -226,6 +226,7 @@ def get_certificates():
                 image_path = os.path.join(exe_dir, 'logo_tribunal_para_tapir_250px.png')
             encoded_image = encode_image(image_path)
             current_time = int(tiempo.time() * 1000)
+            response["response"]["currentTimes"].append(current_time)
             datetimesigned = datetime.now(utc).astimezone(timezone('America/Argentina/Buenos_Aires')).strftime("%Y-%m-%d %H:%M:%S")
             custom_image = create_signature_image(
                     f"{name}\n{datetimesigned}\n{stamp}\n{area}",
