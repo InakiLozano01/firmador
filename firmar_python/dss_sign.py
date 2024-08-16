@@ -6,6 +6,7 @@ from errors import PDFSignatureError
 import io 
 from PyPDF2 import PdfReader
 from flask import jsonify
+import json
 
 def get_data_to_sign_own(pdf, certificates, current_time, field_id, stamp, encoded_image):
     try:
@@ -531,6 +532,10 @@ def sign_document_tapir(pdf, signature_value, certificates, current_time, field_
                 "asicContainerType": None,
                 "signatureLevel": "PAdES_BASELINE_B",
                 "signaturePackaging": "ENVELOPED",
+                "embedXML": False,
+                "manifestSignature": False,
+                "jwsSerializationType": None,
+                "sigDMechanism": None,
                 "signatureAlgorithm": "RSA_SHA256",
                 "digestAlgorithm": "SHA256",
                 "encryptionAlgorithm": "RSA",
@@ -558,7 +563,12 @@ def sign_document_tapir(pdf, signature_value, certificates, current_time, field_
                     "alignmentHorizontal": None,
                     "alignmentVertical": None,
                     "imageScaling": "ZOOM_AND_CENTER",
-                    "backgroundColor": None,
+                    "backgroundColor": {
+                        "red": 255,
+                        "green": 255,
+                        "blue": 255,
+                        "alpha": 255
+                    },
                     "dpi": 200,
                     "image": {
                         "bytes": encoded_image,
@@ -568,13 +578,13 @@ def sign_document_tapir(pdf, signature_value, certificates, current_time, field_
                         "fieldId": f"{field_id}",
                         "originX": 0,
                         "originY": 0,
-                        "width": None,
-                        "height": None,
-                        "rotation": None,
+                        "width": 0,
+                        "height": 0,
+                        "rotation": 0,
                         "page": len(PdfReader(io.BytesIO(base64.b64decode(pdf))).pages)
                     },
                     "textParameters": None,
-                    "zoom": None
+                    "zoom": 100
                 },
                 "signatureIdToCounterSign": None,
                 "blevelParams": {
@@ -611,6 +621,10 @@ def sign_document_tapir(pdf, signature_value, certificates, current_time, field_
                 "name": "document.pdf"
             }
         }
+        print(body)
+        body_str = json.dumps(body, ensure_ascii=False, indent=4)
+        with open('./body.txt', 'w', encoding='utf-8') as file:
+            file.write(str(body_str))
         response = requests.post('http://java-webapp:5555/services/rest/signature/one-document/signDocument', json=body)
         print(response.status_code)
         if response.status_code == 200:

@@ -437,6 +437,7 @@ def firmalote():
 
             if pdf['currentTime']:
                 current_time = pdf['currentTime']
+                print(current_time)
             else:
                 current_time = int(tiempo.time() * 1000)
             datetimesigned = datetime.now(pytz.utc).astimezone(pytz.timezone('America/Argentina/Buenos_Aires')).strftime("%Y-%m-%d %H:%M:%S")
@@ -448,14 +449,8 @@ def firmalote():
                     raise PDFSignatureError("Error al extraer nombre del certificado")
 
             if isdigital:
-                custom_image, code = create_signature_image(
-                                f"{name}\n{datetimesigned}\n{stamp}\n{area}",
-                                encoded_image,
-                                "token"
-                            )
-                if code != 200:
-                    errorsStack.append({"idDocFailed": idDoc, "message": "Error al crear imagen de firma"})
-                    raise PDFSignatureError("Error al crear imagen de firma")
+                custom_image = pdf['custom_image']
+                print(custom_image)
                 
             else:
                 custom_image, code = create_signature_image(
