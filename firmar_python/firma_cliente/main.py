@@ -19,8 +19,6 @@ import os
 import pystray
 from pystray import MenuItem
 from PIL import Image
-import PyPDF2
-import hashlib
 
 ##################################################
 ###              Imports propios               ###
@@ -236,56 +234,19 @@ def get_certificates():
                     "token",
                     mode
                 )
-            response["response"]["images"].append(custom_image)
-            # Generate the digest of the PDF content
-            pdf_content_digest = hashlib.sha256(pdf.encode('utf-8')).digest()
+            data_to_sign_response = digestpdf(pdf, certificate, certificate_chain, stamp, field, custom_image, current_time)
+            if data_to_sign_response is None or 'bytes' not in data_to_sign_response:
+                return jsonify({"status": False, "message": "Error al obtener datos para firmar."}), 500
+            data_to_sign = data_to_sign_response['bytes']
+            data_to_sign_list.append(data_to_sign)
 
-            # Mock signing process (replace with actual PKCS#11 signature code)
-            data_to_sign_list.append(pdf_content_digest)
-
-        # Simulate signing the data (you will need to replace this with actual PKCS#11 signing)
         signatureValues = sign_multiple_data(session, data_to_sign_list)
+        
         response["response"]["signatureValues"] = signatureValues
-        signed_pdfs = []
 
-        # Insert the signatures into the PDFs and save the signed PDFs
-        for index, (pdf_b64, signature) in enumerate(zip(pdfs, signatureValues)):
-            output_pdf_path = f"signed_document_{index + 1}.pdf"
-            
-            # Decode the base64-encoded PDF
-            pdf_bytes = base64.b64decode(pdf_b64)
-            
-            # Use the in-memory bytes object with PyPDF2
-            with io.BytesIO(pdf_bytes) as pdf_io, open(output_pdf_path, "wb") as output_pdf:
-                reader = PyPDF2.PdfReader(pdf_io)
-                writer = PyPDF2.PdfWriter()
-
-                # Copy all pages to the writer
-                for page in reader.pages:
-                    writer.add_page(page)
-
-                # Get the last page number (0-indexed)
-                last_page_number = len(reader.pages) - 1
-
-                # Get the field name for the signature (from the list of fields)
-                field_name = fields[index]
-
-                # Add the signature to the specified field on the last page
-                writer.update_signature(
-                    signature,
-                    field_name=field_name,  # Name of the field to sign
-                    page_number=last_page_number  # Last page of the PDF
-                )
-
-                # Save the signed PDF
-                writer.write(output_pdf)
-                signed_pdfs.append(output_pdf_path)
-
-        responsejson["signed_pdfs"] = signed_pdfs
         responsejson = json.loads(json.dumps(response))
 
         return jsonify(responsejson), 200
-
     except PyKCS11.PyKCS11Error as e:
         return jsonify({"status": False, "message": f"Error de PyKCS11: {str(e)}"}), 500
     except Exception as e:
