@@ -13,6 +13,7 @@ import os
 import pystray
 from pystray import MenuItem
 from PIL import Image
+import psutil
 
 ##################################################
 ###              Imports propios               ###
@@ -175,11 +176,22 @@ def get_signatures():
     
     except Exception as e:
         return jsonify({"status": False, "message": "Error inesperado en get_signatures." + str(e)}), 500
+    
+def is_port_in_use(port):
+    for conn in psutil.net_connections():
+        if conn.laddr.port == port:
+            return True
+    return False
 
 def run_flask_app():
-    app.run(host='127.0.0.1', port=9795, threaded=True)
+    port = 9795
+    if is_port_in_use(port):
+        show_alert(f"El puerto {port} esta en uso. Saliendo de la aplicacion.")
+        os._exit(0)
+    app.run(host='127.0.0.1', port=port, threaded=True)
 
-def on_quit(icon, item):
+
+def on_quit(icon):
     icon.stop()
     os._exit(0)
 

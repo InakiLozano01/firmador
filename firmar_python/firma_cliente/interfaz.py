@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import filedialog
+from tkinter import filedialog, messagebox
 from tkinter.ttk import Button, Style
 from flask import jsonify
 import os
@@ -226,3 +226,11 @@ def select_certificate(certificates, result, mode):
     
     except:
         certs.destroy()
+
+def show_alert(message, callback=None):
+    puerto_uso = tk.Tk()
+    puerto_uso.withdraw()
+    messagebox.showwarning("Alerta", message)
+    puerto_uso.destroy()
+    if callback:
+        callback()
