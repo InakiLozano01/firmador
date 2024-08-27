@@ -148,18 +148,18 @@ def get_signatures():
 
     try:
         data = request.get_json()
-        if not data or 'data_to_sign_list' not in data:
+        if not data or 'dataToSign' not in data:
             return jsonify({"status": False, "message": "No se recibieron datos para firmar."}), 400
         
-        data_to_sign_list = data['data_to_sign_list']
-        if not data_to_sign_list or not isinstance(data_to_sign_list, list):
+        dataToSign = data['dataToSign']
+        if not dataToSign or not isinstance(dataToSign, list):
             return jsonify({"status": False, "message": "Lista de datos a firmar vacía."}), 400
         
         certificates, session, code = get_certificates_from_token(lib_path, pin, selected_slot_index)
         if not certificates or code != 200:
             return jsonify({"status": False, "message": "Problema al traer certificados del token."}), 404
         
-        signatures, code = sign_multiple_data(session, data_to_sign_list)
+        signatures, code = sign_multiple_data(session, dataToSign)
         if code != 200:
             return jsonify({"status": False, "message": "Error al firmar los datos."}), code
         
