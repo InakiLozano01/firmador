@@ -202,13 +202,13 @@ def setup(icon):
 def run_tray_icon():
     current_file_path = os.path.abspath(__file__)
     if 'temp' not in current_file_path.lower():
-        image = './images/app_icon_dragon.png'
+        image = './images/app_icon_tuquito.png'
     else:
         exe_dir = os.path.dirname(os.path.abspath(__file__))
-        image = os.path.join(exe_dir, 'app_icon_dragon.png')
+        image = os.path.join(exe_dir, 'app_icon_tuquito.png')
     image = Image.open(image)  # Replace with the path to your icon image
     menu = (MenuItem('Salir...', on_quit),)
-    icon = pystray.Icon("name", image, "SyraxApp", menu)
+    icon = pystray.Icon("name", image, "Tuquito", menu)
     icon.run(setup)
 
 if __name__ == "__main__":
