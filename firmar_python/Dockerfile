@@ -29,8 +29,8 @@ RUN pip install pdfrw
 RUN pip install psycopg2-binary
 
 # Automatically configure mod_wsgi
-RUN mod_wsgi-express install-module | tee /etc/apache2/mods-available/wsgi.load
-RUN a2enmod wsgi
+#RUN mod_wsgi-express install-module | tee /etc/apache2/mods-available/wsgi.load
+#RUN a2enmod wsgi
 
 # Set the working directory in the container
 WORKDIR /app
@@ -39,18 +39,21 @@ WORKDIR /app
 COPY . /app
 
 # Copy Apache configuration files into place
-COPY signapi.conf /etc/apache2/sites-available/000-default.conf
+#COPY signapi.conf /etc/apache2/sites-available/000-default.conf
 
 # Additional Apache configuration
-RUN echo "ServerName localhost" >> /etc/apache2/apache2.conf
-RUN echo "Listen 5000" >> /etc/apache2/ports.conf
+#RUN echo "ServerName localhost" >> /etc/apache2/apache2.conf
+#RUN echo "Listen 5000" >> /etc/apache2/ports.conf
 
 # Enable the necessary Apache modules and sites
-RUN a2enmod rewrite
-RUN a2ensite 000-default
+#RUN a2enmod rewrite
+#RUN a2ensite 000-default
 
 # Expose port 5000 on the container
 EXPOSE 5000
 
 # Start Apache in the foreground
-CMD ["apache2ctl", "-D", "FOREGROUND"]
+#CMD ["apache2ctl", "-D", "FOREGROUND"]
+
+# Start mod_wsgi-express with auto-reload
+CMD ["mod_wsgi-express", "start-server", "sign.wsgi", "--reload-on-changes", "--user", "www-data", "--group", "www-data", "--port", "5000"]
