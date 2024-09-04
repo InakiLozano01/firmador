@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import filedialog
+from tkinter import filedialog, messagebox
 from tkinter.ttk import Button, Style
 from flask import jsonify
 import os
@@ -53,7 +53,7 @@ def select_token_slot(token_info, result, mode):
         icon = tk.PhotoImage(file=os.path.join(exe_dir, "icono_token.png"))
 
     for i, info in enumerate(token_info):
-        button = Button(frame, text=f"   Puerto USB numero: {i + 1}\n   Nombre del Token: {info['reader']}", style="TButton", image=icon, compound='left')
+        button = Button(frame, text=f"   Puerto USB numero: {i + 1}\n   Nombre del Token: {info['reader']}", style="TButton", image=icon, compound='left', cursor="hand2")
         button.grid(row=i, column=0, columnspan=2, pady=10, padx=30, sticky='ew')
         button.bind("<Button-1>", on_select)
 
@@ -212,7 +212,7 @@ def select_certificate(certificates, result, mode):
             cn = input_string[start_cn:end_cn]
             resultado = f"{cuil} - {cn}"
 
-            button = Button(frame, text=f"{resultado}", style="TButton", image=iconcertificado, compound='left')
+            button = Button(frame, text=f"{resultado}", style="TButton", image=iconcertificado, compound='left', cursor="hand2")
             button.grid(row=i, column=0, pady=10, padx=10, sticky='ew')
             button.bind("<Button-1>", on_select)
 
@@ -226,3 +226,11 @@ def select_certificate(certificates, result, mode):
     
     except:
         certs.destroy()
+
+def show_alert(message, callback=None):
+    puerto_uso = tk.Tk()
+    puerto_uso.withdraw()
+    messagebox.showwarning("Alerta", message)
+    puerto_uso.destroy()
+    if callback:
+        callback()

@@ -13,6 +13,7 @@ import os
 import pystray
 from pystray import MenuItem
 from PIL import Image
+import psutil
 
 ##################################################
 ###              Imports propios               ###
@@ -148,18 +149,18 @@ def get_signatures():
 
     try:
         data = request.get_json()
-        if not data or 'data_to_sign_list' not in data:
+        if not data or 'dataToSign' not in data:
             return jsonify({"status": False, "message": "No se recibieron datos para firmar."}), 400
         
-        data_to_sign_list = data['data_to_sign_list']
-        if not data_to_sign_list or not isinstance(data_to_sign_list, list):
+        dataToSign = data['dataToSign']
+        if not dataToSign or not isinstance(dataToSign, list):
             return jsonify({"status": False, "message": "Lista de datos a firmar vacía."}), 400
         
         certificates, session, code = get_certificates_from_token(lib_path, pin, selected_slot_index)
         if not certificates or code != 200:
             return jsonify({"status": False, "message": "Problema al traer certificados del token."}), 404
         
-        signatures, code = sign_multiple_data(session, data_to_sign_list)
+        signatures, code = sign_multiple_data(session, dataToSign)
         if code != 200:
             return jsonify({"status": False, "message": "Error al firmar los datos."}), code
         
@@ -175,11 +176,22 @@ def get_signatures():
     
     except Exception as e:
         return jsonify({"status": False, "message": "Error inesperado en get_signatures." + str(e)}), 500
+    
+def is_port_in_use(port):
+    for conn in psutil.net_connections():
+        if conn.laddr.port == port:
+            return True
+    return False
 
 def run_flask_app():
-    app.run(host='127.0.0.1', port=9795, threaded=True)
+    port = 9795
+    if is_port_in_use(port):
+        show_alert(f"El puerto {port} esta en uso. Saliendo de la aplicacion.")
+        os._exit(0)
+    app.run(host='127.0.0.1', port=port, threaded=True)
 
-def on_quit(icon, item):
+
+def on_quit(icon):
     icon.stop()
     os._exit(0)
 
@@ -190,13 +202,13 @@ def setup(icon):
 def run_tray_icon():
     current_file_path = os.path.abspath(__file__)
     if 'temp' not in current_file_path.lower():
-        image = './images/app_icon_dragon.png'
+        image = './images/app_icon_tuquito.png'
     else:
         exe_dir = os.path.dirname(os.path.abspath(__file__))
-        image = os.path.join(exe_dir, 'app_icon_dragon.png')
+        image = os.path.join(exe_dir, 'app_icon_tuquito.png')
     image = Image.open(image)  # Replace with the path to your icon image
     menu = (MenuItem('Salir...', on_quit),)
-    icon = pystray.Icon("name", image, "SyraxApp", menu)
+    icon = pystray.Icon("name", image, "Tuquito", menu)
     icon.run(setup)
 
 if __name__ == "__main__":
