@@ -47,7 +47,7 @@ def create_signature_image(text, encoded_image, path, width=233, height=56, scal
         def save_and_encode(image, filename, dpi):
             buffered = io.BytesIO()
             image.save(buffered, format="PNG", optimize=True, dpi=dpi)
-            image.save(filename, format='PNG', dpi=dpi, optimize=True)
+            #image.save(filename, format='PNG', dpi=dpi, optimize=True)
             return base64.b64encode(buffered.getvalue()).decode('utf-8')
         
         # Save and encode high resolution image
@@ -61,4 +61,5 @@ def create_signature_image(text, encoded_image, path, width=233, height=56, scal
         
         return high_res_base64, 200
     except Exception as e:
+        print("Error creating signature image:", str(e))
         return jsonify({"status": False, "message": "Failed to create signature image."}), 500
