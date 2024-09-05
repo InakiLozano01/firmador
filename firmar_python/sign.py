@@ -544,17 +544,110 @@ def firmaloteend():
     ###   Ruta de validacion de indices en json    ###
     ##################################################
 
-@app.route('/validarjades', methods=['POST'])
-def validarjades():
+def validate_signature(data, signature):
+    body = {
+        "signedDocument": {
+            "bytes": signature,
+            "digestAlgorithm": None,
+            "name": None
+        },
+        "originalDocuments": [{
+            "bytes": data,
+            "digestAlgorithm": None,
+            "name": None
+        }],
+        "policy": None,
+        "evidenceRecords": None,
+        "tokenExtractionStrategy": "NONE",
+        "signatureId": None
+    }
 
     try:
+        response = requests.post('http://java-webapp:5555/services/rest/validation/validateSignature', json=body, timeout=10)
+        response.raise_for_status()
+        return response.json(), 200
+    except Exception as e:
+        return jsonify({"status": False, "message": "Error in validate_signature" + str(e)}), 500
+    
+def validation_analyze(report):
+    passed = []
+    certificates = []
+    for signature in report['DiagnosticData']['Signature']:
+        if signature['StructuralValidation']['valid'] == True and signature['BasicSignature']['SignatureIntact'] == True and signature['BasicSignature']['SignatureValid'] == True:
+            passed.append(True)
+            certificates.append(signature['ChainItem'])
+        else:
+            passed.append(False)
+            certificates.append(signature['ChainItem'])
+    
+    return passed, certificates
+
+def validate_certs(certs):
+    return True
+
+@app.route('/validarjades', methods=['POST'])
+def validarjades():
+    try:
         data = request.get_json()
+        
+        # Create a deep copy of the original data
+        original_data = json.loads(json.dumps(data))
+        
+        # List to store validation results
+        validation_results = []
+        
+        # Iterate through tramites in reverse order
+        for tramite in reversed(data['tramites']):
+            # Extract and remove the signature
+            signature = tramite.pop('firma', '')
+            
+            # Calculate the hash of the current JSON state
+            json_str = json.dumps(data, sort_keys=False)
+            
+            # Validate the signature
+            validation, code = validate_signature(json_str, signature)
 
+            passed, certs = validation_analyze(validation)
+            
+            for test in passed:
+                # Store the validation result
+                if test:
+                    tested = True
+                else:
+                    tested = False
+                    break
+            
+            certs_validation = validate_certs(certs)
 
-
-
-        return data
+            indication = True if certs_validation and tested else False
+            
+            validation_results.append({
+                'secuencia': tramite['secuencia'],
+                'is_valid': tested,
+                'certs_valid': certs_validation,
+                'subindication': indication
+            })
+            
+        
+        # Reverse the validation results to match the original order
+        validation_results.reverse()
+        validation['subresults'] = validation_results
+        
+        for result in validation_results:
+            if result['subindication']:
+                total = True
+            else:
+                total = False
+                break
+        
+        validation['conclusion'] = total
+        
+        return jsonify({
+            "status": True,
+            "original_data": original_data,
+            "validation": validation
+        }), 200
     
     except Exception as e:
-        return jsonify({"status": False, "message": "Error al obtener los datos de la request: " + str(e)}), 500
+        return jsonify({"status": False, "message": f"Error processing request: {str(e)}"}), 500
     
