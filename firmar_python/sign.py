@@ -632,7 +632,6 @@ def validate_certs(certs):
     Returns:
         bool: True if all certificates are valid, False otherwise.
     """
-    print(certs)
     return True
 
 @app.route('/validarjades', methods=['POST'])
@@ -656,7 +655,11 @@ def validarjades():
 
             # Calculate the hash of the current JSON state
             # Create a deep copy of the data to avoid modifying the original
-            json_str = copy.deepcopy(json.dumps(data))
+            json_str = copy.deepcopy(data)
+            encoded = (base64.b64encode(json.dumps(json_str).encode('utf-8')).decode())
+            # Write the base64 encoded string to a file
+            with open('output.txt', 'w') as file:
+                file.write(encoded)
 
             # Validate the signature
             valid, code = validate_signature(json_str, signature)
@@ -689,7 +692,6 @@ def validarjades():
         validation['subresults'] = validation_results
 
         for result in validation_results:
-            print(result['subindication'])
             total = bool(result['subindication'])
             if not total:
                 break
