@@ -5,6 +5,8 @@ import logging
 from errors import PDFSignatureError
 import io 
 from PyPDF2 import PdfReader
+from flask import jsonify
+import json
 
 def get_data_to_sign_own(pdf, certificates, current_time, field_id, stamp, encoded_image):
     try:
@@ -101,12 +103,20 @@ def get_data_to_sign_own(pdf, certificates, current_time, field_id, stamp, encod
             }
         }
         response = requests.post('http://java-webapp:5555/services/rest/signature/one-document/getDataToSign', json=body)
-        response.raise_for_status()
-        return response.json()
+        if response.status_code == 200:
+            if "bytes" in response.json():
+                return response.json(), 200
+            else:
+                return jsonify ({"status": False, "message": "Failed to sign document with DSS API."}), 500
+        else:
+            return jsonify ({"status": False, "message": "Failed to sign document with DSS API."}), 500
     except requests.RequestException as e:
-        logging.error(f"Error in get_data_to_sign: {str(e)}")
-        raise PDFSignatureError("Failed to get data to sign from DSS API.")
-
+        logging.error(f"Error in sign_document_tapir: {str(e)}")
+        return jsonify({"status": False, "message": "Failed to sign document with DSS API."}), 500
+    except Exception as e:
+        logging.error(f"Error in sign_document_tapir: {str(e)}")
+        return jsonify({"status": False, "message": "Failed to sign document with DSS API."}), 500
+    
 def sign_document_own(pdf, signature_value, certificates, current_time, field_id, stamp, encoded_image):
     try:
         body = {
@@ -202,11 +212,19 @@ def sign_document_own(pdf, signature_value, certificates, current_time, field_id
             }
         }
         response = requests.post('http://java-webapp:5555/services/rest/signature/one-document/signDocument', json=body)
-        response.raise_for_status()
-        return response.json()
+        if response.status_code == 200:
+            if "bytes" in response.json():
+                return response.json(), 200
+            else:
+                return jsonify ({"status": False, "message": "Failed to sign document with DSS API."}), 500
+        else:
+            return jsonify ({"status": False, "message": "Failed to sign document with DSS API."}), 500
     except requests.RequestException as e:
-        logging.error(f"Error in sign_document: {str(e)}")
-        raise PDFSignatureError("Failed to sign document with DSS API.")
+        logging.error(f"Error in sign_document_tapir: {str(e)}")
+        return jsonify({"status": False, "message": "Failed to sign document with DSS API."}), 500
+    except Exception as e:
+        logging.error(f"Error in sign_document_tapir: {str(e)}")
+        return jsonify({"status": False, "message": "Failed to sign document with DSS API."}), 500
 
 '''def get_data_to_sign_own(pdf, certificates, current_time, field_id, stamp, encoded_image):
     try:
@@ -483,11 +501,19 @@ def get_data_to_sign_tapir(pdf, certificates, current_time, field_id, stamp, enc
             }
         }
         response = requests.post('http://java-webapp:5555/services/rest/signature/one-document/getDataToSign', json=body)
-        response.raise_for_status()
-        return response.json()
+        if response.status_code == 200:
+            if "bytes" in response.json():
+                return response.json(), 200
+            else:
+                return jsonify ({"status": False, "message": "Failed to sign document with DSS API."}), 500
+        else:
+            return jsonify ({"status": False, "message": "Failed to sign document with DSS API."}), 500
     except requests.RequestException as e:
-        logging.error(f"Error in get_data_to_sign_tapir: {str(e)}")
-        raise PDFSignatureError("Failed to get data to sign from DSS API.")
+        logging.error(f"Error in sign_document_tapir: {str(e)}")
+        return jsonify({"status": False, "message": "Failed to sign document with DSS API."}), 500
+    except Exception as e:
+        logging.error(f"Error in sign_document_tapir: {str(e)}")
+        return jsonify({"status": False, "message": "Failed to sign document with DSS API."}), 500
 
 def sign_document_tapir(pdf, signature_value, certificates, current_time, field_id, stamp, encoded_image):
     try:
@@ -584,8 +610,16 @@ def sign_document_tapir(pdf, signature_value, certificates, current_time, field_
             }
         }
         response = requests.post('http://java-webapp:5555/services/rest/signature/one-document/signDocument', json=body)
-        response.raise_for_status()
-        return response.json()
+        if response.status_code == 200:
+            if "bytes" in response.json():
+                return response.json(), 200
+            else:
+                return jsonify ({"status": False, "message": "Failed to sign document with DSS API."}), 500
+        else:
+            return jsonify ({"status": False, "message": "Failed to sign document with DSS API."}), 500
     except requests.RequestException as e:
         logging.error(f"Error in sign_document_tapir: {str(e)}")
-        raise PDFSignatureError("Failed to sign document with DSS API.")
+        return jsonify({"status": False, "message": "Failed to sign document with DSS API."}), 500
+    except Exception as e:
+        logging.error(f"Error in sign_document_tapir: {str(e)}")
+        return jsonify({"status": False, "message": "Failed to sign document with DSS API."}), 500

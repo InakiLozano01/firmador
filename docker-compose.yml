@@ -14,6 +14,8 @@ services:
   flask-app:
     container_name: firmador-python-prod
     restart: always
+    container_name: firmador-python-test
+    restart: always
     build:
       context: ./firmar_python
       dockerfile: Dockerfile
@@ -23,9 +25,10 @@ services:
       - ./firmar_python:/app
     depends_on:
       - java-webapp
+      - ../devenv/documentos:/var/documentos
     networks:
-      - firmador_signnet
+      - firmador_firmador_signnet
 
 networks:
-  firmador_signnet:
-    driver: bridge
+  firmador_firmador_signnet:
+    external: true
