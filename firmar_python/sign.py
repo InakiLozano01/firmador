@@ -582,7 +582,7 @@ def validate_signature(data, signature):
             "name": "sign.json"
         },
         "originalDocuments": [{
-            "bytes": base64.b64encode(data.encode()).decode(),
+            "bytes": base64.b64encode(json.dumps(data).encode('utf-8')).decode('utf-8') if data else None,
             "digestAlgorithm": None,
             "name": "signed.json"
         }],
@@ -634,6 +634,11 @@ def validate_certs(certs):
     """
     return True
 
+"""@app.route("/signjades", methods=["POST"])
+def signjades():"""
+
+        
+
 @app.route('/validarjades', methods=['POST'])
 def validarjades():
     """
@@ -641,8 +646,6 @@ def validarjades():
     """
     try:
         data_original = request.get_json()
-
-        print(base64.b64encode(json.dumps(data_original).encode('utf-8')).decode())
 
         # List to store validation results
         validation_results = []
@@ -653,10 +656,9 @@ def validarjades():
             # Extract and remove the signature from the current tramite
             signature = tramite.pop('firma', '')
 
-            # Calculate the hash of the current JSON state
-            # Create a deep copy of the data to avoid modifying the original
             json_str = copy.deepcopy(data)
-            encoded = (base64.b64encode(json.dumps(json_str).encode('utf-8')).decode())
+            encoded = (base64.b64encode(json.dumps(json_str).encode('utf-8')).decode('utf-8'))
+
             # Write the base64 encoded string to a file
             with open('output.txt', 'w') as file:
                 file.write(encoded)
