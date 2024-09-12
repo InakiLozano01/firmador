@@ -657,11 +657,6 @@ def validarjades():
             signature = tramite.pop('firma', '')
 
             json_str = copy.deepcopy(data)
-            encoded = (base64.b64encode(json.dumps(json_str).encode('utf-8')).decode('utf-8'))
-
-            # Write the base64 encoded string to a file
-            with open('output.txt', 'w') as file:
-                file.write(encoded)
 
             # Validate the signature
             valid, code = validate_signature(json_str, signature)

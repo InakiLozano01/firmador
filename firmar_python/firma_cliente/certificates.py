@@ -28,7 +28,7 @@ def get_issuer_cert(cert):
     except Exception as e:
         return jsonify({"status": False, "message": f"Error al obtener el certificado del emisor: {str(e)}"}), 500
 
-def get_certificates_from_token(lib_path, pin, slot_index):
+def get_certificates_from_token(lib_path, pin):
     pkcs11 = PyKCS11.PyKCS11Lib()
     try:
         print(f"Cargando biblioteca PKCS#11: {lib_path}")
@@ -40,7 +40,7 @@ def get_certificates_from_token(lib_path, pin, slot_index):
     if not slots:
         return jsonify({"status": False, "message": "No se encontraron tokens."}), 404
 
-    session = pkcs11.openSession(slots[slot_index], PyKCS11.CKF_SERIAL_SESSION | PyKCS11.CKF_RW_SESSION)
+    session = pkcs11.openSession(slots[0], PyKCS11.CKF_SERIAL_SESSION | PyKCS11.CKF_RW_SESSION)
     session.login(pin)
 
     cert_attributes = [PyKCS11.CKA_CLASS, PyKCS11.CKA_CERTIFICATE_TYPE, PyKCS11.CKA_VALUE]

@@ -148,6 +148,80 @@ def get_signatures():
     global pin, lib_path, selected_slot_index
 
     try:
+
+        current_file_path = os.path.abspath(__file__)
+        if 'temp' not in current_file_path.lower():
+            mode = 'python'
+        else:
+            mode = 'exe'
+
+        # Carga el mapeo de drivers previamente usados
+        token_library_mapping, code = load_token_library_mapping()
+
+        # Listar los tokens conectados
+        token_info, code = list_tokens()
+        if not token_info or code != 200:
+            return jsonify({"status": False, "message": "Error al listar tokens."}), 404
+
+        # Seleccionar el slot del token
+        selected_slot = []
+        thread_slot = Thread(target=select_token_slot, args=(token_info, selected_slot, mode))
+        thread_slot.start()
+        thread_slot.join()
+
+        if not selected_slot:
+            return jsonify({"status": False, "message": "No se seleccionó ningún slot."}), 400
+
+        print("------")
+        print(selected_slot)
+        
+        selected_slot_index = selected_slot[0]
+        print(selected_slot[0])
+
+        # Cotejamos el nombre del token para determinar el driver a utilizar
+        token_unique_id, token_name, code = get_token_unique_id(token_info[selected_slot_index])
+        if token_name in token_library_mapping:
+            lib_path = token_library_mapping[token_name]
+        else:
+            lib_path, code = select_library_file()
+            if not lib_path:
+                return jsonify({True: False, "message": "No se seleccionó ninguna biblioteca."}), 400
+            token_library_mapping[token_name] = lib_path
+            try:
+                message, code = save_token_library_mapping(token_library_mapping)
+                if code != 200:
+                    return jsonify({"status": False, "message": message}), code
+            except Exception as e:
+                return jsonify({"status": False, "message": f"Error al guardar el mapeo de bibliotecas de tokens: {str(e)}"}), 500
+
+        # Ingresar el PIN del token
+        pin, code = get_pin_from_user(mode)
+        if not pin or code != 200:
+            return jsonify({"status": False, "message": "Entrada de PIN cancelada."}), 400
+
+        # Obtener los certificados del token
+        certificates, session, code = get_certificates_from_token(lib_path, pin)
+        if not certificates or code != 200:
+            return jsonify({"status": False, "message": "Problema al traer certificados del token."}), 404
+
+        # Seleccionar el certificado alojado en el token
+        selected_cert = []
+        thread_cert = Thread(target=select_certificate, args=(certificates, selected_cert, mode))
+        thread_cert.start()
+        thread_cert.join()
+
+        if not selected_cert:
+            return jsonify({"status": False, "message": "No se seleccionó ningún certificado."}), 400
+
+        session.closeSession()
+
+    except PyKCS11.PyKCS11Error as e:
+        return jsonify({"status": False, "message": f"Error de PyKCS11: {str(e)}"}), 500
+    except Exception as e:
+        return jsonify({"status": False, "message": f"Error inesperado en get_certificates: {str(e)}"}), 500
+
+
+    try:
         data = request.get_json()
         if not data or 'dataToSign' not in data:
             return jsonify({"status": False, "message": "No se recibieron datos para firmar."}), 400
@@ -156,7 +230,7 @@ def get_signatures():
         if not dataToSign or not isinstance(dataToSign, list):
             return jsonify({"status": False, "message": "Lista de datos a firmar vacía."}), 400
         
-        certificates, session, code = get_certificates_from_token(lib_path, pin, selected_slot_index)
+        certificates, session, code = get_certificates_from_token(lib_path, pin)
         if not certificates or code != 200:
             return jsonify({"status": False, "message": "Problema al traer certificados del token."}), 404
         
