@@ -91,7 +91,7 @@ def get_certificates():
             return jsonify({"status": False, "message": "Entrada de PIN cancelada."}), 400
 
         # Obtener los certificados del token
-        certificates, session, code = get_certificates_from_token(lib_path, pin, selected_slot_index)
+        certificates, session, code = get_certificates_from_token(lib_path, pin)
         if not certificates or code != 200:
             return jsonify({"status": False, "message": "Problema al traer certificados del token."}), 404
 
