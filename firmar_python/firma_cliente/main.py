@@ -111,6 +111,7 @@ def get_certificates():
         cert_chain = get_full_chain(cert, cert_der)
         chain_base64 = [cert_to_base64(c) for c in cert_chain]
 
+        session.closeSession()
         response = {
             "status": True,
             "response": {
@@ -124,19 +125,18 @@ def get_certificates():
             },
             "feedback": {
                 "info": {
-                    "language": "Python & Java",
+                    "language": "Python",
                     "osName": platform.system(),
                     "osArch": platform.machine(),
                     "osVersion": platform.version(),
                     "arch": platform.architecture()[0],
                     "os": platform.system().upper()
                 },
-                "firmaCliente": "0.1"
+                "TuquitoVersion": "0.1"
             }
         }
 
         responsejson = json.loads(json.dumps(response))
-        session.closeSession()
         return jsonify(responsejson), 200
     except PyKCS11.PyKCS11Error as e:
         return jsonify({"status": False, "message": f"Error de PyKCS11: {str(e)}"}), 500
@@ -246,6 +246,8 @@ def get_signatures():
         }
 
         responsejson = json.loads(json.dumps(response))
+
+        session.closeSession()
         return jsonify(responsejson), 200
     
     except Exception as e:
@@ -286,7 +288,6 @@ def run_tray_icon():
     icon.run(setup)
 
 if __name__ == "__main__":
-
     tray_icon_thread = Thread(target=run_tray_icon)
     flask_thread = Thread(target=run_flask_app)
 
