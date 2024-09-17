@@ -108,8 +108,12 @@ def get_certificates():
         cert, cert_der = certificates[selected_index]
 
         # Obtener la cadena de certificados completa
-        cert_chain = get_full_chain(cert, cert_der)
-        chain_base64 = [cert_to_base64(c) for c in cert_chain]
+        try:
+            cert_chain = get_full_chain(cert, cert_der)
+            chain_base64 = [cert_to_base64(c) for c in cert_chain]
+        except Exception as e:
+            session.closeSession()
+            return jsonify({"status": False, "message": f"Error al obtener la cadena de certificados: {str(e)}"}), 500
 
         session.closeSession()
         response = {
