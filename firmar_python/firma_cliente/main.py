@@ -91,7 +91,7 @@ def get_certificates():
             return jsonify({"status": False, "message": "Entrada de PIN cancelada."}), 400
 
         # Obtener los certificados del token
-        certificates, session, code = get_certificates_from_token(lib_path, pin, selected_slot_index)
+        certificates, session, code = get_certificates_from_token(lib_path, pin)
         if not certificates or code != 200:
             return jsonify({"status": False, "message": "Problema al traer certificados del token."}), 404
 
@@ -108,9 +108,14 @@ def get_certificates():
         cert, cert_der = certificates[selected_index]
 
         # Obtener la cadena de certificados completa
-        cert_chain = get_full_chain(cert, cert_der)
-        chain_base64 = [cert_to_base64(c) for c in cert_chain]
+        try:
+            cert_chain = get_full_chain(cert, cert_der)
+            chain_base64 = [cert_to_base64(c) for c in cert_chain]
+        except Exception as e:
+            session.closeSession()
+            return jsonify({"status": False, "message": f"Error al obtener la cadena de certificados: {str(e)}"}), 500
 
+        session.closeSession()
         response = {
             "status": True,
             "response": {
@@ -124,19 +129,18 @@ def get_certificates():
             },
             "feedback": {
                 "info": {
-                    "language": "Python & Java",
+                    "language": "Python",
                     "osName": platform.system(),
                     "osArch": platform.machine(),
                     "osVersion": platform.version(),
                     "arch": platform.architecture()[0],
                     "os": platform.system().upper()
                 },
-                "firmaCliente": "0.1"
+                "TuquitoVersion": "0.1"
             }
         }
 
         responsejson = json.loads(json.dumps(response))
-        session.closeSession()
         return jsonify(responsejson), 200
     except PyKCS11.PyKCS11Error as e:
         return jsonify({"status": False, "message": f"Error de PyKCS11: {str(e)}"}), 500
@@ -156,7 +160,7 @@ def get_signatures():
         if not dataToSign or not isinstance(dataToSign, list):
             return jsonify({"status": False, "message": "Lista de datos a firmar vacía."}), 400
         
-        certificates, session, code = get_certificates_from_token(lib_path, pin, selected_slot_index)
+        certificates, session, code = get_certificates_from_token(lib_path, pin)
         if not certificates or code != 200:
             return jsonify({"status": False, "message": "Problema al traer certificados del token."}), 404
         
@@ -172,6 +176,9 @@ def get_signatures():
         }
 
         responsejson = json.loads(json.dumps(response))
+
+        if not session:
+            session.closeSession()
         return jsonify(responsejson), 200
     
     except Exception as e:
@@ -212,7 +219,6 @@ def run_tray_icon():
     icon.run(setup)
 
 if __name__ == "__main__":
-
     tray_icon_thread = Thread(target=run_tray_icon)
     flask_thread = Thread(target=run_flask_app)
 
