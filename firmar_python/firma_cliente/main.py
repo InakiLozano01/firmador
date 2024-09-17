@@ -173,7 +173,8 @@ def get_signatures():
 
         responsejson = json.loads(json.dumps(response))
 
-        session.closeSession()
+        if not session:
+            session.closeSession()
         return jsonify(responsejson), 200
     
     except Exception as e:
