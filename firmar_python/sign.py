@@ -11,12 +11,12 @@ import copy
 from datetime import datetime
 import hashlib
 import zipfile
+import libarchive
 import pytz
 import psycopg2
 from dotenv import load_dotenv
 import requests
 from flask import Flask, request, jsonify
-
 
 ##################################################
 ###              Imports propios               ###
@@ -39,6 +39,7 @@ load_dotenv()
 ##################################################
 app = Flask(__name__)
 app.json.sort_keys = False
+
 
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -854,28 +855,35 @@ def validatepdfs():
 @app.route('/validar_expediente', methods=['POST'])
 def validate_expediente():
     """
-    Route for validating an entire set of documents (expediente) in ZIP format.
+    Route for validating an entire set of documents (expediente) in compressed format.
     """
     try:
         data = request.get_json()
-        zip_filepath = data.get('zip_filepath')
-        path = "/app/expedientes/" + zip_filepath
-        if not zip_filepath or not os.path.exists(path):
-            return jsonify({"status": False, "message": "Archivo ZIP no encontrado " + path}), 400
+        file_path = data.get('zip_filepath')
+        path = "/app/expedientes/" + file_path
+        if not file_path or not os.path.exists(path):
+            return jsonify({"status": False, "message": "Archivo no encontrado " + path}), 400
 
-        with zipfile.ZipFile(path, 'r') as zip_ref:
-            # Validate ZIP file format
-            if not zip_ref.testzip() is None:
-                return jsonify({"status": False, "message": "Formato de archivo ZIP inválido"}), 400
-
-            # Extract index.json
-            try:
-                index_json = json.loads(zip_ref.read('indice.json').decode('utf-8'))
-            except KeyError:
-                return jsonify({"status": False, "message": "index.json no encontrado en el archivo ZIP"}), 400
-            except json.JSONDecodeError:
-                return jsonify({"status": False, "message": "index.json no es un JSON válido"}), 400
-
+        try:    
+            with libarchive.file_reader(path) as archive:
+                file_list = []
+                index_json = None
+                for entry in archive:
+                    file_list.append(os.path.basename(entry.pathname))
+                    if os.path.basename(entry.pathname) == 'indice.json':
+                        blocks = b''
+                        for block in entry.get_blocks():
+                            blocks += block
+                        try:
+                            index_json = json.loads(blocks.decode('utf-8'))
+                        except json.JSONDecodeError:
+                            return jsonify({"status": False, "message": "indice.json no es un JSON válido"}), 400
+                if index_json is None:
+                    return jsonify({"status": False, "message": "indice.json no encontrado en el archivo"}), 400
+        except libarchive.exception.ArchiveError as e:
+            return jsonify({"status": False, "message": f"Error al validar el archivo: {str(e)}"}), 500
+        except Exception as e:
+            return jsonify({"status": False, "message": f"Error al validar el archivo: {str(e)}"}), 500
 
         validation_results = []
         data = copy.deepcopy(index_json)
@@ -912,17 +920,21 @@ def validate_expediente():
                 doc_id = doc['id_documento']
                 doc_order = doc['orden']
                 try:
-                    with zipfile.ZipFile(path, 'r') as zip_ref:
-                        doc_files = [f for f in zip_ref.namelist() if f.endswith('.pdf')]
-                        matching_files = [f for f in doc_files if f"_{doc_order}_" in f]
-                        if matching_files:
-                            doc_filename = matching_files[0]
-                            doc_content = zip_ref.read(doc_filename)
-                            docb64 = base64.b64encode(doc_content).decode('utf-8')
-                        else:
-                            raise Exception(f"Documento con orden {doc_order} no encontrado")
+                    with libarchive.file_reader(path) as archive:
+                        for entry in archive:
+                            basename = os.path.basename(entry.pathname)
+                            if basename.endswith('.pdf'):
+                                if str(doc_order) in basename.split('_')[1]:
+                                    doc_filename = basename
+                                    doc_content  = b''
+                                    for block in entry.get_blocks():
+                                        doc_content += block
+                                    docb64 = base64.b64encode(doc_content).decode('utf-8')
+                                    break
+                        if not doc_filename:
+                            raise Exception("Documento no encontrado: " + doc_id)
                 except Exception as e:
-                    raise Exception(f"Error al procesar el documento {doc_id}: {str(e)}")
+                    raise Exception("Error al procesar el documento " + doc_id + ": " + str(e))
                 
                 report, code = validate_signature(None, docb64)
                 if code != 200:
