@@ -2,7 +2,7 @@
 FROM python:3.12-slim
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y apache2 apache2-dev gcc wget
+RUN apt-get update && apt-get install -y apache2 apache2-dev gcc wget build-essential unrar-free libarchive-dev pkg-config
 
 # Clean up the apt cache to reduce image size
 RUN apt-get clean && rm -rf /var/lib/apt/lists/*
@@ -27,6 +27,9 @@ RUN pip install pdfrw
 
 # Install psycopg2
 RUN pip install psycopg2-binary
+
+# Install libarchive
+RUN pip install libarchive-c
 
 # Automatically configure mod_wsgi
 #RUN mod_wsgi-express install-module | tee /etc/apache2/mods-available/wsgi.load
