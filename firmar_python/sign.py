@@ -10,7 +10,6 @@ import json
 import copy
 from datetime import datetime
 import hashlib
-import zipfile
 import libarchive
 import pytz
 import psycopg2
@@ -1007,3 +1006,13 @@ def validate_expediente():
 
     except Exception as e:
         return jsonify({"status": False, "message": f"Error al procesar el expediente: {str(e)}"}), 500
+    
+#8  ##################################################
+    ###             Ruta de testeo                 ###
+    ##################################################
+@app.route('/test', methods=['GET'])
+def test_route():
+    """
+    Test route.
+    """
+    return jsonify({"status": "success", "message": "Test route"}), 200
