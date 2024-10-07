@@ -191,7 +191,8 @@ def is_port_in_use(port):
     return False
 
 def run_flask_app():
-    port = 9795
+    global port
+    port = 5000
     if is_port_in_use(port):
         show_alert(f"El puerto {port} esta en uso. Saliendo de la aplicacion.")
         os._exit(0)
@@ -215,7 +216,7 @@ def run_tray_icon():
         image = os.path.join(exe_dir, 'app_icon_tuquito.png')
     image = Image.open(image)  # Replace with the path to your icon image
     menu = (MenuItem('Salir...', on_quit),)
-    icon = pystray.Icon("name", image, "Tuquito", menu)
+    icon = pystray.Icon("name", image, f"Tuquito (Puerto: {port})", menu)
     icon.run(setup)
 
 if __name__ == "__main__":

@@ -869,21 +869,23 @@ def validate_expediente():
                 file_list = []
                 index_json = None
                 for entry in archive:
-                    file_list.append(os.path.basename(entry.pathname))
-                    if os.path.basename(entry.pathname) == 'indice.json':
+                    file_name = os.path.basename(entry.pathname)
+                    file_list.append(file_name)
+                    if file_name.endswith('.json') and index_json is None:
                         blocks = b''
                         for block in entry.get_blocks():
                             blocks += block
                         try:
                             index_json = json.loads(blocks.decode('utf-8'))
+                            break  # Exit the loop after finding the first JSON file
                         except json.JSONDecodeError:
-                            return jsonify({"status": False, "message": "indice.json no es un JSON válido"}), 400
+                            return jsonify({"status": False, "message": f"{file_name} no es un JSON válido"}), 400
                 if index_json is None:
-                    return jsonify({"status": False, "message": "indice.json no encontrado en el archivo"}), 400
+                    return jsonify({"status": False, "message": "No se encontró ningún archivo JSON en el archivo"}), 400
         except libarchive.exception.ArchiveError as e:
-            return jsonify({"status": False, "message": f"Error al validar el archivo: {str(e)}"}), 500
+            return jsonify({"status": False, "message": f"Error al leer el archivo: {str(e)}"}), 500
         except Exception as e:
-            return jsonify({"status": False, "message": f"Error al validar el archivo: {str(e)}"}), 500
+            return jsonify({"status": False, "message": f"Error inesperado al procesar el archivo: {str(e)}"}), 500
 
         validation_results = []
         data = copy.deepcopy(index_json)
@@ -914,6 +916,7 @@ def validate_expediente():
             certs_validation = validation_result[0]['certs_valid']
 
             docs_validation = []
+            docs_not_found = []
 
             for doc in tramite['documentos']:
                 doc_hash = doc['hash_contenido']
@@ -931,11 +934,18 @@ def validate_expediente():
                                         doc_content += block
                                     docb64 = base64.b64encode(doc_content).decode('utf-8')
                                     break
-                        if not doc_filename:
-                            raise Exception("Documento no encontrado: " + doc_id)
+                                else:
+                                    doc_filename = None
+                                    doc_content = None
+                                    docb64 = None
                 except Exception as e:
                     raise Exception("Error al procesar el documento " + doc_id + ": " + str(e))
                 
+                if docb64 is None and doc_filename is None and doc_content is None:
+                    docs_not_found.append({"id_documento": doc_id, "orden": doc_order})
+                    docs_validation.append({"orden": doc_order, "id_documento": doc_id, "valid_hash": False, "doc_filename": None, "signatures": None})
+                    continue
+
                 report, code = validate_signature(None, docb64)
                 if code != 200:
                     raise PDFSignatureError("Error al validar PDF: Error en validate_pdf: id_doc: " + doc_id)
@@ -982,6 +992,7 @@ def validate_expediente():
                 'certs_valid': certs_validation,
                 'signature': validation_result,
                 'docs_validation': docs_validation,
+                'docs_not_found': docs_not_found,
                 'subindication': indication,
                 'result_indication': result_indication
             })
