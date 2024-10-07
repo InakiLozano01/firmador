@@ -954,7 +954,7 @@ def validate_expediente():
                     raise PDFSignatureError("Error al validar PDF: Error en validation_analyze: id_doc: " + doc_id)
 
                 hash_doc = hashlib.sha256(doc_content).hexdigest()
-                if hash_doc == doc_hash:
+                if hash_doc == doc_hash.lower():
                     docs_validation.append({"orden": doc_order, "id_documento": doc_id, "valid_hash": True, "doc_filename": doc_filename, "signatures": signatures})
                 else:
                     docs_validation.append({"orden": doc_order, "id_documento": doc_id, "valid_hash": False, "doc_filename": doc_filename, "signatures": signatures})
