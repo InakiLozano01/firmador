@@ -77,6 +77,9 @@ def save_signed_pdf(signed_pdf_base64, filename):
     try:
         signed_pdf_bytes = base64.b64decode(signed_pdf_base64)
         with open(filename, 'wb') as f:
+            dirpath = os.path.dirname(filename)
+            if not os.path.exists(dirpath):
+                os.makedirs(dirpath)
             f.write(signed_pdf_bytes)
         return jsonify({"status": True, "message": "PDF firmado guardado correctamente."}), 200
     except Exception as e:
