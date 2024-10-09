@@ -45,8 +45,8 @@ public class PdfFormService {
                     if (fieldValues.containsKey(fieldName)) {
                         Object value = fieldValues.get(fieldName);
                         field.setValue(String.valueOf(value));
-                        /*field.setFieldFlag(PdfFormField.FF_READ_ONLY, true);
-                        field.setReadOnly(true);*/
+                        field.setFieldFlag(PdfFormField.FF_READ_ONLY, true);
+                        field.setReadOnly(true);
 
                         // Modify field appearance without generating new content
                         for (PdfWidgetAnnotation widget : field.getWidgets()) {
