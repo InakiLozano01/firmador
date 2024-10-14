@@ -14,3 +14,5 @@ firmar_python/firma_cliente/build
 firmar_python/firma_cliente/token_lib.json
 firmar_python/*.cer
 firmar_python/*.key
+.idea
+.vscode
