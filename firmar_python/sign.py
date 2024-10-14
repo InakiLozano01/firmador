@@ -387,6 +387,8 @@ def firmalote():
             id_user = pdf['id_usuario']
             filepath = pdf['path_file']
 
+            es_caratula = pdf.get('es_caratula', False)
+
             if isdigital:
                 name, code = extract_certificate_info_name(certificates['certificate'])
                 if code != 200:
@@ -427,12 +429,15 @@ def firmalote():
                     if code != 200:
                         errors_stack.append({"idDocFailed": id_doc, "message": "Error al firmar PDF: Error en sign_own_pdf"})
                         raise PDFSignatureError("Error al firmar PDF: Error en sign_own_pdf")
-                    lastpdf, code = get_number_and_date_then_close(signed_pdf_base64, id_doc)
-                    if code == 500:
-                        response = lastpdf.get_json()
-                        if response['status'] == "error":
-                            errors_stack.append({"idDocFailed": id_doc, "message": "Error al cerrar PDF: Error en get_number_and_date_then_close"})
-                            raise PDFSignatureError("Error al cerrar PDF: Error en get_number_and_date_then_close")
+                    if not es_caratula: 
+                        lastpdf, code = get_number_and_date_then_close(signed_pdf_base64, id_doc)
+                        if code == 500:
+                            response = lastpdf.get_json()
+                            if response['status'] == "error":
+                                errors_stack.append({"idDocFailed": id_doc, "message": "Error al cerrar PDF: Error en get_number_and_date_then_close"})
+                                raise PDFSignatureError("Error al cerrar PDF: Error en get_number_and_date_then_close")
+                    else:
+                        lastpdf = signed_pdf_base64
                     signed_pdf_base64_closed, code = sign_own_pdf(lastpdf, True, closingplace, stamp, area, name, datetimesigned, role)
                     if code != 200:
                         errors_stack.append({"idDocFailed": id_doc, "message": "Error al firmar PDF: Error en sign_own_pdf"})
