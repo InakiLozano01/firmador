@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org" layout:decorate="~{layout.html}" th:with="currentPage=#{label.signADocument}">
+	<body>		
+		<div layout:fragment="content">
+
+
+            <form method="post" enctype="multipart/form-data" th:action="@{/sign-a-document}" th:object="${signatureDocumentForm}">
+
+                <input type="hidden" id="process" value="SIGNATURE" />
+
+                <div th:replace="~{fragment/fields :: field-document-to-sign}"></div>
+
+                <input type="radio" style="display: none" name="containerType" value="none" id="containerNone" checked="checked"/>
+
+                <input type="radio" style="display: none" name="signatureForm" value="PAdES" id="formPAdES" checked="checked"/>
+
+                <input type="radio" style="display: none" name="signaturePackaging" value="ENVELOPED" id="signaturePackaging-ENVELOPED" checked="checked" />
+
+                <select style="display: none" name="signatureLevel" value="PADES_BASELINE_B" id="selectSignatureLevel"></select>
+
+                <input type="radio" style="display: none" name="digestAlgorithm" value="SHA256" id="algoSHA256" checked="checked" />
+
+                <input type="hidden" name="signWithExpiredCertificate" value="false" />
+
+                <input type="hidden" name="addContentTimestamp" value="false" />
+
+                <div th:replace="~{fragment/nexu :: nexu-alert}"></div>
+
+                <div class="form-group row">
+                    <div class="offset-sm-3 col-sm-9">
+                        <button type="submit" class="btn btn-primary" id="submit-button" th:text="Firmar" disabled="disabled"></button>
+                        <button type="reset" class="btn btn-secondary" th:text="Borrar"></button>
+                    </div>
+                </div>
+
+            </form>
+		</div>
+		<div layout:fragment="scripts">
+            <script type="text/javascript" th:src="@{/scripts/jsDigestAlgorithm.js}"></script>
+            <script type="text/javascript" th:src="@{/scripts/jsSignatureLevel.js}"></script>
+            <script type="text/javascript" th:src="@{/js/nexu-deploy.js}"></script>
+            <script type="text/javascript">
+				$('[data-toggle="tooltip"]').tooltip();
+            </script>
+		</div>
+	</body>
+</html>

@@ -86,7 +86,7 @@ public class DSSBeanConfig {
 	@Value("${default.certificate.validation.policy}")
 	private String defaultCertificateValidationPolicy;
 
-	@Value("${current.lotl.url}")
+	@Value("https://pki.jgm.gov.ar/TSL/tsl-AR.xml")
 	private String lotlUrl;
 
 	@Value("${lotl.country.code}")
@@ -107,7 +107,7 @@ public class DSSBeanConfig {
 	@Value("${tl.loader.ades.enabled}")
 	private boolean adesLotlEnabled;
 
-	@Value("${tl.loader.ades.lotlUrl}")
+	@Value("https://pki.jgm.gov.ar/TSL/tsl-AR.xml")
 	private String adesLotlUrl;
 
 	@Value("${tl.loader.ades.keystore.type}")
@@ -176,7 +176,6 @@ public class DSSBeanConfig {
 	@Value("${trusted.source.keystore.password:}")
 	private String trustSourceKsPassword;
 
-
 	// can be null
 	@Autowired(required = false)
 	private ProxyConfig proxyConfig;
@@ -185,13 +184,13 @@ public class DSSBeanConfig {
 	public CommonsDataLoader dataLoader() {
 		return configureCommonsDataLoader(new CommonsDataLoader());
 	}
-	
+
 	@Bean
-    public CommonsDataLoader trustAllDataLoader() {
+	public CommonsDataLoader trustAllDataLoader() {
 		CommonsDataLoader trustAllDataLoader = configureCommonsDataLoader(new CommonsDataLoader());
 		trustAllDataLoader.setTrustStrategy(TrustAllStrategy.INSTANCE);
 		return trustAllDataLoader;
-    }
+	}
 
 	@Bean
 	public OCSPDataLoader ocspDataLoader() {
@@ -291,7 +290,8 @@ public class DSSBeanConfig {
 		if (Utils.isStringNotEmpty(trustSourceKsFilename)) {
 			try {
 				KeyStoreCertificateSource keyStore = new KeyStoreCertificateSource(
-						new ClassPathResource(trustSourceKsFilename).getFile(), trustSourceKsType, trustSourceKsPassword.toCharArray());
+						new ClassPathResource(trustSourceKsFilename).getFile(), trustSourceKsType,
+						trustSourceKsPassword.toCharArray());
 				trustedCertificateSource.importAsTrusted(keyStore);
 			} catch (IOException e) {
 				throw new DSSException("Unable to load the file " + adesKeyStoreFilename, e);
@@ -438,7 +438,7 @@ public class DSSBeanConfig {
 		}
 		return service;
 	}
-	
+
 	@Bean
 	public RemoteCertificateValidationService remoteCertificateValidationService() {
 		RemoteCertificateValidationService service = new RemoteCertificateValidationService();
@@ -455,7 +455,8 @@ public class DSSBeanConfig {
 
 	@Bean
 	public KeyStoreSignatureTokenConnection remoteToken() throws IOException {
-		return new KeyStoreSignatureTokenConnection(new ClassPathResource(serverSigningKeystoreFilename).getFile(), serverSigningKeystoreType,
+		return new KeyStoreSignatureTokenConnection(new ClassPathResource(serverSigningKeystoreFilename).getFile(),
+				serverSigningKeystoreType,
 				new PasswordProtection(serverSigningKeystorePassword.toCharArray()));
 	}
 
@@ -465,7 +466,7 @@ public class DSSBeanConfig {
 		remoteSignatureTokenConnectionImpl.setToken(remoteToken());
 		return remoteSignatureTokenConnectionImpl;
 	}
-	
+
 	@Bean
 	public RemoteTimestampService timestampService() throws IOException {
 		RemoteTimestampService timestampService = new RemoteTimestampService();
@@ -476,7 +477,8 @@ public class DSSBeanConfig {
 	@Bean
 	public KeyStoreCertificateSource ojContentKeyStore() {
 		try {
-			return new KeyStoreCertificateSource(new ClassPathResource(ksFilename).getFile(), ksType, ksPassword.toCharArray());
+			return new KeyStoreCertificateSource(new ClassPathResource(ksFilename).getFile(), ksType,
+					ksPassword.toCharArray());
 		} catch (IOException e) {
 			throw new DSSException("Unable to load the file " + ksFilename, e);
 		}
@@ -485,13 +487,14 @@ public class DSSBeanConfig {
 	@Bean
 	public KeyStoreCertificateSource adesLotlKeyStore() {
 		try {
-			return new KeyStoreCertificateSource(new ClassPathResource(adesKeyStoreFilename).getFile(), adesKeyStoreType, adesKeyStorePassword.toCharArray());
+			return new KeyStoreCertificateSource(new ClassPathResource(adesKeyStoreFilename).getFile(),
+					adesKeyStoreType, adesKeyStorePassword.toCharArray());
 		} catch (IOException e) {
 			throw new DSSException("Unable to load the file " + adesKeyStoreFilename, e);
 		}
 	}
-	
-	@Bean 
+
+	@Bean
 	public TLValidationJob job() {
 		TLValidationJob job = new TLValidationJob();
 		job.setTrustedListCertificateSource(trustedListSource());
@@ -538,7 +541,10 @@ public class DSSBeanConfig {
 		adesLOTL.setPivotSupport(false);
 
 		adesLOTL.setLotlPredicate(new XMLOtherTSLPointer().and(new TypeOtherTSLPointer(adesTSLType)));
-		adesLOTL.setTlPredicate(new XMLOtherTSLPointer().and(new TypeOtherTSLPointer(adesTSLType)).negate()); // allow all TSL Types
+		adesLOTL.setTlPredicate(new XMLOtherTSLPointer().and(new TypeOtherTSLPointer(adesTSLType)).negate()); // allow
+																												// all
+																												// TSL
+																												// Types
 
 		return adesLOTL;
 	}
@@ -561,15 +567,15 @@ public class DSSBeanConfig {
 		}
 		return tslCache;
 	}
-	
-    /* QWAC Validation */
 
-    @Bean
-    public SSLCertificateLoader sslCertificateLoader() {
-        SSLCertificateLoader sslCertificateLoader = new SSLCertificateLoader();
-        sslCertificateLoader.setCommonsDataLoader(trustAllDataLoader());
-        return sslCertificateLoader;
-    }
+	/* QWAC Validation */
+
+	@Bean
+	public SSLCertificateLoader sslCertificateLoader() {
+		SSLCertificateLoader sslCertificateLoader = new SSLCertificateLoader();
+		sslCertificateLoader.setCommonsDataLoader(trustAllDataLoader());
+		return sslCertificateLoader;
+	}
 
 	private <C extends CommonsDataLoader> C configureCommonsDataLoader(C dataLoader) {
 		dataLoader.setTimeoutConnection(connectionTimeout);

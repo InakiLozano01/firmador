@@ -1,0 +1,38 @@
+{
+    "numero": 123,
+    "anio": 2024,
+    "codigo": 270,
+    "letra": "INF",
+    "fecha_caratulacion": "2024-09-05",
+    "asunto": "Prueba de indice de expedientes",
+    "causante": {
+        "indentificador_numero": 12345678,
+        "indentificador_tipo": "DNI",
+        "nombre": "Usuario de prueba de TAPIR"
+    },
+    "tramites": [
+        {
+            "secuencia": 1,
+            "fecha_finalizacion": "2024-09-05 10:15",
+            "oficina": "Informatica",
+            "organismo": "Tribunal de cuentas de tucuman",
+            "version": 1,
+            "documentos": [
+                {
+                    "orden": 1,
+                    "id_documento": "1234",
+                    "fecha_adjuntado": "2024-09-05 10:00",
+                    "hash_contenido": "50a07068ecb30a6846057f48514f139284beb31aba29d827c17466a545f450f2",
+                    "subsanacion": []
+                },
+                {
+                    "orden": 2,
+                    "id_documento": "2345",
+                    "fecha_adjuntado": "2024-09-05 10:10",
+                    "hash_contenido": "5c8440969c93c4e309df746becbb1da450def97aa28557e2f19bc31ba8384175",
+                    "subsanacion": []
+                }
+            ]
+        }
+    ]
+}

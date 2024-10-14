@@ -16,6 +16,10 @@ import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+// Import necessary classes
+import com.itextpdf.kernel.colors.DeviceRgb;
+import com.itextpdf.kernel.pdf.canvas.PdfCanvas;
+
 @Service
 public class PdfFormService {
 
@@ -28,7 +32,7 @@ public class PdfFormService {
         try {
             PdfReader reader = new PdfReader(new ByteArrayInputStream(pdfBytes));
             PdfWriter writer = new PdfWriter(baos);
-            StampingProperties stampingProperties = new StampingProperties().useAppendMode();
+            StampingProperties stampingProperties = new StampingProperties().preserveEncryption().useAppendMode();
 
             pdfDoc = new PdfDocument(reader, writer, stampingProperties);
             PdfAcroForm form = PdfAcroForm.getAcroForm(pdfDoc, true);
@@ -39,38 +43,36 @@ public class PdfFormService {
 
                 if (!PdfName.Sig.equals(field.getFormType())) {
                     if (fieldValues.containsKey(fieldName)) {
-                        Object valor = fieldValues.get(fieldName);
-                        field.setValue(String.valueOf(valor));
+                        Object value = fieldValues.get(fieldName);
+                        field.setValue(String.valueOf(value));
                         field.setFieldFlag(PdfFormField.FF_READ_ONLY, true);
+                        field.setReadOnly(true);
 
-                        // Remove border and make non-editable
+                        // Modify field appearance without generating new content
                         for (PdfWidgetAnnotation widget : field.getWidgets()) {
-                            widget.setFlag(PdfAnnotation.PRINT);
-
                             // Remove border
                             PdfDictionary borderStyle = new PdfDictionary();
-                            borderStyle.put(PdfName.W, new PdfNumber(0)); // Set border width to 0
+                            borderStyle.put(PdfName.W, new PdfNumber(0));
                             widget.setBorderStyle(borderStyle);
 
                             // Set no highlight
                             widget.setHighlightMode(PdfAnnotation.HIGHLIGHT_NONE);
 
                             // Remove appearance characteristics
-                            widget.setAppearanceCharacteristics(new PdfDictionary());
-                            }
+                            widget.setAppearanceCharacteristics(null);
+                            // Force appearance generation
+                            field.regenerateField();
+                        }
 
-                        System.out.println("Updating field: " + fieldName + " with value: " + String.valueOf(fieldValues.get(fieldName)));
+                        logger.info("Updated field: {} with value: {}", fieldName, value);
                     }
                 } else {
-                System.out.println("Skipping signature field: " + fieldName);
+                    logger.info("Skipping signature field: {}", fieldName);
                 }
             }
-        } catch (IOException e) {
-            logger.error("Error al actualizar campos del formulario PDF", e);
-            throw new PdfFormUpdateException("Error al actualizar campos del formulario PDF", e);
         } catch (Exception e) {
-            logger.error("Error inesperado al actualizar campos del formulario PDF", e);
-            throw new PdfFormUpdateException("Error inesperado al actualizar campos del formulario PDF", e);
+            logger.error("Error updating PDF form fields", e);
+            throw new PdfFormUpdateException("Error updating PDF form fields", e);
         } finally {
             if (pdfDoc != null) {
                 pdfDoc.close();

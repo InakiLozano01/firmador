@@ -4,18 +4,16 @@
 
 import json
 import platform
-import requests
 from cryptography.hazmat.primitives import hashes
 from uuid import uuid4
 from flask import Flask, jsonify, request
 from threading import Thread
-from subprocess import Popen
-import atexit
 from flask_cors import CORS
-import time as tiempo
-from datetime import datetime
-from pytz import utc, timezone
 import os
+import pystray
+from pystray import MenuItem
+from PIL import Image
+import psutil
 
 ##################################################
 ###              Imports propios               ###
@@ -36,57 +34,14 @@ from interfaz import *
 app = Flask(__name__)
 CORS(app)
 
-java_process = None
-java_process_started = False
-
-##################################################
-###     Inicializacion de servicio de digest   ###
-##################################################
-
-@app.before_request
-def start_java_process():
-    global java_process_started
-    global java_process
-
-    try:
-        response = requests.get("http://localhost:5555/services/rest/serviceStatus")
-        if response.status_code == 200 and response.text == "OK":
-            java_process_started = True
-    except Exception as e:
-        pass
-
-    if not java_process_started:
-        print("Arrancando proceso Java...")
-        try:
-            # Get the path to the directory containing the executable
-            current_file_path = os.path.abspath(__file__)
-
-            if 'temp' not in current_file_path.lower():
-                jar_path = r'.\dssapp\dss-demo-webapp\target\dss-signature-rest-6.1.RC1.jar'
-            else:
-                exe_dir = os.path.dirname(os.path.abspath(__file__))
-
-                # Construct the path to the JAR file relative to the executable directory
-                jar_path = os.path.join(exe_dir, 'dss-signature-rest-6.1.RC1.jar')
-            
-            # Start the Java process
-            java_process = Popen(['java', '-jar', jar_path])
-            java_process_started = True
-
-        except Exception as e:
-            return jsonify({"status": False, "message": f"Error al iniciar el proceso Java: {str(e)}"}), 500
-
-    
-        killjava = java_process.terminate
-        # Terminar el proceso de Java al cerrar la aplicacion de Python
-        atexit.register(killjava)
-
 ##################################################
 ###                 Endpoints                  ###
 ##################################################
 
-@app.route('/rest/certificates', methods=['POST'])
+@app.route('/rest/certificates', methods=['GET'])
 def get_certificates():
+    global pin, lib_path, selected_slot_index
+
     try:
 
         current_file_path = os.path.abspath(__file__)
@@ -94,31 +49,6 @@ def get_certificates():
             mode = 'python'
         else:
             mode = 'exe'
-
-        # Recuperar los datos JSON de la request
-        data = request.get_json()
-        if not data or 'pdfs' not in data:
-            return jsonify({"status": False, "message": "No se recibieron archivos PDF."}), 400
-
-        pdfs = data['pdfs']
-        if not isinstance(pdfs, list) or pdfs is None:
-            return jsonify({"status": False, "message": "El campo 'pdfs' debe ser una lista."}), 400
-        
-        fields = data['fields']
-        if not isinstance(fields, list) or fields is None:
-            return jsonify({"status": False, "message": "El campo 'fields' debe ser una lista."}), 400
-        
-        names = data['names']
-        if not isinstance(names, list) or names is None:
-            return jsonify({"status": False, "message": "El campo 'names' debe ser una lista."}), 400
-        
-        stamps = data['stamps']
-        if not isinstance(stamps, list) or stamps is None:
-            return jsonify({"status": False, "message": "El campo 'stamps' debe ser una lista."}), 400
-        
-        areas = data['areas']
-        if not isinstance(areas, list) or areas is None:
-            return jsonify({"status": False, "message": "El campo 'areas' debe ser una lista."}), 400
 
         # Carga el mapeo de drivers previamente usados
         token_library_mapping, code = load_token_library_mapping()
@@ -161,7 +91,7 @@ def get_certificates():
             return jsonify({"status": False, "message": "Entrada de PIN cancelada."}), 400
 
         # Obtener los certificados del token
-        certificates, session, code = get_certificates_from_token(lib_path, pin, selected_slot_index)
+        certificates, session, code = get_certificates_from_token(lib_path, pin)
         if not certificates or code != 200:
             return jsonify({"status": False, "message": "Problema al traer certificados del token."}), 404
 
@@ -178,9 +108,14 @@ def get_certificates():
         cert, cert_der = certificates[selected_index]
 
         # Obtener la cadena de certificados completa
-        cert_chain = get_full_chain(cert, cert_der)
-        chain_base64 = [cert_to_base64(c) for c in cert_chain]
+        try:
+            cert_chain = get_full_chain(cert, cert_der)
+            chain_base64 = [cert_to_base64(c) for c in cert_chain]
+        except Exception as e:
+            session.closeSession()
+            return jsonify({"status": False, "message": f"Error al obtener la cadena de certificados: {str(e)}"}), 500
 
+        session.closeSession()
         response = {
             "status": True,
             "response": {
@@ -194,92 +129,102 @@ def get_certificates():
             },
             "feedback": {
                 "info": {
-                    "language": "Python & Java",
+                    "language": "Python",
                     "osName": platform.system(),
                     "osArch": platform.machine(),
                     "osVersion": platform.version(),
                     "arch": platform.architecture()[0],
                     "os": platform.system().upper()
                 },
-                "firmaCliente": "0.1"
+                "TuquitoVersion": "0.1"
             }
         }
 
-        certificate = response["response"]["certificate"]
-        certificate_chain = response["response"]["certificateChain"]
-
-        data_to_sign_list = []
-
-        for pdf, field, name, stamp, area in zip(pdfs, fields, names, stamps, areas):
-            print(f"Procesando PDF....")
-            current_file_path = os.path.abspath(__file__)
-            if 'temp' not in current_file_path.lower():
-                mode = 'python'
-                image_path = r'.\images\logo_tribunal_para_tapir_250px.png'
-            else:
-                mode = 'exe'
-                exe_dir = os.path.dirname(os.path.abspath(__file__))
-                image_path = os.path.join(exe_dir, 'logo_tribunal_para_tapir_250px.png')
-            encoded_image = encode_image(image_path)
-            current_time = int(tiempo.time() * 1000)
-            datetimesigned = datetime.now(utc).astimezone(timezone('America/Argentina/Buenos_Aires')).strftime("%Y-%m-%d %H:%M:%S")
-            custom_image = create_signature_image(
-                    f"{name}\n{datetimesigned}\n{stamp}\n{area}",
-                    encoded_image,
-                    "token",
-                    mode
-                )
-            data_to_sign_response = digestpdf(pdf, certificate, certificate_chain, stamp, field, custom_image, current_time)
-            if data_to_sign_response is None or 'bytes' not in data_to_sign_response:
-                return jsonify({"status": False, "message": "Error al obtener datos para firmar."}), 500
-            data_to_sign = data_to_sign_response['bytes']
-            data_to_sign_list.append(data_to_sign)
-
-        signatureValues = sign_multiple_data(session, data_to_sign_list)
-        
-        response["response"]["signatureValues"] = signatureValues
-
         responsejson = json.loads(json.dumps(response))
-
         return jsonify(responsejson), 200
     except PyKCS11.PyKCS11Error as e:
         return jsonify({"status": False, "message": f"Error de PyKCS11: {str(e)}"}), 500
     except Exception as e:
         return jsonify({"status": False, "message": f"Error inesperado en get_certificates: {str(e)}"}), 500
+    
+@app.route('/rest/sign', methods=['POST'])
+def get_signatures():
+    global pin, lib_path, selected_slot_index
 
+    try:
+        data = request.get_json()
+        if not data or 'dataToSign' not in data:
+            return jsonify({"status": False, "message": "No se recibieron datos para firmar."}), 400
+        
+        dataToSign = data['dataToSign']
+        if not dataToSign or not isinstance(dataToSign, list):
+            return jsonify({"status": False, "message": "Lista de datos a firmar vacía."}), 400
+        
+        certificates, session, code = get_certificates_from_token(lib_path, pin)
+        if not certificates or code != 200:
+            return jsonify({"status": False, "message": "Problema al traer certificados del token."}), 404
+        
+        signatures, code = sign_multiple_data(session, dataToSign)
+        if code != 200:
+            return jsonify({"status": False, "message": "Error al firmar los datos."}), code
+        
+        response = {
+            "status": True,
+            "response": {
+                "signatures": signatures
+            }
+        }
+
+        responsejson = json.loads(json.dumps(response))
+
+        if not session:
+            session.closeSession()
+        return jsonify(responsejson), 200
+    
+    except Exception as e:
+        return jsonify({"status": False, "message": "Error inesperado en get_signatures." + str(e)}), 500
+    
+def is_port_in_use(port):
+    for conn in psutil.net_connections():
+        if conn.laddr.port == port:
+            return True
+    return False
+
+def run_flask_app():
+    global port
+    port = 5000
+    if is_port_in_use(port):
+        show_alert(f"El puerto {port} esta en uso. Saliendo de la aplicacion.")
+        os._exit(0)
+    app.run(host='127.0.0.1', port=port, threaded=True)
+
+
+def on_quit(icon):
+    icon.stop()
+    os._exit(0)
+
+def setup(icon):
+    icon.visible = True
+
+# Create an icon for the system tray
+def run_tray_icon():
+    current_file_path = os.path.abspath(__file__)
+    if 'temp' not in current_file_path.lower():
+        image = './images/app_icon_tuquito.png'
+    else:
+        exe_dir = os.path.dirname(os.path.abspath(__file__))
+        image = os.path.join(exe_dir, 'app_icon_tuquito.png')
+    image = Image.open(image)  # Replace with the path to your icon image
+    menu = (MenuItem('Salir...', on_quit),)
+    icon = pystray.Icon("name", image, f"Tuquito (Puerto: {port})", menu)
+    icon.run(setup)
 
 if __name__ == "__main__":
-    try:
-        response = requests.get("http://localhost:5555/services/rest/serviceStatus")
-        if response.status_code == 200 and response.text == "OK":
-            java_process_started = True
-    except Exception as e:
-        pass
+    tray_icon_thread = Thread(target=run_tray_icon)
+    flask_thread = Thread(target=run_flask_app)
 
-    if not java_process_started:
-        print("Arrancando Java process...")
-        try:
-            # Get the path to the directory containing the executable
-            current_file_path = os.path.abspath(__file__)
+    tray_icon_thread.start()
+    flask_thread.start()
 
-            if 'temp' not in current_file_path.lower():
-                jar_path = r'.\dssapp\dss-demo-webapp\target\dss-signature-rest-6.1.RC1.jar'
-            else:
-                exe_dir = os.path.dirname(os.path.abspath(__file__))
-
-                # Construct the path to the JAR file relative to the executable directory
-                jar_path = os.path.join(exe_dir, 'dss-signature-rest-6.1.RC1.jar')
-
-            # Start the Java process
-            java_process = Popen(['java', '-jar', jar_path])
-            java_process_started = True
-            
-        except Exception as e:
-            print(f"Error al iniciar el proceso Java: {str(e)}")
-
-    killjava = java_process.terminate
-    # Terminar el proceso de Java al cerrar la aplicacion de Python
-    atexit.register(killjava)
-
-    app.run(host='127.0.0.1', port=9795, threaded=True)
-
+    tray_icon_thread.join()
+    flask_thread.join()

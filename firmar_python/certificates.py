@@ -6,6 +6,7 @@ import re
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from errors import PDFSignatureError
+from flask import jsonify
 
 ###    Funcion para extraer toda la informacion de un certificado X.509 (nombre, cuil y email)    ###
 def extract_certificate_info(cert_base64):
@@ -24,10 +25,10 @@ def extract_certificate_info(cert_base64):
         cuil = re.sub(r'\D', '', cuil)
         email = email[0] if email else None
 
-        return cuil, common_name, email
+        return cuil, common_name, email, 200
     except Exception as e:
         logging.error(f"Error al extraer información del certificado: {str(e)}")
-        raise PDFSignatureError("Failed to extract certificate information.")
+        return jsonify({"status": False, "message": "Failed to extract certificate information."}), 400
     
 ###    Funcion para extraer el nombre de un certificado X.509    ###
 def extract_certificate_info_name(cert_base64):
@@ -38,7 +39,7 @@ def extract_certificate_info_name(cert_base64):
         # Extraer nombre completo
         common_name = cert.subject.get_attributes_for_oid(x509.NameOID.COMMON_NAME)[0].value
 
-        return common_name
+        return common_name, 200
     except Exception as e:
         logging.error(f"Error al extraer información del certificado: {str(e)}")
-        raise PDFSignatureError("Failed to extract certificate information.")
+        return jsonify({"status": False, "message": "Failed to extract certificate name information."}), 400
