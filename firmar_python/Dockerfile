@@ -31,6 +31,12 @@ RUN pip install psycopg2-binary
 # Install libarchive
 RUN pip install libarchive-c
 
+# Install reportlab
+RUN pip install reportlab
+
+# Install pdfrw
+RUN pip install pdfrw
+
 # Automatically configure mod_wsgi
 #RUN mod_wsgi-express install-module | tee /etc/apache2/mods-available/wsgi.load
 #RUN a2enmod wsgi

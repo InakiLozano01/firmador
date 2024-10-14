@@ -16,6 +16,7 @@ import psycopg2
 from dotenv import load_dotenv
 import requests
 from flask import Flask, request, jsonify
+from time import time
 
 ##################################################
 ###              Imports propios               ###
@@ -27,6 +28,7 @@ from errors import PDFSignatureError
 from imagecomp import encode_image
 from createimagetostamp import create_signature_image
 from validation import validate_certs, validate_signature, validation_analyze
+from watermark import merge_pdf_files_pdfrw, add_watermark_to_pdf
 
 ##################################################
 ###         Cargar variables de entorno        ###
@@ -1029,9 +1031,44 @@ def validate_expediente():
 #8  ##################################################
     ###             Ruta de testeo                 ###
     ##################################################
-@app.route('/test', methods=['GET'])
+@app.route('/test', methods=['GET', 'POST'])
 def test_route():
     """
     Test route.
     """
     return jsonify({"status": "success", "message": "Test route"}), 200
+
+
+#9  ##################################################
+    ###         Concatenar y Watermark PDFs        ###
+    ##################################################
+@app.route('/concatenarpdfs', methods=['POST'])
+def mergepdfs():
+    start_time = time()
+    try:
+        raw_data = request.get_json()
+        pdfs_base64 = raw_data['pdfs']
+        texto_marca_agua = raw_data['texto_marca_agua']
+
+        pdfs_bytes = [base64.b64decode(pdf) for pdf in pdfs_base64]
+        
+        pdf_merged = merge_pdf_files_pdfrw(pdfs_bytes)
+        
+        watermark_text = f"Descargado por: {texto_marca_agua} {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}"
+        watermarked_pdf = add_watermark_to_pdf(pdf_merged, watermark_text)
+        
+        watermarked_pdf_base64 = base64.b64encode(watermarked_pdf).decode('utf-8')
+        
+        end_time = time()
+        processing_time = end_time - start_time
+        
+        return jsonify({
+            "status": True,
+            "Time": f"Tiempo de concatenacion y watermarking: {processing_time:.4f} segundos",
+            "message": "PDFs concatenados correctamente",
+            "output_pdf": watermarked_pdf_base64
+        }), 200
+    except KeyError as e:
+        return jsonify({"status": False, "message": f"Error: Falta el campo {str(e)} en la solicitud"}), 400
+    except Exception as e:
+        return jsonify({"status": False, "message": f"Error: {str(e)}"}), 500
