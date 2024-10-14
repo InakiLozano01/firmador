@@ -21,6 +21,9 @@ services:
       - "5000:5000"
     volumes:
       - ./firmar_python:/app
+      - /qnap/indice_migracion:/app/expedientes
+      - /qnap/documentos_firmados:/var/documentos_firmados
+      - ../tapir/documentos_temp:/var/documentos
     depends_on:
       - java-webapp
     networks:
