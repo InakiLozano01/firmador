@@ -1044,21 +1044,22 @@ def test_route():
     ##################################################
 @app.route('/concatenarpdfs', methods=['POST'])
 def mergepdfs():
-    start_time = time()
+    
     try:
+        start_time = time()
         raw_data = request.get_json()
         pdfs_base64 = raw_data['pdfs']
         texto_marca_agua = raw_data['texto_marca_agua']
 
-        pdfs_bytes = [base64.b64decode(pdf) for pdf in pdfs_base64]
+        try:
+            pdfs_bytes = [base64.b64decode(pdf) for pdf in pdfs_base64]
+        except Exception as e:
+            return jsonify({"status": False, "message": f"Error al decodificar los PDFs: {str(e)}"}), 500
         
         pdf_merged = merge_pdf_files_pdfrw(pdfs_bytes)
-        
-        watermark_text = f"Descargado por: {texto_marca_agua} {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}"
+        watermark_text = f"Descargado por: {texto_marca_agua} {datetime.now().strftime('%d/%m/%Y-%H:%M:%S')}"
         watermarked_pdf = add_watermark_to_pdf(pdf_merged, watermark_text)
-        
         watermarked_pdf_base64 = base64.b64encode(watermarked_pdf).decode('utf-8')
-        
         end_time = time()
         processing_time = end_time - start_time
         
@@ -1068,6 +1069,7 @@ def mergepdfs():
             "message": "PDFs concatenados correctamente",
             "output_pdf": watermarked_pdf_base64
         }), 200
+    
     except KeyError as e:
         return jsonify({"status": False, "message": f"Error: Falta el campo {str(e)} en la solicitud"}), 400
     except Exception as e:
