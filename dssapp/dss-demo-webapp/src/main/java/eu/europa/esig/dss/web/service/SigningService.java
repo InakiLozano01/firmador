@@ -1,63 +1,68 @@
 package eu.europa.esig.dss.web.service;
 
-import eu.europa.esig.dss.AbstractSignatureParameters;
+import eu.europa.esig.dss.alert.LogOnStatusAlert;
 import eu.europa.esig.dss.asic.cades.ASiCWithCAdESSignatureParameters;
 import eu.europa.esig.dss.asic.cades.ASiCWithCAdESTimestampParameters;
 import eu.europa.esig.dss.asic.cades.signature.ASiCWithCAdESService;
+import eu.europa.esig.dss.asic.common.ASiCUtils;
 import eu.europa.esig.dss.asic.xades.ASiCWithXAdESSignatureParameters;
 import eu.europa.esig.dss.asic.xades.signature.ASiCWithXAdESService;
 import eu.europa.esig.dss.cades.CAdESSignatureParameters;
 import eu.europa.esig.dss.cades.signature.CAdESCounterSignatureParameters;
 import eu.europa.esig.dss.cades.signature.CAdESService;
 import eu.europa.esig.dss.cades.signature.CAdESTimestampParameters;
-import eu.europa.esig.dss.enumerations.*;
+import eu.europa.esig.dss.enumerations.ASiCContainerType;
+import eu.europa.esig.dss.enumerations.JWSSerializationType;
+import eu.europa.esig.dss.enumerations.SigDMechanism;
+import eu.europa.esig.dss.enumerations.SignatureAlgorithm;
+import eu.europa.esig.dss.enumerations.SignatureForm;
+import eu.europa.esig.dss.enumerations.SignaturePackaging;
 import eu.europa.esig.dss.jades.JAdESSignatureParameters;
 import eu.europa.esig.dss.jades.JAdESTimestampParameters;
 import eu.europa.esig.dss.jades.signature.JAdESCounterSignatureParameters;
 import eu.europa.esig.dss.jades.signature.JAdESService;
-import eu.europa.esig.dss.model.*;
+import eu.europa.esig.dss.model.DSSDocument;
+import eu.europa.esig.dss.model.DSSException;
+import eu.europa.esig.dss.model.DigestDocument;
+import eu.europa.esig.dss.model.SerializableCounterSignatureParameters;
+import eu.europa.esig.dss.model.SignatureValue;
+import eu.europa.esig.dss.model.TimestampParameters;
+import eu.europa.esig.dss.model.ToBeSigned;
 import eu.europa.esig.dss.model.x509.CertificateToken;
-import eu.europa.esig.dss.pades.*;
+import eu.europa.esig.dss.pades.PAdESSignatureParameters;
+import eu.europa.esig.dss.pades.PAdESTimestampParameters;
 import eu.europa.esig.dss.pades.signature.PAdESService;
-import eu.europa.esig.dss.service.tsp.OnlineTSPSource;
+import eu.europa.esig.dss.signature.AbstractSignatureParameters;
 import eu.europa.esig.dss.signature.CounterSignatureService;
 import eu.europa.esig.dss.signature.DocumentSignatureService;
 import eu.europa.esig.dss.signature.MultipleDocumentsSignatureService;
 import eu.europa.esig.dss.spi.DSSUtils;
+import eu.europa.esig.dss.spi.validation.CertificateVerifier;
+import eu.europa.esig.dss.spi.validation.CertificateVerifierBuilder;
 import eu.europa.esig.dss.spi.x509.tsp.KeyEntityTSPSource;
 import eu.europa.esig.dss.spi.x509.tsp.TSPSource;
-import eu.europa.esig.dss.utils.Utils;
 import eu.europa.esig.dss.spi.x509.tsp.TimestampToken;
+import eu.europa.esig.dss.utils.Utils;
 import eu.europa.esig.dss.web.WebAppUtils;
 import eu.europa.esig.dss.web.exception.SignatureOperationException;
 import eu.europa.esig.dss.web.model.AbstractSignatureForm;
 import eu.europa.esig.dss.web.model.ContainerDocumentForm;
-
+import eu.europa.esig.dss.web.model.CounterSignatureForm;
 import eu.europa.esig.dss.web.model.ExtensionForm;
+import eu.europa.esig.dss.web.model.SignatureDigestForm;
 import eu.europa.esig.dss.web.model.SignatureDocumentForm;
-
+import eu.europa.esig.dss.web.model.SignatureJAdESForm;
+import eu.europa.esig.dss.web.model.SignatureMultipleDocumentsForm;
 import eu.europa.esig.dss.web.model.TimestampForm;
 import eu.europa.esig.dss.xades.XAdESSignatureParameters;
 import eu.europa.esig.dss.xades.XAdESTimestampParameters;
 import eu.europa.esig.dss.xades.signature.XAdESCounterSignatureParameters;
 import eu.europa.esig.dss.xades.signature.XAdESService;
-import org.apache.pdfbox.pdmodel.PDDocument;
-import org.apache.pdfbox.pdmodel.PDPage;
-import org.apache.pdfbox.pdmodel.common.PDRectangle;
-import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotation;
-import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationWidget;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-import eu.europa.esig.dss.enumerations.SignatureForm;
-import eu.europa.esig.dss.model.InMemoryDocument;
-
-
-import java.awt.*;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
 import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
@@ -68,28 +73,10 @@ public class SigningService {
 	private static final Logger LOG = LoggerFactory.getLogger(SigningService.class);
 
 	@Autowired
-	private CAdESService cadesService;
+	private CertificateVerifier certificateVerifier;
 
 	@Autowired
-	private PAdESService padesService;
-
-	@Autowired
-	private XAdESService xadesService;
-
-	@Autowired
-	private JAdESService jadesService;
-
-	@Autowired
-	private ASiCWithCAdESService asicWithCAdESService;
-
-	@Autowired
-	private ASiCWithXAdESService asicWithXAdESService;
-
-	@Autowired
-	private TSPSource tspSource = new OnlineTSPSource("https://freetsa.org/tsr");
-
-
-	private DSSDocument originalDoc;
+	private TSPSource tspSource;
 
 	public boolean isMockTSPSourceUsed() {
 		return tspSource instanceof KeyEntityTSPSource;
@@ -122,12 +109,12 @@ public class SigningService {
 	@SuppressWarnings({ "rawtypes", "unchecked" })
 	public ToBeSigned getDataToSign(SignatureDocumentForm form) {
 		LOG.info("Start getDataToSign with one document");
-		DocumentSignatureService service = getSignatureService(form.getContainerType(), form.getSignatureForm());
-		this.originalDoc = WebAppUtils.toDSSDocument(form.getDocumentToSign());
+		DocumentSignatureService service = getSignatureService(form.getContainerType(), form.getSignatureForm(), form.isSignWithExpiredCertificate());
+
 		AbstractSignatureParameters parameters = fillParameters(form);
 
 		try {
-			DSSDocument toSignDocument = originalDoc;
+			DSSDocument toSignDocument = WebAppUtils.toDSSDocument(form.getDocumentToSign());
 			ToBeSigned toBeSigned = service.getDataToSign(toSignDocument, parameters);
 			LOG.info("End getDataToSign with one document");
 			return toBeSigned;
@@ -136,6 +123,79 @@ public class SigningService {
 		}
 	}
 
+	@SuppressWarnings({ "rawtypes", "unchecked" })
+	public ToBeSigned getDataToSign(SignatureDigestForm form) {
+		LOG.info("Start getDataToSign with one digest");
+		DocumentSignatureService service = getSignatureService(null, form.getSignatureForm(), form.isSignWithExpiredCertificate());
+
+		AbstractSignatureParameters parameters = fillParameters(form);
+
+		try {
+			DigestDocument toSignDigest = new DigestDocument(form.getDigestAlgorithm(), form.getDigestToSign(), form.getDocumentName());
+			ToBeSigned toBeSigned = service.getDataToSign(toSignDigest, parameters);
+			LOG.info("End getDataToSign with one digest");
+			return toBeSigned;
+		} catch (Exception e) {
+			throw new SignatureOperationException(e.getMessage(), e);
+		}
+	}
+
+	@SuppressWarnings({ "rawtypes", "unchecked" })
+	public ToBeSigned getDataToSign(SignatureMultipleDocumentsForm form) {
+		LOG.info("Start getDataToSign with multiple documents");
+		MultipleDocumentsSignatureService service = (MultipleDocumentsSignatureService)
+				getSignatureService(form.getContainerType(), form.getSignatureForm(), form.isSignWithExpiredCertificate());
+
+		AbstractSignatureParameters parameters = fillParameters(form);
+
+		try {
+			List<DSSDocument> toSignDocuments = WebAppUtils.toDSSDocuments(form.getDocumentsToSign());
+			ToBeSigned toBeSigned = service.getDataToSign(toSignDocuments, parameters);
+			LOG.info("End getDataToSign with multiple documents");
+			return toBeSigned;
+		} catch (Exception e) {
+			throw new SignatureOperationException(e.getMessage(), e);
+		}
+	}
+
+	@SuppressWarnings({ "rawtypes", "unchecked" })
+	public ToBeSigned getDataToSign(SignatureJAdESForm form) {
+		LOG.info("Start getDataToSign with one JAdES");
+
+		MultipleDocumentsSignatureService service = (MultipleDocumentsSignatureService)
+				getSignatureService(SignatureForm.JAdES, form.isSignWithExpiredCertificate());
+		JAdESSignatureParameters parameters = fillParameters(form);
+
+		try {
+			List<DSSDocument> toSignDocuments = WebAppUtils.toDSSDocuments(form.getDocumentsToSign());
+			ToBeSigned toBeSigned = service.getDataToSign(toSignDocuments, parameters);
+				
+			LOG.info("End getDataToSign with one JAdES");
+			return toBeSigned;
+		} catch (Exception e) {
+			throw new SignatureOperationException(e.getMessage(), e);
+		}
+	}    
+	
+	@SuppressWarnings({ "rawtypes", "unchecked" })
+    public ToBeSigned getDataToCounterSign(CounterSignatureForm form) {
+        LOG.info("Start getDataToSign with one document");
+
+        try {
+	        DSSDocument signatureDocument = WebAppUtils.toDSSDocument(form.getDocumentToCounterSign());
+			boolean zip = ASiCUtils.isZip(signatureDocument);
+	        
+			CounterSignatureService service = getCounterSignatureService(zip, form.getSignatureForm(), form.isSignWithExpiredCertificate());
+	        SerializableCounterSignatureParameters parameters = fillParameters(form);
+	
+	        ToBeSigned toBeSigned = service.getDataToBeCounterSigned(signatureDocument, parameters);
+	
+	        LOG.info("End getDataToSign with one document");
+	        return toBeSigned;
+		} catch (Exception e) {
+			throw new SignatureOperationException(e.getMessage(), e);
+		}
+    }
 
 	@SuppressWarnings({ "rawtypes", "unchecked" })
 	public TimestampToken getContentTimestamp(SignatureDocumentForm form) {
@@ -155,7 +215,65 @@ public class SigningService {
 			throw new SignatureOperationException(e.getMessage(), e);
 		}
 	}
+	
+	@SuppressWarnings({ "rawtypes", "unchecked" })
+	public TimestampToken getContentTimestamp(SignatureDigestForm form) {
+		LOG.info("Start getContentTimestamp with one digest");
 
+		DocumentSignatureService service = getSignatureService(form.getSignatureForm());
+		AbstractSignatureParameters parameters = fillParameters(form);
+
+		try {
+			DigestDocument toSignDigest = new DigestDocument(form.getDigestAlgorithm(), form.getDigestToSign(), form.getDocumentName());
+			TimestampToken contentTimestamp = service.getContentTimestamp(toSignDigest, parameters);
+
+			LOG.info("End getContentTimestamp with one digest");
+			return contentTimestamp;
+
+		} catch (Exception e) {
+			throw new SignatureOperationException(e.getMessage(), e);
+		}
+	}
+
+	@SuppressWarnings({ "rawtypes", "unchecked" })
+	public TimestampToken getContentTimestamp(SignatureMultipleDocumentsForm form) {
+		LOG.info("Start getContentTimestamp with multiple documents");
+
+		MultipleDocumentsSignatureService service = (MultipleDocumentsSignatureService)
+				getSignatureService(form.getContainerType(), form.getSignatureForm());
+		AbstractSignatureParameters parameters = fillParameters(form);
+
+		try {
+			TimestampToken contentTimestamp = service.getContentTimestamp(WebAppUtils.toDSSDocuments(form.getDocumentsToSign()), parameters);
+
+			LOG.info("End getContentTimestamp with  multiple documents");
+			return contentTimestamp;
+
+		} catch (Exception e) {
+			throw new SignatureOperationException(e.getMessage(), e);
+		}
+	}
+
+	@SuppressWarnings({ "rawtypes", "unchecked" })
+	public TimestampToken getContentTimestamp(SignatureJAdESForm form) {
+		LOG.info("Start getContentTimestamp with JAdES");
+
+		MultipleDocumentsSignatureService service = (MultipleDocumentsSignatureService) getSignatureService(SignatureForm.JAdES);
+		JAdESSignatureParameters parameters = fillParameters(form);
+
+		try {
+			List<DSSDocument> toSignDocuments = WebAppUtils.toDSSDocuments(form.getDocumentsToSign());
+			TimestampToken contentTimestamp = service.getContentTimestamp(toSignDocuments, parameters);
+
+			LOG.info("End getContentTimestamp with JAdES");
+			return contentTimestamp;
+
+		} catch (Exception e) {
+			throw new SignatureOperationException(e.getMessage(), e);
+		}
+	}
+
+	@SuppressWarnings({ "rawtypes", "unchecked" })
 	public DSSDocument timestamp(TimestampForm form) {
 		List<DSSDocument> dssDocuments = WebAppUtils.toDSSDocuments(form.getOriginalFiles());
 		LOG.info("Start timestamp with {} document(s)", dssDocuments.size());
@@ -167,15 +285,25 @@ public class SigningService {
 				throw new DSSException("Only one document is allowed for PAdES");
 			}
 			DSSDocument toTimestampDocument = dssDocuments.get(0);
-			result = padesService.timestamp(toTimestampDocument, new PAdESTimestampParameters());
+			result = getSignatureService(SignatureForm.PAdES).timestamp(toTimestampDocument, new PAdESTimestampParameters());
 		} else {
 			ASiCWithCAdESTimestampParameters parameters = new ASiCWithCAdESTimestampParameters();
 			parameters.aSiC().setContainerType(containerType);
-			result = asicWithCAdESService.timestamp(dssDocuments, parameters);
+			MultipleDocumentsSignatureService service = (MultipleDocumentsSignatureService) getSignatureService(containerType, SignatureForm.CAdES);
+			result = service.timestamp(dssDocuments, parameters);
 		}
 
 		LOG.info("End timestamp with {} document(s)", dssDocuments.size());
 		return result;
+	}
+
+	@SuppressWarnings({ "rawtypes" })
+	private AbstractSignatureParameters fillParameters(SignatureMultipleDocumentsForm form) {
+		AbstractSignatureParameters finalParameters = getASiCSignatureParameters(form.getContainerType(), form.getSignatureForm());
+
+		fillParameters(finalParameters, form);
+
+		return finalParameters;
 	}
 
 	@SuppressWarnings({ "rawtypes" })
@@ -187,18 +315,57 @@ public class SigningService {
 
 		return parameters;
 	}
+	
+	@SuppressWarnings({ "rawtypes" })
+	private AbstractSignatureParameters fillParameters(SignatureDigestForm form) {
+		AbstractSignatureParameters parameters = getSignatureParameters(null, form.getSignatureForm());
+		parameters.setSignaturePackaging(SignaturePackaging.DETACHED);
 
+		fillParameters(parameters, form);
+
+		return parameters;
+	}
+	
+	private JAdESSignatureParameters fillParameters(SignatureJAdESForm form) {
+		JAdESSignatureParameters parameters = new JAdESSignatureParameters();
+		parameters.setSignaturePackaging(form.getSignaturePackaging());
+		parameters.setJwsSerializationType(form.getJwsSerializationType());
+		parameters.setSigDMechanism(form.getSigDMechanism());
+		parameters.setBase64UrlEncodedPayload(form.isBase64UrlEncodedPayload());
+		parameters.setBase64UrlEncodedEtsiUComponents(form.isBase64UrlEncodedEtsiU());
+
+		fillParameters(parameters, form);
+		
+		return parameters;
+	}
+	
+	@SuppressWarnings({ "rawtypes" })
+    private SerializableCounterSignatureParameters fillParameters(CounterSignatureForm form) {
+        SerializableCounterSignatureParameters parameters = getCounterSignatureParameters(form.getSignatureForm());
+        parameters.setSignatureIdToCounterSign(form.getSignatureIdToCounterSign());
+
+        if (parameters instanceof AbstractSignatureParameters) {
+            fillParameters((AbstractSignatureParameters) parameters, form);
+        }
+
+        return parameters;
+    }
+
+	@SuppressWarnings({ "rawtypes", "unchecked" })
 	private void fillParameters(AbstractSignatureParameters parameters, AbstractSignatureForm form) {
 		parameters.setSignatureLevel(form.getSignatureLevel());
 		parameters.setDigestAlgorithm(form.getDigestAlgorithm());
 		// parameters.setEncryptionAlgorithm(form.getEncryptionAlgorithm()); retrieved from certificate
 		parameters.bLevel().setSigningDate(form.getSigningDate());
-		parameters.setSignWithExpiredCertificate(form.isSignWithExpiredCertificate());
+
 		if (form.getContentTimestamp() != null) {
-			parameters.setContentTimestamps(Collections.singletonList(WebAppUtils.toTimestampToken(form.getContentTimestamp())));
+			parameters.setContentTimestamps(
+					Collections.singletonList(WebAppUtils.toTimestampToken(form.getContentTimestamp())));
 		}
+
 		CertificateToken signingCertificate = DSSUtils.loadCertificate(form.getCertificate());
 		parameters.setSigningCertificate(signingCertificate);
+
 		List<byte[]> certificateChainBytes = form.getCertificateChain();
 		if (Utils.isCollectionNotEmpty(certificateChainBytes)) {
 			List<CertificateToken> certificateChain = new LinkedList<>();
@@ -208,116 +375,8 @@ public class SigningService {
 			parameters.setCertificateChain(certificateChain);
 		}
 
-            // Calculate signature field position
-            SignatureFieldParameters fieldParameters = calculateSignatureFieldPosition();
-
-            // Set signature field position and size on the original document
-            SignatureImageParameters imageParameters = new SignatureImageParameters();
-            imageParameters.setFieldParameters(fieldParameters);
-
-            // Set text parameters
-            SignatureImageTextParameters textParameters = new SignatureImageTextParameters();
-            String subjectName = signingCertificate.getSubject().getRFC2253().substring(3);
-            int index = subjectName.indexOf(",C=");
-            if (index != -1) {
-                subjectName = subjectName.substring(0, index);
-            }
-            textParameters.setText("Signed by: " + subjectName + "\n" + "Date: " + form.getSigningDate());
-            textParameters.setFont(new DSSJavaFont(Font.SERIF, 7));
-            textParameters.setSignerTextPosition(SignerTextPosition.LEFT);
-            imageParameters.setTextParameters(textParameters);
-
-            //Add timestamp (commented for now)
-            padesService.setTspSource(tspSource);
-
-
-            if (parameters instanceof PAdESSignatureParameters) {
-                ((PAdESSignatureParameters) parameters).setImageParameters(imageParameters);
-            }
-
 		fillTimestampParameters(parameters, form);
 	}
-
-	private SignatureFieldParameters calculateSignatureFieldPosition() {
-		try (PDDocument document = PDDocument.load(originalDoc.openStream())) {
-			int lastPageNumber = document.getNumberOfPages();
-			PDPage lastPage = document.getPage(lastPageNumber - 1);
-			List<PDAnnotation> annotations = lastPage.getAnnotations();
-
-			// Set the dimensions of the signature fields
-			float signatureWidth = 170;
-			float signatureHeight = 50;
-			float xSpacing = 20; // spacing between signature fields
-			float ySpacing = 20; // spacing between signature fields
-			float margin = 20; // margin from page edges
-			int signaturesPerRow = 3;
-
-			// Count only signature annotations
-			int signatureCount = (int) annotations.stream()
-					.filter(ann -> ann instanceof PDAnnotationWidget)
-					.count();
-
-			if (signatureCount == 0) {
-				// No previous signatures on the last page, add a new page for the first signature
-				PDPage newPage = new PDPage();
-				document.addPage(newPage);
-				lastPage = newPage;
-				lastPageNumber++;
-			}
-
-			// Calculate row and column for the new signature
-			int row = signatureCount / signaturesPerRow;
-			int col = signatureCount % signaturesPerRow;
-
-			// Calculate new x and y positions
-			float newOriginX = margin + (col * (signatureWidth + xSpacing));
-			float newOriginY = margin + (row * (signatureHeight + ySpacing));
-
-			// Get page dimensions
-			PDRectangle pageSize = lastPage.getMediaBox();
-			float pageWidth = pageSize.getWidth();
-			float pageHeight = pageSize.getHeight();
-
-			// Check if new signature will fit horizontally on the current page
-			if (newOriginX + signatureWidth > pageWidth) {
-				// Move to the next row if not enough space in the current row
-				col = 0;
-				row++;
-				newOriginX = margin;
-				newOriginY = margin + (row * (signatureHeight + ySpacing));
-			}
-
-			// Check if new signature will fit vertically on the current page
-			if (newOriginY + signatureHeight > pageHeight) {
-				// Not enough space, add a new page
-				PDPage newPage = new PDPage();
-				document.addPage(newPage);
-				lastPageNumber++;
-				row = 0;
-				newOriginX = margin;
-				newOriginY = margin;
-			}
-
-			SignatureFieldParameters fieldParameters = new SignatureFieldParameters();
-			fieldParameters.setPage(lastPageNumber);
-			fieldParameters.setOriginX(newOriginX);
-			fieldParameters.setOriginY(newOriginY);
-			fieldParameters.setWidth(signatureWidth);
-			fieldParameters.setHeight(signatureHeight);
-
-			// Save the document if a new page has been added or it's the first signature
-			if (row == 0 && col == 0) {
-				ByteArrayOutputStream baos = new ByteArrayOutputStream();
-				document.save(baos);
-				originalDoc = new InMemoryDocument(baos.toByteArray());
-			}
-
-			return fieldParameters;
-		} catch (IOException e) {
-			throw new RuntimeException("Error analyzing PDF document", e);
-		}
-	}
-
 
 	@SuppressWarnings({ "rawtypes", "unchecked" })
 	private void fillTimestampParameters(AbstractSignatureParameters parameters, AbstractSignatureForm form) {
@@ -336,21 +395,18 @@ public class SigningService {
 		parameters.setArchiveTimestampParameters(timestampParameters);
 	}
 
-
 	@SuppressWarnings({ "rawtypes", "unchecked" })
 	public DSSDocument signDocument(SignatureDocumentForm form) {
 		LOG.info("Start signDocument with one document");
-		DocumentSignatureService service = getSignatureService(form.getContainerType(), form.getSignatureForm());
+		DocumentSignatureService service = getSignatureService(form.getContainerType(), form.getSignatureForm(), form.isSignWithExpiredCertificate());
 
-
-		this.originalDoc = WebAppUtils.toDSSDocument(form.getDocumentToSign());
 		AbstractSignatureParameters parameters = fillParameters(form);
 
 		try {
-			//DSSDocument toSignDocument = WebAppUtils.toDSSDocument(form.getDocumentToSign());
+			DSSDocument toSignDocument = WebAppUtils.toDSSDocument(form.getDocumentToSign());
 			SignatureAlgorithm sigAlgorithm = SignatureAlgorithm.getAlgorithm(form.getEncryptionAlgorithm(), form.getDigestAlgorithm());
 			SignatureValue signatureValue = new SignatureValue(sigAlgorithm, form.getSignatureValue());
-			DSSDocument signedDocument = service.signDocument(originalDoc, parameters, signatureValue);
+			DSSDocument signedDocument = service.signDocument(toSignDocument, parameters, signatureValue);
 			LOG.info("End signDocument with one document");
 			return signedDocument;
 		} catch (Exception e) {
@@ -358,53 +414,161 @@ public class SigningService {
 		}
 	}
 
+	@SuppressWarnings({ "rawtypes", "unchecked" })
+	public DSSDocument signDigest(SignatureDigestForm form) {
+		LOG.info("Start signDigest with one digest");
+		DocumentSignatureService service = getSignatureService(null, form.getSignatureForm(), form.isSignWithExpiredCertificate());
+
+		AbstractSignatureParameters parameters = fillParameters(form);
+
+		try {
+			DigestDocument toSignDigest = new DigestDocument(form.getDigestAlgorithm(), form.getDigestToSign(), form.getDocumentName());
+			SignatureAlgorithm sigAlgorithm = SignatureAlgorithm.getAlgorithm(form.getEncryptionAlgorithm(), form.getDigestAlgorithm());
+			SignatureValue signatureValue = new SignatureValue(sigAlgorithm, form.getSignatureValue());
+			DSSDocument signedDocument = service.signDocument(toSignDigest, parameters, signatureValue);
+			LOG.info("End signDigest with one digest");
+			return signedDocument;
+		} catch (Exception e) {
+			throw new SignatureOperationException(e.getMessage(), e);
+		}
+	}
+
+	@SuppressWarnings({ "rawtypes", "unchecked" })
+	public DSSDocument signDocument(SignatureMultipleDocumentsForm form) {
+		LOG.info("Start signDocument with multiple documents");
+		MultipleDocumentsSignatureService service = (MultipleDocumentsSignatureService)
+				getSignatureService(form.getContainerType(), form.getSignatureForm(), form.isSignWithExpiredCertificate());
+
+		AbstractSignatureParameters parameters = fillParameters(form);
+
+		try {
+			List<DSSDocument> toSignDocuments = WebAppUtils.toDSSDocuments(form.getDocumentsToSign());
+			SignatureAlgorithm sigAlgorithm = SignatureAlgorithm.getAlgorithm(form.getEncryptionAlgorithm(), form.getDigestAlgorithm());
+			SignatureValue signatureValue = new SignatureValue(sigAlgorithm, form.getSignatureValue());
+			DSSDocument signedDocument = service.signDocument(toSignDocuments, parameters, signatureValue);
+			LOG.info("End signDocument with multiple documents");
+			return signedDocument;
+		} catch (Exception e) {
+			throw new SignatureOperationException(e.getMessage(), e);
+		}
+	}
+
+	@SuppressWarnings({ "rawtypes", "unchecked" })
+	public DSSDocument signDocument(SignatureJAdESForm form) {
+		LOG.info("Start signDocument with JAdES");
+		
+		MultipleDocumentsSignatureService service = (MultipleDocumentsSignatureService)
+				getSignatureService(SignatureForm.JAdES, form.isSignWithExpiredCertificate());
+		JAdESSignatureParameters parameters = fillParameters(form);
+
+		try {
+			List<DSSDocument> toSignDocuments = WebAppUtils.toDSSDocuments(form.getDocumentsToSign());
+			SignatureAlgorithm sigAlgorithm = SignatureAlgorithm.getAlgorithm(form.getEncryptionAlgorithm(), form.getDigestAlgorithm());
+			SignatureValue signatureValue = new SignatureValue(sigAlgorithm, form.getSignatureValue());
+			DSSDocument signedDocument = service.signDocument(toSignDocuments, parameters, signatureValue);
+	
+			LOG.info("End signDocument with JAdES");
+			return signedDocument;
+		} catch (Exception e) {
+			throw new SignatureOperationException(e.getMessage(), e);
+		}
+	}
+	
+    @SuppressWarnings({ "rawtypes", "unchecked" })
+    public DSSDocument counterSignSignature(CounterSignatureForm form) {
+        LOG.info("Start signDigest with one digest");
+
+        try {
+	        DSSDocument signatureDocument = WebAppUtils.toDSSDocument(form.getDocumentToCounterSign());
+			boolean zip = ASiCUtils.isZip(signatureDocument);
+	        
+			CounterSignatureService service = getCounterSignatureService(zip, form.getSignatureForm(), form.isSignWithExpiredCertificate());
+	        SerializableCounterSignatureParameters parameters = fillParameters(form);
+	
+	        SignatureAlgorithm sigAlgorithm = SignatureAlgorithm.getAlgorithm(form.getEncryptionAlgorithm(), form.getDigestAlgorithm());
+	        SignatureValue signatureValue = new SignatureValue(sigAlgorithm, form.getSignatureValue());
+	        DSSDocument signedDocument = service.counterSignSignature(signatureDocument, parameters, signatureValue);
+	
+	        LOG.info("End signDocument with one document");
+	        return signedDocument;
+		} catch (Exception e) {
+			throw new SignatureOperationException(e.getMessage(), e);
+		}
+    }
+
+	@SuppressWarnings("rawtypes")
+	private DocumentSignatureService getSignatureService(SignatureForm signatureForm) {
+		return getSignatureService(null, signatureForm, false);
+	}
+
 	@SuppressWarnings("rawtypes")
 	private DocumentSignatureService getSignatureService(ASiCContainerType containerType, SignatureForm signatureForm) {
+		return getSignatureService(containerType, signatureForm, false);
+	}
+
+	@SuppressWarnings("rawtypes")
+	private DocumentSignatureService getSignatureService(SignatureForm signatureForm, boolean signWithExpiredCertificate) {
+		return getSignatureService(null, signatureForm, signWithExpiredCertificate);
+	}
+
+	@SuppressWarnings("rawtypes")
+	private DocumentSignatureService getSignatureService(ASiCContainerType containerType, SignatureForm signatureForm, boolean signWithExpiredCertificate) {
+		CertificateVerifier cv = new CertificateVerifierBuilder(certificateVerifier).buildCompleteCopy();
+		if (signWithExpiredCertificate) {
+			cv.setAlertOnExpiredCertificate(new LogOnStatusAlert());
+		}
 		DocumentSignatureService service = null;
-		signatureForm = SignatureForm.PAdES;
 		if (containerType != null) {
-			service = (DocumentSignatureService) getASiCSignatureService(signatureForm);
+			service = (DocumentSignatureService) getASiCSignatureService(signatureForm, cv);
 		} else {
 			switch (signatureForm) {
-			case CAdES:
-				service = cadesService;
-				break;
-			case PAdES:
-				service = padesService;
-				break;
-			case XAdES:
-				service = xadesService;
-				break;
-			case JAdES:
-				service = jadesService;
-				break;
-			default:
-				LOG.error("Unknown signature form : " + signatureForm);
+				case CAdES:
+					service = new CAdESService(cv);
+					break;
+				case PAdES:
+					service = new PAdESService(cv);
+					break;
+				case XAdES:
+					service = new XAdESService(cv);
+					break;
+				case JAdES:
+					service = new JAdESService(cv);
+					break;
+				default:
+					throw new IllegalArgumentException(String.format("Unknown signature form : %s", signatureForm));
 			}
 		}
+		service.setTspSource(tspSource);
 		return service;
 	}
 	
     @SuppressWarnings("rawtypes")
-	private CounterSignatureService getCounterSignatureService(boolean isZipContainer, SignatureForm signatureForm) {
+	private CounterSignatureService getCounterSignatureService(boolean isZipContainer, SignatureForm signatureForm, boolean signWithExpiredCertificate) {
+		CertificateVerifier cv = new CertificateVerifierBuilder(certificateVerifier).buildCompleteCopy();
+		if (signWithExpiredCertificate) {
+			cv.setAlertOnExpiredCertificate(new LogOnStatusAlert());
+		}
         CounterSignatureService service;
 		if (isZipContainer) {
-            service = (CounterSignatureService) getASiCSignatureService(signatureForm);
+            service = (CounterSignatureService) getASiCSignatureService(signatureForm, cv);
         } else {
             switch (signatureForm) {
             case CAdES:
-                service = cadesService;
+                service = new CAdESService(cv);
                 break;
             case XAdES:
-                service = xadesService;
+                service = new XAdESService(cv);
                 break;
             case JAdES:
-                service = jadesService;
+                service = new JAdESService(cv);
                 break;
             default:
-                throw new DSSException("Not supported signature form for a counter signature : " + signatureForm);
+                throw new IllegalArgumentException(String.format("Not supported signature form for a counter signature : %s", signatureForm));
             }
         }
+		if (service != null) {
+			service.setTspSource(tspSource);
+		}
         return service;
     }
 
@@ -433,7 +597,7 @@ public class SigningService {
 				parameters = jadesParameters;
 				break;
 			default:
-				LOG.error("Unknown signature form : " + signatureForm);
+				throw new IllegalArgumentException(String.format("Unknown signature form : %s", signatureForm));
 			}
 		}
 		return parameters;
@@ -454,7 +618,7 @@ public class SigningService {
 	            parameters = jadesCounterSignatureParameters;
                 break;
             default:
-                LOG.error("Not supported form for a counter signature : " + signatureForm);
+				throw new IllegalArgumentException(String.format("Not supported signature form for a counter signature : %s", signatureForm));
         }
         return parameters;
     }
@@ -476,7 +640,7 @@ public class SigningService {
 					parameters = new JAdESTimestampParameters();
 					break;
 				default:
-					LOG.error("Not supported form for a timestamp : " + signatureForm);
+					throw new IllegalArgumentException(String.format("Not supported signature form for a time-stamp : %s", signatureForm));
 			}
 
 		} else {
@@ -490,24 +654,24 @@ public class SigningService {
 					parameters = new XAdESTimestampParameters();
 					break;
 				default:
-					LOG.error("Not supported form for an ASiC timestamp : " + signatureForm);
+					throw new IllegalArgumentException(String.format("Not supported signature form for an ASiC time-stamp : %s", signatureForm));
 			}
 		}
 		return parameters;
 	}
 
 	@SuppressWarnings("rawtypes")
-	private MultipleDocumentsSignatureService getASiCSignatureService(SignatureForm signatureForm) {
+	private MultipleDocumentsSignatureService getASiCSignatureService(SignatureForm signatureForm, CertificateVerifier cv) {
 		MultipleDocumentsSignatureService service = null;
 		switch (signatureForm) {
-		case CAdES:
-			service = asicWithCAdESService;
-			break;
-		case XAdES:
-			service = asicWithXAdESService;
-			break;
-		default:
-			LOG.error("Unknown signature form : " + signatureForm);
+			case CAdES:
+				service = new ASiCWithCAdESService(cv);
+				break;
+			case XAdES:
+				service = new ASiCWithXAdESService(cv);
+				break;
+			default:
+				throw new IllegalArgumentException(String.format("Not supported signature form for an ASiC container : %s", signatureForm));
 		}
 		return service;
 	}
@@ -527,8 +691,9 @@ public class SigningService {
 			parameters = asicXadesParams;
 			break;
 		default:
-			LOG.error("Unknown signature form for ASiC container: " + signatureForm);
+			throw new IllegalArgumentException(String.format("Not supported signature form for an ASiC container : %s", signatureForm));
 		}
 		return parameters;
 	}
+
 }

@@ -7,7 +7,6 @@ import eu.europa.esig.dss.enumerations.SignatureLevel;
 import eu.europa.esig.dss.ws.dto.TimestampDTO;
 import jakarta.validation.constraints.NotNull;
 
-import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 
@@ -137,21 +136,4 @@ public abstract class AbstractSignatureForm {
 		this.contentTimestamp = contentTimestamp;
 	}
 
-	@Override
-	public String toString() {
-		return "AbstractSignatureForm{" +
-				"nexuDetected=" + nexuDetected +
-				", signingDate=" + signingDate +
-				", signWithExpiredCertificate=" + signWithExpiredCertificate +
-				", addContentTimestamp=" + addContentTimestamp +
-				", signatureForm=" + signatureForm +
-				", signatureLevel=" + signatureLevel +
-				", digestAlgorithm=" + digestAlgorithm +
-				", certificate=" + Arrays.toString(certificate) +
-				", certificateChain=" + certificateChain +
-				", encryptionAlgorithm=" + encryptionAlgorithm +
-				", signatureValue=" + Arrays.toString(signatureValue) +
-				", contentTimestamp=" + contentTimestamp +
-				'}';
-	}
 }
