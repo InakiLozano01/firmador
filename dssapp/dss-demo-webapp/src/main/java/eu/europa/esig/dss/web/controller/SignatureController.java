@@ -48,7 +48,7 @@ import java.util.Date;
 import java.util.List;
 
 @Controller
-@SessionAttributes(value = {"signatureDocumentForm","signedDocument" })
+@SessionAttributes(value = { "signatureDocumentForm", "signedDocument" })
 @RequestMapping(value = "/sign-a-document")
 public class SignatureController {
 
@@ -119,16 +119,8 @@ public class SignatureController {
 	@ResponseBody
 	public GetDataToSignResponse getDataToSign(Model model, @RequestBody @Valid DataToSignParams params,
 			@ModelAttribute("signatureDocumentForm") @Valid SignatureDocumentForm signatureDocumentForm, BindingResult result) {
-		if (signatureDocumentForm == null) {
-			model.addAttribute("signatureDocumentForm", new SignatureDocumentForm());
-			model.addAttribute("digestAlgorithm", DigestAlgorithm.SHA256);
-		}
 		signatureDocumentForm.setCertificate(params.getSigningCertificate());
 		signatureDocumentForm.setCertificateChain(params.getCertificateChain());
-		signatureDocumentForm.setSignaturePackaging(SignaturePackaging.ENVELOPED);
-		signatureDocumentForm.setSignatureForm(SignatureForm.PAdES);
-		signatureDocumentForm.setSignatureLevel(SignatureLevel.PAdES_BASELINE_B);
-		signatureDocumentForm.setDigestAlgorithm(DigestAlgorithm.SHA256);
 
 		CertificateToken signingCertificate = DSSUtils.loadCertificate(params.getSigningCertificate());
 		signatureDocumentForm.setEncryptionAlgorithm(EncryptionAlgorithm.forName(signingCertificate.getPublicKey().getAlgorithm()));

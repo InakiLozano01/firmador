@@ -131,9 +131,13 @@ public class SignaturePdfController {
 	@ResponseBody
 	public SignDocumentResponse signDocument(Model model, @RequestBody @Valid SignResponse signatureValue,
 			@ModelAttribute("signaturePdfForm") @Valid SignatureDocumentForm signaturePdfForm, BindingResult result) {
+
+		signaturePdfForm.setSignatureValue(signatureValue.getSignatureValue());
+
 		DSSDocument document = signingService.signDocument(signaturePdfForm);
 		InMemoryDocument signedPdfDocument = new InMemoryDocument(DSSUtils.toByteArray(document), document.getName(), document.getMimeType());
 		model.addAttribute("signedPdfDocument", signedPdfDocument);
+
 		SignDocumentResponse signedDocumentResponse = new SignDocumentResponse();
 		signedDocumentResponse.setUrlToDownload("download");
 		return signedDocumentResponse;
