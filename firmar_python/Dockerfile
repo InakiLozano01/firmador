@@ -44,8 +44,13 @@ WORKDIR /app
 # Copy the Flask application into the container at /app
 COPY . /app
 
+# Copy the WSGI file
+# COPY init_mod_wsgi.py /usr/local/lib/python3.12/site-packages/mod_wsgi/server/__init__.py
+RUN sed -i "s/default=10485760,/default=1048576000,/" /usr/local/lib/python3.12/site-packages/mod_wsgi/server/__init__.py
+
 # Copy Apache configuration files into place
-#COPY signapi.conf /etc/apache2/sites-available/000-default.conf
+# COPY test.conf /etc/apache2/test.conf
+# COPY signapi.conf /etc/apache2/signapi.conf
 
 # Additional Apache configuration
 #RUN echo "ServerName localhost" >> /etc/apache2/apache2.conf
@@ -59,7 +64,7 @@ COPY . /app
 EXPOSE 5000
 
 # Start Apache in the foreground
-#CMD ["apache2ctl", "-D", "FOREGROUND"]
+# CMD ["apache2ctl", "-D", "FOREGROUND"]
 
 # Start mod_wsgi-express with auto-reload
 CMD ["mod_wsgi-express", "start-server", "sign.wsgi", "--reload-on-changes", "--user", "www-data", "--group", "www-data", "--port", "5000"]
