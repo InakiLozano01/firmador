@@ -4,7 +4,7 @@ import requests
 import base64
 import hashlib
 import os
-
+from datetime import datetime, timedelta
 def validation_analyze(report):
     """
     Analyze the validation report.
@@ -24,21 +24,29 @@ def validation_analyze(report):
             if code != 200:
                 return jsonify({"status": False, "message": "Error in validate_certs" + str(e)}), 500
             if signature['StructuralValidation']['valid'] is True and signature['BasicSignature']['SignatureIntact'] is True and signature['BasicSignature']['SignatureValid'] is True:
+                try:
+                    claimed_signing_time = datetime.strptime(signature['ClaimedSigningTime'], '%Y-%m-%dT%H:%M:%SZ')
+                except ValueError:
+                    claimed_signing_time = datetime.max
                 signature = {
-                    "valid": True,
+                    "valid": claimed_signing_time < datetime.now(),
                     "certs": signature['ChainItem'],
                     "certs_valid": certs_valid,
-                    "signingTime": signature['ClaimedSigningTime'],
+                    "signingTime": parse_datetime(signature['ClaimedSigningTime']) if claimed_signing_time < datetime.now() else f"{parse_datetime(signature['ClaimedSigningTime'])} INVALIDA",
                     "signer_role": signature['SignerRole'][0]['Role'] if signature['SignerRole'] else None,
                     "cert_data": {}
                 }
                 signatures.append(signature)
             else:
+                try:
+                    claimed_signing_time = datetime.strptime(signature['ClaimedSigningTime'], '%Y-%m-%dT%H:%M:%SZ')
+                except ValueError:
+                    claimed_signing_time = datetime.max
                 signature = {
                     "valid": False,
                     "certs": signature['ChainItem'],
                     "certs_valid": certs_valid,
-                    "signingTime": signature['ClaimedSigningTime'],
+                    "signingTime": parse_datetime(signature['ClaimedSigningTime']) if claimed_signing_time < datetime.now() else f"{parse_datetime(signature['ClaimedSigningTime'])} INVALIDA",
                     "signer_role": signature['SignerRole'][0]['Role'] if signature['SignerRole'] else None,
                     "cert_data": {}
                 }
@@ -62,8 +70,8 @@ def validation_analyze(report):
                     "OU": cert['OrganizationalUnit'],
                     "IssuerDN": cert['IssuerDistinguishedName'][1]['value'],
                     "Country": cert['CountryName'],
-                    "NotAfter": cert['NotAfter'],
-                    "NotBefore": cert['NotBefore'],
+                    "NotAfter": parse_datetime(cert['NotAfter']),
+                    "NotBefore": parse_datetime(cert['NotBefore']),
                     "Email": next((ext['SubjectAlternativeNames']['subjectAlternativeName'][0]['value']
                                    for ext in cert.get('certificateExtensions', [])
                                    if isinstance(ext, dict) and 'SubjectAlternativeNames' in ext
@@ -80,6 +88,22 @@ def validation_analyze(report):
     except Exception as e:
         print(e)
         return jsonify({"status": False, "message": "Error in validation_analyze" + str(e)}), 500
+
+def parse_datetime(date_str):
+    """
+    Parse the datetime string and handle any errors.
+
+    Args:
+        date_str (str): The datetime string to parse.
+
+    Returns:
+        str: The formatted datetime string.
+    """
+    try:
+        return (datetime.strptime(date_str, '%Y-%m-%dT%H:%M:%SZ') - timedelta(hours=3)).strftime('%Y-%m-%d %H:%M:%S')
+    except Exception as e:
+        print(e)
+        return date_str  # Return the original string if parsing fails
     
 def validate_signature(data, signature):
     """
