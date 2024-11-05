@@ -16,3 +16,4 @@ firmar_python/*.cer
 firmar_python/*.key
 .idea
 .vscode
+actions-runner
