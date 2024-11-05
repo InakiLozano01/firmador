@@ -10,6 +10,7 @@ import json
 import copy
 from datetime import datetime
 import hashlib
+import unicodedata
 import libarchive
 import pytz
 import psycopg2
@@ -39,6 +40,7 @@ load_dotenv()
 ###      Configuracion de aplicacion Flask     ###
 ##################################################
 app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 500000000
 app.json.sort_keys = False
 
 
@@ -203,7 +205,7 @@ def close_pdf(pdf_to_close, json_field_values):
             'fileName': "documento.pdf",
             'fieldValues': json_field_values
         }
-        response = requests.post('http://java-webapp:5555/pdf/update', data=data)
+        response = requests.post('http://java-webapp:5555/pdf/update', headers={'Content-Type': 'application/json'}, data=json.dumps(data))
         response.raise_for_status()
         signed_pdf_base64 = base64.b64encode(response.content).decode("utf-8")
         return signed_pdf_base64, 200
@@ -431,7 +433,7 @@ def firmalote():
                     if code != 200:
                         errors_stack.append({"idDocFailed": id_doc, "message": "Error al firmar PDF: Error en sign_own_pdf"})
                         raise PDFSignatureError("Error al firmar PDF: Error en sign_own_pdf")
-                    if not es_caratula: 
+                    if not es_caratula:
                         lastpdf, code = get_number_and_date_then_close(signed_pdf_base64, id_doc)
                         if code == 500:
                             response = lastpdf.get_json()
@@ -861,6 +863,139 @@ def validatepdfs():
 #7  ##################################################
     ###   Ruta de validación de expediente (ZIP)   ###
     ##################################################
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import multiprocessing
+import re
+
+cpu_count = multiprocessing.cpu_count()
+max_workers = cpu_count * 2/3  # Adjust based on testing
+
+def process_document(doc, files, doc_order_to_filename):
+    doc_hash = doc['hash_contenido']
+    doc_id = doc['id_documento']
+    doc_order = str(doc['orden'])
+    result_doc = {
+        "orden": doc['orden'],
+        "id_documento": doc_id,
+        "valid_hash": False,
+        "doc_filename": None,
+        "signatures": None,
+        "not_found": False
+    }
+    try:
+        if doc_order in doc_order_to_filename:
+            doc_filename = doc_order_to_filename[doc_order]
+            doc_content = files[doc_filename]
+            docb64 = base64.b64encode(doc_content).decode('utf-8')
+
+            # Validate the document
+            report, code = validate_signature(None, docb64)
+            if code != 200:
+                raise Exception(f"Error al validar PDF: Error en validate_signature: id_doc: {doc_id}")
+            signatures, code = validation_analyze(report)
+            if code != 200:
+                raise Exception(f"Error al validar PDF: Error en validation_analyze: id_doc: {doc_id}")
+            hash_doc = hashlib.sha256(doc_content).hexdigest()
+            if not doc_hash:
+                valid_hash = False
+            else:
+                valid_hash = (hash_doc == doc_hash.lower())
+
+            result_doc.update({
+                "valid_hash": valid_hash,
+                "doc_filename": doc_filename,
+                "signatures": signatures
+            })
+        else:
+            result_doc['not_found'] = True
+    except Exception as e:
+        result_doc['error'] = str(e)
+    return result_doc
+
+def process_tramite(index, json_str, signature, tramite, files, doc_order_to_filename, max_workers):
+    result = {}
+    try:
+
+        # Validate the signature using the prepared json_str and signature
+        valid, code = validate_signature(json_str, signature)
+        if code != 200:
+            return {"error": "Error en validate_signature"}
+
+        validation_result, code = validation_analyze(valid)
+        if code != 200:
+            return {"error": "Error en validation_analyze"}
+
+        tested = bool(validation_result[0]['valid'])
+        certs_validation = validation_result[0]['certs_valid']
+
+        docs_validation = []
+        docs_not_found = []
+        errors = []
+
+        # Process documents in parallel using threads
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            results = executor.map(
+                lambda doc: process_document(doc, files, doc_order_to_filename),
+                tramite['documentos']
+            )
+
+        for result_doc in results:
+            docs_validation.append(result_doc)
+            if result_doc.get('not_found', False):
+                docs_not_found.append({
+                    "id_documento": result_doc['id_documento'],
+                    "orden": result_doc['orden']
+                })
+            if 'error' in result_doc:
+                errors.append(result_doc['error'])
+
+        # Handle errors if any
+        if errors:
+            return {"error": errors[0]}  # or handle multiple errors
+
+        # Proceed with the rest of your code
+        hashes_valid = []
+        hashes_invalid = []
+        for doc in docs_validation:
+            if not doc['valid_hash']:
+                hashes_invalid.append({"id_documento": doc['id_documento'], "orden": doc['orden']})
+            else:
+                hashes_valid.append({"id_documento": doc['id_documento'], "orden": doc['orden']})
+
+        if not tested:
+            if certs_validation:
+                indication = "Tramite invalido: firma invalida." + " Documentos con hash invalido: " + (str(hashes_invalid) if hashes_invalid else "ninguno")
+                result_indication = False
+            else:
+                indication = "Tramite invalido: firma invalida y certificados invalidos." + " Documentos con hash invalido: " + (str(hashes_invalid) if hashes_invalid else "ninguno")
+                result_indication = False
+        else:
+            if not certs_validation:
+                indication = "Tramite invalido: certificados invalidos." + " Documentos con hash invalido: " + (str(hashes_invalid) if hashes_invalid else "ninguno")
+                result_indication = False
+            else:
+                if hashes_invalid:
+                    indication = "Tramite invalido: documentos con hash invalido: " + str(hashes_invalid)
+                    result_indication = False
+                else:
+                    indication = "Tramite valido"
+                    result_indication = True
+
+        result = {
+            'secuencia': tramite['secuencia'],
+            'is_valid': tested,
+            'certs_valid': certs_validation,
+            'signature': validation_result,
+            'docs_validation': docs_validation,
+            'docs_not_found': docs_not_found,
+            'subindication': indication,
+            'result_indication': result_indication
+        }
+        return result
+
+    except Exception as e:
+        return {"error": str(e)}
+
 @app.route('/validar_expediente', methods=['POST'])
 def validate_expediente():
     """
@@ -872,152 +1007,109 @@ def validate_expediente():
         path = "/app/expedientes/" + file_path
         if not file_path or not os.path.exists(path):
             return jsonify({"status": False, "message": "Archivo no encontrado " + path}), 400
-
-        try:    
+        import unicodedata
+        try:
+            # Extract all files from the archive once
+            files = {}
+            doc_order_to_filename = {}
             with libarchive.file_reader(path) as archive:
-                file_list = []
-                index_json = None
                 for entry in archive:
-                    file_name = os.path.basename(entry.pathname)
-                    file_list.append(file_name)
-                    if file_name.endswith('.json') and index_json is None:
-                        blocks = b''
-                        for block in entry.get_blocks():
-                            blocks += block
+                    # Decode the pathname if necessary
+                    entry_pathname = entry.pathname
+                    if isinstance(entry_pathname, bytes):
                         try:
-                            index_json = json.loads(blocks.decode('utf-8'))
-                            break  # Exit the loop after finding the first JSON file
-                        except json.JSONDecodeError:
-                            return jsonify({"status": False, "message": f"{file_name} no es un JSON válido"}), 400
-                if index_json is None:
-                    return jsonify({"status": False, "message": "No se encontró ningún archivo JSON en el archivo"}), 400
+                            entry_pathname = entry_pathname.decode('utf-8')
+                        except UnicodeDecodeError:
+                            entry_pathname = entry_pathname.decode('latin-1')
+
+                    # Normalize to handle inconsistencies and remove accents or invalid characters
+                    entry_path = unicodedata.normalize('NFKD', entry_pathname).encode('ascii', 'ignore').decode('ascii')
+
+                    # Normalize the pathname to handle inconsistencies
+                    normalized_path = os.path.normpath(entry_path)
+
+                    # Use os.path.basename to get the filename
+                    file_name = os.path.basename(normalized_path)
+
+                    # Now file_name should be just the filename without any directory components
+                    content = b''.join(entry.get_blocks())
+                    files[file_name] = content
+
+                    if file_name.lower().endswith('.pdf'):
+                        base_name = os.path.splitext(file_name)[0]
+                        # Use regex to extract the order number after the first underscore
+                        match = re.match(r'[^_]+_([^_]+)_?', base_name)
+                        if match:
+                            doc_order = match.group(1)
+                            print(file_name)
+                            doc_order_to_filename[doc_order] = file_name
+                        else:
+                            # Handle error if order number is not found
+                            print(f"Warning: Could not extract order number from filename: {file_name}")
+                
+
+            # Find index_json
+            index_json = None
+            for filename, content in files.items():
+                if filename[-5:] == '.json':
+                    try:
+                        index_json = json.loads(content.decode('utf-8'))
+                        break  # Exit after finding the first JSON file
+                    except json.JSONDecodeError:
+                        return jsonify({"status": False, "message": f"{filename} no es un JSON válido"}), 400
+            if index_json is None:
+                return jsonify({"status": False, "message": "No se encontró ningún archivo JSON en el archivo"}), 400
+
         except libarchive.exception.ArchiveError as e:
             return jsonify({"status": False, "message": f"Error al leer el archivo: {str(e)}"}), 500
         except Exception as e:
             return jsonify({"status": False, "message": f"Error inesperado al procesar el archivo: {str(e)}"}), 500
 
         validation_results = []
-        data = copy.deepcopy(index_json)
+        tramites = index_json['tramites']
 
-        # Iterate through tramites in reverse order
-        for tramite in reversed(data['tramites']):
-            # Extract and remove the signature from the current tramite
-            try:
-                signature = tramite.pop('firma', '')
-                if not signature or signature == '' or signature is None:
-                    raise PDFSignatureError("Error al obtener la firma del tramite. Posiblemente el tramite no se haya firmado")
-            except Exception as e:
-                return jsonify({"status": False, "message": "Error al obtener la firma del tramite: " + str(e)}), 500
+        # Prepare arguments for each tramite
+        tramite_args = []
+        tramites_processed = []
 
-            json_str = copy.deepcopy(data)
+        for idx, tramite in enumerate(tramites):
+            tramite_copy = copy.deepcopy(tramite)
+            signature = tramite_copy.pop('firma', '')
+            if not signature:
+                return jsonify({"status": False, "message": "Error al obtener la firma del tramite. Posiblemente el tramite no se haya firmado"}), 500
 
-            # Validate the signature
-            valid, code = validate_signature(json_str, signature)
-            if code != 200:
-                raise PDFSignatureError("Error en validate_signature")
+            # Build 'json_str' with tramites up to and including the current one, without the current 'firma'
+            tramites_to_include = tramites_processed + [tramite_copy]
+            json_str = copy.deepcopy(index_json)
+            json_str['tramites'] = tramites_to_include
 
-            validation_result, code = validation_analyze(valid)
-            if code != 200:
-                raise PDFSignatureError("Error en validation_analyze")
+            # Append the original tramite (with 'firma') to 'tramites_processed' for the next iteration
+            tramites_processed.append(tramite)
 
-            tested = bool(validation_result[0]['valid'])
+            # Prepare arguments for process_tramite
+            tramite_args.append((idx, json_str, signature, tramite_copy, files, doc_order_to_filename, max_workers))
 
-            certs_validation = validation_result[0]['certs_valid']
+        # Process tramites in parallel using threads
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(process_tramite, *args): idx
+                for idx, args in enumerate(tramite_args)
+            }
+            results_dict = {}
+            for future in futures:
+                idx = futures[future]
+                result = future.result()
+                if 'error' in result:
+                    return jsonify({"status": False, "message": result['error']}), 500
+                results_dict[idx] = result
 
-            docs_validation = []
-            docs_not_found = []
+        # Collect results in order
+        validation_results = [results_dict[idx] for idx in range(len(tramites))]
 
-            for doc in tramite['documentos']:
-                doc_hash = doc['hash_contenido']
-                doc_id = doc['id_documento']
-                doc_order = doc['orden']
-                try:
-                    with libarchive.file_reader(path) as archive:
-                        for entry in archive:
-                            basename = os.path.basename(entry.pathname)
-                            if basename.endswith('.pdf'):
-                                if str(doc_order) in basename.split('_')[1]:
-                                    doc_filename = basename
-                                    doc_content  = b''
-                                    for block in entry.get_blocks():
-                                        doc_content += block
-                                    docb64 = base64.b64encode(doc_content).decode('utf-8')
-                                    break
-                                else:
-                                    doc_filename = None
-                                    doc_content = None
-                                    docb64 = None
-                except Exception as e:
-                    raise Exception("Error al procesar el documento " + doc_id + ": " + str(e))
-                
-                if docb64 is None and doc_filename is None and doc_content is None:
-                    docs_not_found.append({"id_documento": doc_id, "orden": doc_order})
-                    docs_validation.append({"orden": doc_order, "id_documento": doc_id, "valid_hash": False, "doc_filename": None, "signatures": None})
-                    continue
+        # No need to reverse since we're processing in order
+        validation = {'subresults': validation_results}
 
-                report, code = validate_signature(None, docb64)
-                if code != 200:
-                    raise PDFSignatureError("Error al validar PDF: Error en validate_pdf: id_doc: " + doc_id)
-                signatures, code = validation_analyze(report)
-                if code != 200:
-                    raise PDFSignatureError("Error al validar PDF: Error en validation_analyze: id_doc: " + doc_id)
-
-                hash_doc = hashlib.sha256(doc_content).hexdigest()
-                if hash_doc == doc_hash.lower():
-                    docs_validation.append({"orden": doc_order, "id_documento": doc_id, "valid_hash": True, "doc_filename": doc_filename, "signatures": signatures})
-                else:
-                    docs_validation.append({"orden": doc_order, "id_documento": doc_id, "valid_hash": False, "doc_filename": doc_filename, "signatures": signatures})
-
-            hashes_valid = []
-            hashes_invalid = []
-            for doc in docs_validation:
-                if not doc['valid_hash']:
-                    hashes_invalid.append({"id_documento": doc['id_documento'], "orden": doc['orden']})
-                else:
-                    hashes_valid.append({"id_documento": doc['id_documento'], "orden": doc['orden']})
-
-            if not bool(tested):
-                if certs_validation:
-                    indication = "Tramite invalido: firma invalida." + " Documentos con hash invalido: " + (str(hashes_invalid) if len(hashes_invalid) > 0 else "ninguno")
-                    result_indication = False
-                else:
-                    indication = "Tramite invalido: firma invalida y certificados invalidos." + " Documentos con hash invalido: " + (str(hashes_invalid) if len(hashes_invalid) > 0 else "ninguno")
-                    result_indication = False
-            else:
-                if not certs_validation:
-                    indication = "Tramite invalido: certificados invalidos." + " Documentos con hash invalido: " + (str(hashes_invalid) if len(hashes_invalid) > 0 else "ninguno")
-                    result_indication = False
-                else:
-                    if len(hashes_invalid) > 0:
-                        indication = "Tramite invalido: documentos con hash invalido: " + str(hashes_invalid)
-                        result_indication = False
-                    else:
-                        indication = "Tramite valido"
-                        result_indication = True
-                        
-            validation_results.append({
-                'secuencia': tramite['secuencia'],
-                'is_valid': tested,
-                'certs_valid': certs_validation,
-                'signature': validation_result,
-                'docs_validation': docs_validation,
-                'docs_not_found': docs_not_found,
-                'subindication': indication,
-                'result_indication': result_indication
-            })
-
-            data['tramites'].remove(tramite)
-
-        # Reverse the validation results to match the original order
-        validation_results.reverse()
-        validation = {}
-        validation['subresults'] = validation_results
-
-        for result in validation_results:
-            total = bool(result['result_indication'])
-            if not total:
-                break
-
+        total = all(result['result_indication'] for result in validation_results)
         validation['conclusion'] = total
 
         return jsonify({
@@ -1062,6 +1154,7 @@ def mergepdfs():
         watermarked_pdf_base64 = base64.b64encode(watermarked_pdf).decode('utf-8')
         end_time = time()
         processing_time = end_time - start_time
+        print(f"Tiempo de concatenacion y watermarking: {processing_time:.4f} segundos")
         
         return jsonify({
             "status": True,
