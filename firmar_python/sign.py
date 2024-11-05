@@ -10,6 +10,7 @@ import json
 import copy
 from datetime import datetime
 import hashlib
+import unicodedata
 import libarchive
 import pytz
 import psycopg2
@@ -39,6 +40,7 @@ load_dotenv()
 ###      Configuracion de aplicacion Flask     ###
 ##################################################
 app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 500000000
 app.json.sort_keys = False
 
 
@@ -203,7 +205,7 @@ def close_pdf(pdf_to_close, json_field_values):
             'fileName': "documento.pdf",
             'fieldValues': json_field_values
         }
-        response = requests.post('http://java-webapp:5555/pdf/update', data=data)
+        response = requests.post('http://java-webapp:5555/pdf/update', headers={'Content-Type': 'application/json'}, data=json.dumps(data))
         response.raise_for_status()
         signed_pdf_base64 = base64.b64encode(response.content).decode("utf-8")
         return signed_pdf_base64, 200
@@ -431,7 +433,7 @@ def firmalote():
                     if code != 200:
                         errors_stack.append({"idDocFailed": id_doc, "message": "Error al firmar PDF: Error en sign_own_pdf"})
                         raise PDFSignatureError("Error al firmar PDF: Error en sign_own_pdf")
-                    if not es_caratula: 
+                    if not es_caratula:
                         lastpdf, code = get_number_and_date_then_close(signed_pdf_base64, id_doc)
                         if code == 500:
                             response = lastpdf.get_json()
@@ -863,6 +865,7 @@ def validatepdfs():
     ##################################################
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import multiprocessing
+import re
 
 cpu_count = multiprocessing.cpu_count()
 max_workers = cpu_count * 2/3  # Adjust based on testing
@@ -879,8 +882,6 @@ def process_document(doc, files, doc_order_to_filename):
         "signatures": None,
         "not_found": False
     }
-    print("\n\n\n")
-    print("--->--->--->---> Procesando documento --> ", doc ,"-->", datetime.now().strftime("%H:%M:%S"), "\n\n")
     try:
         if doc_order in doc_order_to_filename:
             doc_filename = doc_order_to_filename[doc_order]
@@ -895,7 +896,10 @@ def process_document(doc, files, doc_order_to_filename):
             if code != 200:
                 raise Exception(f"Error al validar PDF: Error en validation_analyze: id_doc: {doc_id}")
             hash_doc = hashlib.sha256(doc_content).hexdigest()
-            valid_hash = (hash_doc == doc_hash.lower())
+            if not doc_hash:
+                valid_hash = False
+            else:
+                valid_hash = (hash_doc == doc_hash.lower())
 
             result_doc.update({
                 "valid_hash": valid_hash,
@@ -912,8 +916,6 @@ def process_tramite(index, json_str, signature, tramite, files, doc_order_to_fil
     result = {}
     try:
 
-        print("\n\n\n")
-        print("--->--->--->---> Procesando tramite --> ", tramite ,"-->", datetime.now().strftime("%H:%M:%S"), "\n\n")
         # Validate the signature using the prepared json_str and signature
         valid, code = validate_signature(json_str, signature)
         if code != 200:
@@ -1000,38 +1002,56 @@ def validate_expediente():
     Route for validating an entire set of documents (expediente) in compressed format.
     """
     try:
-        print("\n\n\n")
-        print("--->--->--->---> Inicia validacion de expediente --> ", datetime.now().strftime("%H:%M:%S"), "\n\n")
         data = request.get_json()
         file_path = data.get('zip_filepath')
         path = "/app/expedientes/" + file_path
         if not file_path or not os.path.exists(path):
             return jsonify({"status": False, "message": "Archivo no encontrado " + path}), 400
-
+        import unicodedata
         try:
             # Extract all files from the archive once
-            print("\n\n\n")
-            print("--->--->--->---> Inicia extraccion de archivo --> ", datetime.now().strftime("%H:%M:%S"))
             files = {}
             doc_order_to_filename = {}
             with libarchive.file_reader(path) as archive:
                 for entry in archive:
-                    file_name = os.path.basename(entry.pathname)
+                    # Decode the pathname if necessary
+                    entry_pathname = entry.pathname
+                    if isinstance(entry_pathname, bytes):
+                        try:
+                            entry_pathname = entry_pathname.decode('utf-8')
+                        except UnicodeDecodeError:
+                            entry_pathname = entry_pathname.decode('latin-1')
+
+                    # Normalize to handle inconsistencies and remove accents or invalid characters
+                    entry_path = unicodedata.normalize('NFKD', entry_pathname).encode('ascii', 'ignore').decode('ascii')
+
+                    # Normalize the pathname to handle inconsistencies
+                    normalized_path = os.path.normpath(entry_path)
+
+                    # Use os.path.basename to get the filename
+                    file_name = os.path.basename(normalized_path)
+
+                    # Now file_name should be just the filename without any directory components
                     content = b''.join(entry.get_blocks())
                     files[file_name] = content
 
-                    if file_name.endswith('.pdf'):
-                        parts = file_name.split('_')
-                        if len(parts) > 1:
-                            doc_order = parts[1]
+                    if file_name.lower().endswith('.pdf'):
+                        base_name = os.path.splitext(file_name)[0]
+                        # Use regex to extract the order number after the first underscore
+                        match = re.match(r'[^_]+_([^_]+)_?', base_name)
+                        if match:
+                            doc_order = match.group(1)
+                            print(file_name)
                             doc_order_to_filename[doc_order] = file_name
+                        else:
+                            # Handle error if order number is not found
+                            print(f"Warning: Could not extract order number from filename: {file_name}")
+                
 
             # Find index_json
-            print("\n\n\n")
-            print("--->--->--->---> Inicia busqueda de indice json --> ", datetime.now().strftime("%H:%M:%S"))
             index_json = None
             for filename, content in files.items():
-                if filename.endswith('.json'):
+                if filename[-5:] == '.json':
                     try:
                         index_json = json.loads(content.decode('utf-8'))
                         break  # Exit after finding the first JSON file
@@ -1046,9 +1066,6 @@ def validate_expediente():
             return jsonify({"status": False, "message": f"Error inesperado al procesar el archivo: {str(e)}"}), 500
 
         validation_results = []
-        print("\n\n\n")
-
-        print("--->--->--->---> Inicia procesamiento de tramites en paralelo --> ", datetime.now().strftime("%H:%M:%S"))
         tramites = index_json['tramites']
 
         # Prepare arguments for each tramite
@@ -1137,6 +1154,7 @@ def mergepdfs():
         watermarked_pdf_base64 = base64.b64encode(watermarked_pdf).decode('utf-8')
         end_time = time()
         processing_time = end_time - start_time
+        print(f"Tiempo de concatenacion y watermarking: {processing_time:.4f} segundos")
         
         return jsonify({
             "status": True,

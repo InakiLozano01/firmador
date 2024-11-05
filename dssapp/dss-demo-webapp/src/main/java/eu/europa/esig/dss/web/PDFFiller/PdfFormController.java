@@ -37,43 +37,38 @@ public class PdfFormController {
 
     private static final Logger logger = LoggerFactory.getLogger(PdfFormController.class);
 
-    @PostMapping(value = "/update", consumes = MediaType.APPLICATION_FORM_URLENCODED_VALUE)
-    public ResponseEntity <byte[]> updatePdfFields(
-            @RequestParam("fileBase64") String fileBase64,
-            @RequestParam("fileName") String fileName,
-            @RequestParam("fieldValues") String fieldValuesJson) {
+    // Accepts JSON payload for PDF update
+    @PostMapping(value = "/update", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<byte[]> updatePdfFields(@RequestBody Map<String, Object> payload) {
         try {
-            // Verifica si las entradas son nulas o vacías
-            if (fileBase64 == null || fileBase64.isEmpty() || fieldValuesJson == null || fieldValuesJson.isEmpty()) {
+            // Extract and validate the required fields
+            String fileBase64 = (String) payload.get("fileBase64");
+            String fileName = (String) payload.get("fileName");
+            Map<String, String> fieldValues = (Map<String, String>) objectMapper.readValue(payload.get("fieldValues").toString(), Map.class);
+
+            if (fileBase64 == null || fileBase64.isEmpty() || fieldValues == null || fieldValues.isEmpty()) {
                 logger.error("Input data is null or empty");
                 return ResponseEntity.badRequest().body("Input data is null or empty".getBytes());
             }
-
-            // Decode base64 PDF
+            
+            // Decode the Base64-encoded PDF
             byte[] pdfBytes = Base64.getDecoder().decode(fileBase64);
 
-            // Convert JSON string to Map
-            Map<String, String> fieldValues = objectMapper.readValue(fieldValuesJson, Map.class);
-
-            // Update the PDF fields
+            // Update PDF fields using the service
             ByteArrayOutputStream baos = pdfFormUpdateService.updatePdfFields(pdfBytes, fieldValues);
 
+            // Return the updated PDF as a downloadable file
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + fileName)
                     .contentType(MediaType.APPLICATION_PDF)
                     .body(baos.toByteArray());
-        } catch (PdfFormUpdateException e) {
-            logger.error("Error updatePDFfields", e);
-            return ResponseEntity.badRequest().body(e.getMessage().getBytes());
+
         } catch (IllegalArgumentException e) {
-            logger.error("Error decoding Base64 PDF", e);
-            return ResponseEntity.badRequest().body("Error decoding Base64 PDF".getBytes());
-        } catch (IOException e) {
-            logger.error("IO Exception", e);
-            return ResponseEntity.status(500).body("Internal Server Error".getBytes());
+            logger.error("Invalid input data", e);
+            return ResponseEntity.badRequest().body("Invalid input data".getBytes());
         } catch (Exception e) {
             logger.error("Unexpected error", e);
-            return ResponseEntity.status(500).body("Internal Server Error".getBytes());
+            return ResponseEntity.status(500).body("Unexpected error occurred".getBytes());
         }
     }
 }
