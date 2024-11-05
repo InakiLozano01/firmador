@@ -7,9 +7,9 @@ on:
       - master
 
 jobs:
-  deploy_dev:
+  deploy_testing:
     if: github.ref == 'refs/heads/testing'
-    runs-on: [self-hosted, autopulltapir]
+    runs-on: [self-hosted,  Firmador-runner-master]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -19,9 +19,9 @@ jobs:
           cd /home/espaciodocker/firmador-documentos
           git pull origin testing
 
-  deploy_prod:
+  deploy_master:
     if: github.ref == 'refs/heads/master'
-    runs-on: [self-hosted, Tapir-runner-prod]
+    runs-on: [self-hosted,  Firmador-runner-master]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

@@ -12,7 +12,7 @@ services:
       - firmador_signnet
   
   flask-app:
-    container_name: firmador-python-prod
+    container_name: firmador-python
     restart: always
     build:
       context: ./firmar_python
