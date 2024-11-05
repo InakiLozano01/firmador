@@ -7,7 +7,7 @@ on:
       - master
 
 jobs:
-  deploy_dev:
+  deploy_testing:
     if: github.ref == 'refs/heads/testing'
     runs-on: [self-hosted, autopulltapir]
     steps:
@@ -19,7 +19,7 @@ jobs:
           cd /home/espaciodocker/firmador-documentos
           git pull origin testing
 
-  deploy_prod:
+  deploy_master:
     if: github.ref == 'refs/heads/master'
     runs-on: [self-hosted, Tapir-runner-prod]
     steps:
