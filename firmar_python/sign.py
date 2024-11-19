@@ -1012,8 +1012,13 @@ def validate_expediente():
             # Extract all files from the archive once
             files = {}
             doc_order_to_filename = {}
+            pdf_count = 0
             with libarchive.file_reader(path) as archive:
                 for entry in archive:
+                    # Skip directory entries
+                    if entry.isdir:
+                        continue
+                        
                     # Decode the pathname if necessary
                     entry_pathname = entry.pathname
                     if isinstance(entry_pathname, bytes):
@@ -1036,6 +1041,7 @@ def validate_expediente():
                     files[file_name] = content
 
                     if file_name.lower().endswith('.pdf'):
+                        pdf_count += 1
                         base_name = os.path.splitext(file_name)[0]
                         # Use regex to extract the order number after the first underscore
                         match = re.match(r'[^_]+_([^_]+)_?', base_name)
@@ -1046,7 +1052,6 @@ def validate_expediente():
                         else:
                             # Handle error if order number is not found
                             print(f"Warning: Could not extract order number from filename: {file_name}")
-                
 
             # Find index_json
             index_json = None
@@ -1059,6 +1064,24 @@ def validate_expediente():
                         return jsonify({"status": False, "message": f"{filename} no es un JSON válido"}), 400
             if index_json is None:
                 return jsonify({"status": False, "message": "No se encontró ningún archivo JSON en el archivo"}), 400
+
+            # Count total documents in index_json
+            total_docs_in_index = sum(len(tramite['documentos']) for tramite in index_json['tramites'])
+
+            # Compare counts and check for extra files
+            if pdf_count > total_docs_in_index:
+                return jsonify({
+                    "status": False, 
+                    "message": f"El archivo ZIP contiene más PDFs ({pdf_count}) que los declarados en el índice ({total_docs_in_index})"
+                }), 400
+
+            # Check for extra non-PDF and non-JSON files
+            expected_file_count = total_docs_in_index + 1  # PDFs + index.json
+            if len(files) > expected_file_count:
+                return jsonify({
+                    "status": False,
+                    "message": f"El archivo ZIP contiene archivos adicionales no esperados"
+                }), 400
 
         except libarchive.exception.ArchiveError as e:
             return jsonify({"status": False, "message": f"Error al leer el archivo: {str(e)}"}), 500
