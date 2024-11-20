@@ -184,6 +184,16 @@ def get_signatures():
     except Exception as e:
         return jsonify({"status": False, "message": "Error inesperado en get_signatures." + str(e)}), 500
     
+##################################################
+###             Ruta de testeo                 ###
+##################################################
+@app.route('/test', methods=['GET', 'POST'])
+def test_route():
+    """
+    Test route.
+    """
+    return jsonify({"status": "success", "message": "Test route"}), 200
+    
 def is_port_in_use(port):
     for conn in psutil.net_connections():
         if conn.laddr.port == port:
