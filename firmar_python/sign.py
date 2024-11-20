@@ -1068,77 +1068,67 @@ def validate_expediente():
             # Count total documents in index_json
             total_docs_in_index = sum(len(tramite['documentos']) for tramite in index_json['tramites'])
 
-            # Compare counts and check for extra files
-            if pdf_count > total_docs_in_index:
-                return jsonify({
-                    "status": False, 
-                    "message": f"El archivo ZIP contiene más PDFs ({pdf_count}) que los declarados en el índice ({total_docs_in_index})"
-                }), 400
+            validation_results = []
+            tramites = index_json['tramites']
 
-            # Check for extra non-PDF and non-JSON files
-            expected_file_count = total_docs_in_index + 1  # PDFs + index.json
-            if len(files) > expected_file_count:
-                return jsonify({
-                    "status": False,
-                    "message": f"El archivo ZIP contiene archivos adicionales no esperados"
-                }), 400
+            # Prepare arguments for each tramite
+            tramite_args = []
+            tramites_processed = []
+
+            for idx, tramite in enumerate(tramites):
+                tramite_copy = copy.deepcopy(tramite)
+                signature = tramite_copy.pop('firma', '')
+                if not signature:
+                    return jsonify({"status": False, "message": "Error al obtener la firma del tramite. Posiblemente el tramite no se haya firmado"}), 500
+
+                # Build 'json_str' with tramites up to and including the current one, without the current 'firma'
+                tramites_to_include = tramites_processed + [tramite_copy]
+                json_str = copy.deepcopy(index_json)
+                json_str['tramites'] = tramites_to_include
+
+                # Append the original tramite (with 'firma') to 'tramites_processed' for the next iteration
+                tramites_processed.append(tramite)
+
+                # Prepare arguments for process_tramite
+                tramite_args.append((idx, json_str, signature, tramite_copy, files, doc_order_to_filename, max_workers))
+
+            # Process tramites in parallel using threads
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {
+                    executor.submit(process_tramite, *args): idx
+                    for idx, args in enumerate(tramite_args)
+                }
+                results_dict = {}
+                for future in futures:
+                    idx = futures[future]
+                    result = future.result()
+                    if 'error' in result:
+                        return jsonify({"status": False, "message": result['error']}), 500
+                    results_dict[idx] = result
+
+            # Collect results in order
+            validation_results = [results_dict[idx] for idx in range(len(tramites))]
+
+            # No need to reverse since we're processing in order
+            validation = {'subresults': validation_results}
+
+            total = all(result['result_indication'] for result in validation_results)
+            validation['conclusion'] = total
+
+            # Check for any extra files after processing
+            if len(files) - 1 > total_docs_in_index:
+                validation['conclusion'] = False
+                validation['message'] = f"El archivo ZIP contiene más archivos ({len(files) - 1}) que los documentos declarados en el índice ({total_docs_in_index}). Esto puede incluir PDFs adicionales u otros tipos de archivos no permitidos."
+
+            return jsonify({
+                "status": True,
+                "validation": validation
+            }), 200
 
         except libarchive.exception.ArchiveError as e:
             return jsonify({"status": False, "message": f"Error al leer el archivo: {str(e)}"}), 500
         except Exception as e:
             return jsonify({"status": False, "message": f"Error inesperado al procesar el archivo: {str(e)}"}), 500
-
-        validation_results = []
-        tramites = index_json['tramites']
-
-        # Prepare arguments for each tramite
-        tramite_args = []
-        tramites_processed = []
-
-        for idx, tramite in enumerate(tramites):
-            tramite_copy = copy.deepcopy(tramite)
-            signature = tramite_copy.pop('firma', '')
-            if not signature:
-                return jsonify({"status": False, "message": "Error al obtener la firma del tramite. Posiblemente el tramite no se haya firmado"}), 500
-
-            # Build 'json_str' with tramites up to and including the current one, without the current 'firma'
-            tramites_to_include = tramites_processed + [tramite_copy]
-            json_str = copy.deepcopy(index_json)
-            json_str['tramites'] = tramites_to_include
-
-            # Append the original tramite (with 'firma') to 'tramites_processed' for the next iteration
-            tramites_processed.append(tramite)
-
-            # Prepare arguments for process_tramite
-            tramite_args.append((idx, json_str, signature, tramite_copy, files, doc_order_to_filename, max_workers))
-
-        # Process tramites in parallel using threads
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = {
-                executor.submit(process_tramite, *args): idx
-                for idx, args in enumerate(tramite_args)
-            }
-            results_dict = {}
-            for future in futures:
-                idx = futures[future]
-                result = future.result()
-                if 'error' in result:
-                    return jsonify({"status": False, "message": result['error']}), 500
-                results_dict[idx] = result
-
-        # Collect results in order
-        validation_results = [results_dict[idx] for idx in range(len(tramites))]
-
-        # No need to reverse since we're processing in order
-        validation = {'subresults': validation_results}
-
-        total = all(result['result_indication'] for result in validation_results)
-        validation['conclusion'] = total
-
-        return jsonify({
-            "status": True,
-            "validation": validation
-        }), 200
 
     except Exception as e:
         return jsonify({"status": False, "message": f"Error al procesar el expediente: {str(e)}"}), 500
