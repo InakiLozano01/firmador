@@ -14,6 +14,7 @@ import pystray
 from pystray import MenuItem
 from PIL import Image
 import psutil
+import re
 
 ##################################################
 ###              Imports propios               ###
@@ -91,7 +92,7 @@ def get_certificates():
             return jsonify({"status": False, "message": "Entrada de PIN cancelada."}), 400
 
         # Obtener los certificados del token
-        certificates, session, code = get_certificates_from_token(lib_path, pin)
+        certificates, session, subject, code = get_certificates_from_token(lib_path, pin)
         if not certificates or code != 200:
             return jsonify({"status": False, "message": "Problema al traer certificados del token."}), 404
 
@@ -116,6 +117,10 @@ def get_certificates():
             return jsonify({"status": False, "message": f"Error al obtener la cadena de certificados: {str(e)}"}), 500
 
         session.closeSession()
+
+        match = re.search(r'CUIL (\d+)', str(subject))
+        cuil = match.group(1) if match else None
+
         response = {
             "status": True,
             "response": {
@@ -125,6 +130,7 @@ def get_certificates():
                 "keyId": cert.fingerprint(hashes.SHA256()).hex().upper(),
                 "certificate": cert_to_base64(cert_der),
                 "certificateChain": chain_base64,
+                "CUIL": cuil,
                 "encryptionAlgorithm": "RSA"
             },
             "feedback": {
@@ -136,7 +142,7 @@ def get_certificates():
                     "arch": platform.architecture()[0],
                     "os": platform.system().upper()
                 },
-                "TuquitoVersion": "0.1"
+                "TuquitoVersion": "1.7"
             }
         }
 
@@ -160,7 +166,7 @@ def get_signatures():
         if not dataToSign or not isinstance(dataToSign, list):
             return jsonify({"status": False, "message": "Lista de datos a firmar vacía."}), 400
         
-        certificates, session, code = get_certificates_from_token(lib_path, pin)
+        certificates, session, subject, code = get_certificates_from_token(lib_path, pin)
         if not certificates or code != 200:
             return jsonify({"status": False, "message": "Problema al traer certificados del token."}), 404
         
