@@ -53,7 +53,7 @@ def get_certificates_from_token(lib_path, pin):
             cert = x509.load_der_x509_certificate(cert_der)
             print(f"Certificado encontrado en el token: {cert.subject}")
             certificates.append((cert, cert_der))
-    return certificates, session, 200 
+    return certificates, session, cert.subject, 200
 
 def get_full_chain(cert, cert_der):
     chain = [cert_der]
