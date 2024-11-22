@@ -164,12 +164,12 @@ def sign_own_pdf(pdf, is_yunga_sign, field_to_sign, stamp, area, name, datetime_
         return signed_pdf_response['bytes'], None, 200
 
     try:
-        # Parse datetime from Y-m-d H:M:S to d/m/Y H:M:S format
+        # Convert from Y-m-d to d/m/Y format
         try:
-            dt = datetime.strptime(datetime_signed, "%Y-%m-%d %H:%M:%S")
+            datetime.strptime(datetime_signed, "%d/%m/%Y %H:%M:%S")
+        except ValueError:
+            dt = datetime.strptime(datetime_signed, "%Y-%m-%d %H:%M:%S") 
             datetime_signed = dt.strftime("%d/%m/%Y %H:%M:%S")
-        except ValueError as e:
-            return jsonify({"status": False, "message": "Error al parsear fecha y hora: " + str(e)}), 500
         if not is_yunga_sign:
             custom_image, code = create_signature_image(f"{name}\n{datetime_signed}\n{stamp}\n{area}", encoded_image, "cert")
         else:
@@ -408,8 +408,12 @@ def firmalote():
             role = name + ", " + stamp + ", " + area
 
             if isdigital:
-                dt = datetime.strptime(datetimesigned, "%Y-%m-%d %H:%M:%S")
-                datetimesigned = dt.strftime("%d/%m/%Y %H:%M:%S")
+                # Convert from Y-m-d to d/m/Y format
+                try:
+                    datetime.strptime(datetimesigned, "%d/%m/%Y %H:%M:%S")
+                except ValueError:
+                    dt = datetime.strptime(datetimesigned, "%Y-%m-%d %H:%M:%S") 
+                    datetimesigned = dt.strftime("%d/%m/%Y %H:%M:%S")
                 custom_image, code = create_signature_image(
                                 f"{name}\n{datetimesigned}\n{stamp}\n{area}",
                                 encoded_image,
@@ -546,8 +550,12 @@ def firmaloteend():
             role = name + ", " + stamp + ", " + area
 
             if isdigital:
-                dt = datetime.strptime(datetimesigned, "%Y-%m-%d %H:%M:%S")
-                datetimesigned = dt.strftime("%d/%m/%Y %H:%M:%S")
+                # Convert from Y-m-d to d/m/Y format
+                try:
+                    datetime.strptime(datetimesigned, "%d/%m/%Y %H:%M:%S")
+                except ValueError:
+                    dt = datetime.strptime(datetimesigned, "%Y-%m-%d %H:%M:%S") 
+                    datetimesigned = dt.strftime("%d/%m/%Y %H:%M:%S")
                 custom_image, code = create_signature_image(
                                 f"{name}\n{datetimesigned}\n{stamp}\n{area}",
                                 encoded_image,
@@ -616,7 +624,7 @@ def firmaloteend():
     for error in errors_stack:
         docs_not_signed.append(error['idDocFailed'])
 
-    return jsonify({"status": True, "docsSigned": id_docs_signeds, "docsNotSigned": docs_not_signed}), 200
+    return jsonify({"status": True, "docsSigned": id_docs_signeds, "docsNotSigned": docs_not_signed, "errors": errors_stack}), 200
 
 #3  ##################################################
     ###   Ruta de validacion de indices en json    ###
