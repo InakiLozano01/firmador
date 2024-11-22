@@ -94,6 +94,10 @@ def get_certificates():
         # Obtener los certificados del token
         certificates, session, subject, code = get_certificates_from_token(lib_path, pin)
         if not certificates or code != 200:
+            if subject == 'BAD_PIN':
+                return jsonify({"status": False, "message": "PIN incorrecto."}), 401
+            session.logout()
+            session.closeSession()
             return jsonify({"status": False, "message": "Problema al traer certificados del token."}), 404
 
         # Seleccionar el certificado alojado en el token
@@ -103,6 +107,8 @@ def get_certificates():
         thread_cert.join()
 
         if not selected_cert:
+            session.logout()
+            session.closeSession()
             return jsonify({"status": False, "message": "No se seleccionó ningún certificado."}), 400
 
         selected_index = selected_cert[0]
@@ -113,13 +119,23 @@ def get_certificates():
             cert_chain = get_full_chain(cert, cert_der)
             chain_base64 = [cert_to_base64(c) for c in cert_chain]
         except Exception as e:
+            session.logout()
             session.closeSession()
             return jsonify({"status": False, "message": f"Error al obtener la cadena de certificados: {str(e)}"}), 500
 
+        session.logout()
         session.closeSession()
 
-        match = re.search(r'CUIL (\d+)', str(subject))
-        cuil = match.group(1) if match else None
+        try:
+            match = re.search(r'CUIL (\d+)', str(subject))
+            cuil_t = match.group(1) if match else None
+            if not cuil_t:
+                match = re.search(r'CUIT (\d+)', str(subject))
+                cuil_t = match.group(1) if match else None
+            if not cuil_t:
+                cuil_t = '0'
+        except Exception as e:
+            cuil_t = '0'
 
         response = {
             "status": True,
@@ -130,7 +146,7 @@ def get_certificates():
                 "keyId": cert.fingerprint(hashes.SHA256()).hex().upper(),
                 "certificate": cert_to_base64(cert_der),
                 "certificateChain": chain_base64,
-                "CUIL": cuil,
+                "CUIL": cuil_t,
                 "encryptionAlgorithm": "RSA"
             },
             "feedback": {
@@ -149,8 +165,14 @@ def get_certificates():
         responsejson = json.loads(json.dumps(response))
         return jsonify(responsejson), 200
     except PyKCS11.PyKCS11Error as e:
+        if session:
+            session.logout()
+            session.closeSession()
         return jsonify({"status": False, "message": f"Error de PyKCS11: {str(e)}"}), 500
     except Exception as e:
+        if session:
+            session.logout()
+            session.closeSession()
         return jsonify({"status": False, "message": f"Error inesperado en get_certificates: {str(e)}"}), 500
     
 @app.route('/rest/sign', methods=['POST'])
@@ -188,6 +210,7 @@ def get_signatures():
         return jsonify(responsejson), 200
     
     except Exception as e:
+        session.closeSession()
         return jsonify({"status": False, "message": "Error inesperado en get_signatures." + str(e)}), 500
     
 ##################################################
