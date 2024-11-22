@@ -118,8 +118,16 @@ def get_certificates():
 
         session.closeSession()
 
-        match = re.search(r'CUIL (\d+)', str(subject))
-        cuil = match.group(1) if match else None
+        try:
+            match = re.search(r'CUIL (\d+)', str(subject))
+            cuil_t = match.group(1) if match else None
+            if not cuil_t:
+                match = re.search(r'CUIT (\d+)', str(subject))
+                cuil_t = match.group(1) if match else None
+            if not cuil_t:
+                cuil_t = '0'
+        except Exception as e:
+            cuil_t = '0'
 
         response = {
             "status": True,
@@ -130,7 +138,7 @@ def get_certificates():
                 "keyId": cert.fingerprint(hashes.SHA256()).hex().upper(),
                 "certificate": cert_to_base64(cert_der),
                 "certificateChain": chain_base64,
-                "CUIL": cuil,
+                "CUIL": cuil_t,
                 "encryptionAlgorithm": "RSA"
             },
             "feedback": {
