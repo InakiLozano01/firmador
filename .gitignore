@@ -17,3 +17,4 @@ firmar_python/*.key
 .idea
 .vscode
 actions-runner
+.venv

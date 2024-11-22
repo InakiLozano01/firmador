@@ -40,8 +40,11 @@ def get_certificates_from_token(lib_path, pin):
     if not slots:
         return jsonify({"status": False, "message": "No se encontraron tokens."}), 404
 
-    session = pkcs11.openSession(slots[0], PyKCS11.CKF_SERIAL_SESSION | PyKCS11.CKF_RW_SESSION)
-    session.login(pin)
+    try:
+        session = pkcs11.openSession(slots[0], PyKCS11.CKF_SERIAL_SESSION | PyKCS11.CKF_RW_SESSION)
+        session.login(pin)
+    except Exception as e:
+        return jsonify({"status": False, "message": f"Error al abrir sesión en el token: {str(e)}"}), None, "BAD_PIN", 500
 
     cert_attributes = [PyKCS11.CKA_CLASS, PyKCS11.CKA_CERTIFICATE_TYPE, PyKCS11.CKA_VALUE]
     certificates = []
