@@ -2,7 +2,10 @@
 FROM python:3.12-slim
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y apache2 apache2-dev gcc wget build-essential unrar-free libarchive-dev pkg-config
+RUN apt-get update && apt-get install -y apache2 apache2-dev gcc wget build-essential unrar-free libarchive-dev pkg-config tzdata
+
+# Set the timezone to GMT-3
+RUN ln -fs /usr/share/zoneinfo/America/Argentina/Tucuman /etc/localtime && dpkg-reconfigure -f noninteractive tzdata
 
 # Clean up the apt cache to reduce image size
 RUN apt-get clean && rm -rf /var/lib/apt/lists/*
@@ -15,9 +18,6 @@ RUN pip install mod_wsgi
 
 # Install pillow
 RUN pip install pillow
-
-# Install Pytz
-RUN pip install pytz
 
 # Install pikepdf
 RUN pip install pikepdf
