@@ -12,7 +12,6 @@ from datetime import datetime
 import hashlib
 import unicodedata
 import libarchive
-import pytz
 import psycopg2
 from dotenv import load_dotenv
 import requests
@@ -375,7 +374,7 @@ def firmalote():
     data_to_sign = []
 
     current_time = int(tiempo.time() * 1000)
-    datetimesigned = datetime.now(pytz.utc).astimezone(pytz.timezone('America/Argentina/Buenos_Aires')).strftime("%Y-%m-%d %H:%M:%S")
+    datetimesigned = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
 
     for pdf in pdfs:
         try:
