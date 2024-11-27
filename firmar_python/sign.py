@@ -1006,7 +1006,8 @@ def process_tramite(index, json_str, signature, tramite, files, doc_order_to_fil
             'docs_validation': docs_validation,
             'docs_not_found': docs_not_found,
             'subindication': indication,
-            'result_indication': result_indication
+            'result_indication': result_indication,
+            'message': indication
         }
         return result
 
@@ -1136,6 +1137,9 @@ def validate_expediente():
             if len(files) - 1 > total_docs_in_index:
                 validation['conclusion'] = False
                 validation['message'] = f"El archivo ZIP contiene más archivos ({len(files) - 1}) que los documentos declarados en el índice ({total_docs_in_index}). Esto puede incluir PDFs adicionales u otros tipos de archivos no permitidos."
+            
+            for result in validation_results:
+                validation['message'] += result['message']
 
             return jsonify({
                 "status": True,
