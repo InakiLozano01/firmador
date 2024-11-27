@@ -1138,6 +1138,7 @@ def validate_expediente():
                 validation['conclusion'] = False
                 validation['message'] = f"El archivo ZIP contiene más archivos ({len(files) - 1}) que los documentos declarados en el índice ({total_docs_in_index}). Esto puede incluir PDFs adicionales u otros tipos de archivos no permitidos."
             
+            validation['message'] = ""
             for result in validation_results:
                 validation['message'] += result['message']
 
