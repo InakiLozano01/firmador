@@ -8,6 +8,8 @@ services:
       dockerfile: Dockerfile
     ports:
       - "5555:5555"
+    environment:
+      - TZ=Etc/GMT+3
     networks:
       - firmador_signnet
   
@@ -19,6 +21,8 @@ services:
       dockerfile: Dockerfile
     ports:
       - "5000:5000"
+    environment:
+      - TZ=Etc/GMT+3
     volumes:
       - ./firmar_python:/app
       - /qnap/indice_migracion:/app/expedientes
