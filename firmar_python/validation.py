@@ -25,7 +25,7 @@ def validation_analyze(report):
                 return jsonify({"status": False, "message": "Error in validate_certs" + str(e)}), 500
             if signature['StructuralValidation']['valid'] is True and signature['BasicSignature']['SignatureIntact'] is True and signature['BasicSignature']['SignatureValid'] is True:
                 try:
-                    claimed_signing_time = datetime.strptime(signature['ClaimedSigningTime'], '%Y-%m-%dT%H:%M:%SZ')
+                    claimed_signing_time = datetime.strptime(signature['ClaimedSigningTime'], '%Y-%m-%dT%H:%M:%SZ') - timedelta(hours=3)
                 except ValueError:
                     claimed_signing_time = datetime.max
                 signature = {
