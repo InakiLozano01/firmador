@@ -908,10 +908,10 @@ def process_document(doc, files, doc_order_to_filename):
             # Validate the document
             report, code = validate_signature(None, docb64)
             if code != 200:
-                raise Exception(f"Error al validar PDF: Error en validate_signature: id_doc: {doc_id}")
+                raise Exception(f"Error de validación de firma en documento {doc_id}")
             signatures, code = validation_analyze(report)
             if code != 200:
-                raise Exception(f"Error al validar PDF: Error en validation_analyze: id_doc: {doc_id}")
+                raise Exception(f"Error de análisis de validación en documento {doc_id}")
             hash_doc = hashlib.sha256(doc_content).hexdigest()
             if not doc_hash:
                 valid_hash = False
@@ -932,15 +932,14 @@ def process_document(doc, files, doc_order_to_filename):
 def process_tramite(index, json_str, signature, tramite, files, doc_order_to_filename, max_workers):
     result = {}
     try:
-
         # Validate the signature using the prepared json_str and signature
         valid, code = validate_signature(json_str, signature)
         if code != 200:
-            return {"error": "Error en validate_signature"}
+            return {"error": "Error en la validación de firma del trámite"}
 
         validation_result, code = validation_analyze(valid)
         if code != 200:
-            return {"error": "Error en validation_analyze"}
+            return {"error": "Error en el análisis de validación del trámite"}
 
         tested = bool(validation_result[0]['valid'])
         certs_validation = validation_result[0]['certs_valid']
@@ -966,11 +965,9 @@ def process_tramite(index, json_str, signature, tramite, files, doc_order_to_fil
             if 'error' in result_doc:
                 errors.append(result_doc['error'])
 
-        # Handle errors if any
         if errors:
-            return {"error": errors[0]}  # or handle multiple errors
+            return {"error": errors[0]}
 
-        # Proceed with the rest of your code
         hashes_valid = []
         hashes_invalid = []
         for doc in docs_validation:
@@ -979,23 +976,30 @@ def process_tramite(index, json_str, signature, tramite, files, doc_order_to_fil
             else:
                 hashes_valid.append({"id_documento": doc['id_documento'], "orden": doc['orden']})
 
+        # Construct detailed validation message
         if not tested:
             if certs_validation:
-                indication = "Tramite invalido: firma invalida." + " Documentos con hash invalido: " + (str(hashes_invalid) if hashes_invalid else "ninguno")
+                indication = f"Trámite {tramite['secuencia']}: La validación fue procesada correctamente pero la firma digital es inválida."
+                if hashes_invalid:
+                    indication += f" Documentos con hash inválido: {', '.join([f'{doc['id_documento']} (orden {doc['orden']})' for doc in hashes_invalid])}."
                 result_indication = False
             else:
-                indication = "Tramite invalido: firma invalida y certificados invalidos." + " Documentos con hash invalido: " + (str(hashes_invalid) if hashes_invalid else "ninguno")
+                indication = f"Trámite {tramite['secuencia']}: La validación fue procesada correctamente pero la firma digital y los certificados son inválidos."
+                if hashes_invalid:
+                    indication += f" Documentos con hash inválido: {', '.join([f'{doc['id_documento']} (orden {doc['orden']})' for doc in hashes_invalid])}."
                 result_indication = False
         else:
             if not certs_validation:
-                indication = "Tramite invalido: certificados invalidos." + " Documentos con hash invalido: " + (str(hashes_invalid) if hashes_invalid else "ninguno")
+                indication = f"Trámite {tramite['secuencia']}: La validación fue procesada correctamente pero los certificados son inválidos."
+                if hashes_invalid:
+                    indication += f" Documentos con hash inválido: {', '.join([f'{doc['id_documento']} (orden {doc['orden']})' for doc in hashes_invalid])}."
                 result_indication = False
             else:
                 if hashes_invalid:
-                    indication = "Tramite invalido: documentos con hash invalido: " + str(hashes_invalid)
+                    indication = f"Trámite {tramite['secuencia']}: La validación fue procesada correctamente pero hay documentos con hash inválido: {', '.join([f'{doc['id_documento']} (orden {doc['orden']})' for doc in hashes_invalid])}."
                     result_indication = False
                 else:
-                    indication = "Tramite valido"
+                    indication = f"Trámite {tramite['secuencia']}: La validación fue procesada correctamente y todos los elementos son válidos."
                     result_indication = True
 
         result = {
@@ -1012,7 +1016,7 @@ def process_tramite(index, json_str, signature, tramite, files, doc_order_to_fil
         return result
 
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": f"Error en el procesamiento del trámite: {str(e)}"}
 
 @app.route('/validar_expediente', methods=['POST'])
 def validate_expediente():
@@ -1024,20 +1028,22 @@ def validate_expediente():
         file_path = data.get('zip_filepath')
         path = "/app/expedientes/" + file_path
         if not file_path or not os.path.exists(path):
-            return jsonify({"status": False, "message": "Archivo no encontrado " + path}), 400
-        import unicodedata
+            return jsonify({
+                "status": False, 
+                "message": f"Archivo no encontrado en la ruta: {path}"
+            }), 400
+
         try:
-            # Extract all files from the archive once
             files = {}
             doc_order_to_filename = {}
             pdf_count = 0
+            
+            # Extract and process files from ZIP
             with libarchive.file_reader(path) as archive:
                 for entry in archive:
-                    # Skip directory entries
                     if entry.isdir:
                         continue
                         
-                    # Decode the pathname if necessary
                     entry_pathname = entry.pathname
                     if isinstance(entry_pathname, bytes):
                         try:
@@ -1045,72 +1051,79 @@ def validate_expediente():
                         except UnicodeDecodeError:
                             entry_pathname = entry_pathname.decode('latin-1')
 
-                    # Normalize to handle inconsistencies and remove accents or invalid characters
                     entry_path = unicodedata.normalize('NFKD', entry_pathname).encode('ascii', 'ignore').decode('ascii')
-
-                    # Normalize the pathname to handle inconsistencies
                     normalized_path = os.path.normpath(entry_path)
-
-                    # Use os.path.basename to get the filename
                     file_name = os.path.basename(normalized_path)
-
-                    # Now file_name should be just the filename without any directory components
                     content = b''.join(entry.get_blocks())
                     files[file_name] = content
 
                     if file_name.lower().endswith('.pdf'):
                         pdf_count += 1
                         base_name = os.path.splitext(file_name)[0]
-                        # Use regex to extract the order number after the first underscore
                         match = re.match(r'[^_]+_([^_]+)_?', base_name)
                         if match:
                             doc_order = match.group(1)
-                            print(file_name)
                             doc_order_to_filename[doc_order] = file_name
-                        else:
-                            # Handle error if order number is not found
-                            print(f"Warning: Could not extract order number from filename: {file_name}")
 
-            # Find index_json
+            # Find and validate index.json
             index_json = None
             for filename, content in files.items():
-                if filename[-5:] == '.json':
+                if filename.endswith('.json'):
                     try:
                         index_json = json.loads(content.decode('utf-8'))
-                        break  # Exit after finding the first JSON file
+                        break
                     except json.JSONDecodeError:
-                        return jsonify({"status": False, "message": f"{filename} no es un JSON válido"}), 400
+                        return jsonify({
+                            "status": True,
+                            "validation": {
+                                "conclusion": False,
+                                "message": f"La validación fue procesada correctamente pero el archivo {filename} no es un JSON válido"
+                            }
+                        }), 200
+                        
             if index_json is None:
-                return jsonify({"status": False, "message": "No se encontró ningún archivo JSON en el archivo"}), 400
+                return jsonify({
+                    "status": True,
+                    "validation": {
+                        "conclusion": False,
+                        "message": "La validación fue procesada correctamente pero no se encontró el archivo índice JSON en el ZIP"
+                    }
+                }), 200
 
-            # Count total documents in index_json
+            # Validate file count
             total_docs_in_index = sum(len(tramite['documentos']) for tramite in index_json['tramites'])
+            actual_pdf_count = len([f for f in files if f.lower().endswith('.pdf')])
+            
+            file_count_message = None
+            if actual_pdf_count < total_docs_in_index:
+                file_count_message = f"La validación fue procesada correctamente pero faltan documentos. El índice declara {total_docs_in_index} documentos, pero el ZIP contiene {actual_pdf_count} PDFs"
+            elif actual_pdf_count > total_docs_in_index:
+                file_count_message = f"La validación fue procesada correctamente pero hay documentos adicionales. El índice declara {total_docs_in_index} documentos, pero el ZIP contiene {actual_pdf_count} PDFs"
 
             validation_results = []
             tramites = index_json['tramites']
-
-            # Prepare arguments for each tramite
-            tramite_args = []
             tramites_processed = []
+            tramite_args = []
 
             for idx, tramite in enumerate(tramites):
                 tramite_copy = copy.deepcopy(tramite)
                 signature = tramite_copy.pop('firma', '')
                 if not signature:
-                    return jsonify({"status": False, "message": "Error al obtener la firma del tramite. Posiblemente el tramite no se haya firmado"}), 500
+                    return jsonify({
+                        "status": True,
+                        "validation": {
+                            "conclusion": False,
+                            "message": f"La validación fue procesada correctamente pero el trámite {tramite.get('secuencia', idx)} no contiene firma digital"
+                        }
+                    }), 200
 
-                # Build 'json_str' with tramites up to and including the current one, without the current 'firma'
                 tramites_to_include = tramites_processed + [tramite_copy]
                 json_str = copy.deepcopy(index_json)
                 json_str['tramites'] = tramites_to_include
-
-                # Append the original tramite (with 'firma') to 'tramites_processed' for the next iteration
                 tramites_processed.append(tramite)
-
-                # Prepare arguments for process_tramite
                 tramite_args.append((idx, json_str, signature, tramite_copy, files, doc_order_to_filename, max_workers))
 
-            # Process tramites in parallel using threads
+            # Process tramites in parallel
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = {
                     executor.submit(process_tramite, *args): idx
@@ -1121,26 +1134,25 @@ def validate_expediente():
                     idx = futures[future]
                     result = future.result()
                     if 'error' in result:
-                        return jsonify({"status": False, "message": result['error']}), 500
+                        return jsonify({
+                            "status": True,
+                            "validation": {
+                                "conclusion": False,
+                                "message": f"La validación fue procesada correctamente pero hubo un error: {result['error']}"
+                            }
+                        }), 200
                     results_dict[idx] = result
 
-            # Collect results in order
             validation_results = [results_dict[idx] for idx in range(len(tramites))]
+            validation = {
+                'subresults': validation_results,
+                'conclusion': all(result['result_indication'] for result in validation_results),
+                'message': ' '.join(result['message'] for result in validation_results)
+            }
 
-            # No need to reverse since we're processing in order
-            validation = {'subresults': validation_results}
-
-            total = all(result['result_indication'] for result in validation_results)
-            validation['conclusion'] = total
-
-            # Check for any extra files after processing
-            if len(files) - 1 > total_docs_in_index:
+            if file_count_message:
                 validation['conclusion'] = False
-                validation['message'] = f"El archivo ZIP contiene más archivos ({len(files) - 1}) que los documentos declarados en el índice ({total_docs_in_index}). Esto puede incluir PDFs adicionales u otros tipos de archivos no permitidos."
-            
-            validation['message'] = ""
-            for result in validation_results:
-                validation['message'] += result['message']
+                validation['message'] = file_count_message + " " + validation['message']
 
             return jsonify({
                 "status": True,
@@ -1148,12 +1160,30 @@ def validate_expediente():
             }), 200
 
         except libarchive.exception.ArchiveError as e:
-            return jsonify({"status": False, "message": f"Error al leer el archivo: {str(e)}"}), 500
+            return jsonify({
+                "status": True,
+                "validation": {
+                    "conclusion": False,
+                    "message": f"La validación fue procesada correctamente pero hubo un error al leer el archivo ZIP: {str(e)}"
+                }
+            }), 200
         except Exception as e:
-            return jsonify({"status": False, "message": f"Error inesperado al procesar el archivo: {str(e)}"}), 500
+            return jsonify({
+                "status": True,
+                "validation": {
+                    "conclusion": False,
+                    "message": f"La validación fue procesada correctamente pero hubo un error inesperado: {str(e)}"
+                }
+            }), 200
 
     except Exception as e:
-        return jsonify({"status": False, "message": f"Error al procesar el expediente: {str(e)}"}), 500
+        return jsonify({
+            "status": True,
+            "validation": {
+                "conclusion": False,
+                "message": f"La validación fue procesada correctamente pero hubo un error en la solicitud: {str(e)}"
+            }
+        }), 200
     
 #8  ##################################################
     ###             Ruta de testeo                 ###
