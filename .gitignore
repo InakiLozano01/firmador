@@ -1,10 +1,11 @@
-firmar_python/*.crt
-firmar_python/yunga_clave_csr_key
-firmar_python/.env
-firmar_python/*.pem
-firmar_python/*.ttf
-firmar_python/*.pdf
-firmar_python/__pycache__
+firmar_python/app/ config/signer_certs/*.crt
+firmar_python/app/config/signer_certs/*.key
+firmar_python/app/config/signer_certs/yunga_clave_csr_key
+firmar_python/app/.env
+firmar_python/app/*.pem
+firmar_python/app/*.ttf
+firmar_python/app/*.pdf
+firmar_python/app/__pycache__
 firmar_python/firma_cliente/dssapp/.idea
 firmar_python/firma_cliente/dssapp/dss-demo-webapp/target
 firmar_python/firma_cliente/__pycache__
@@ -12,8 +13,8 @@ firmar_python/firma_cliente/*.spec
 firmar_python/firma_cliente/dist
 firmar_python/firma_cliente/build
 firmar_python/firma_cliente/token_lib.json
-firmar_python/*.cer
-firmar_python/*.key
+firmar_python/app/*.cer
+firmar_python/app/*.key
 .idea
 .vscode
 actions-runner
