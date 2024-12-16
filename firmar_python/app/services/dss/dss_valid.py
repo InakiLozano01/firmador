@@ -3,7 +3,7 @@
 import requests
 import base64
 import json
-from ...exceptions.validation_exc import SignatureValidationError, DSServiceConnectionError, InvalidSignatureDataError
+from app.exceptions.validation_exc import SignatureValidationError, DSServiceConnectionError, InvalidSignatureDataError
 
 def validate_signature_json(data, signature):
     """
