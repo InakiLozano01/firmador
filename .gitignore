@@ -1,6 +1,7 @@
 firmar_python/app/certs/own/*.crt
 firmar_python/app/certs/own/*.key
-firmar_python/app/certs/own/yunga_clave_csr_key
+firmar_python/app/certs/own/GDEcert.cer
+firmar_python/app/certs/own/yunga_clave_csr_key.pem
 firmar_python/app/config/.env
 firmar_python/app/.env
 firmar_python/app/*.pem
