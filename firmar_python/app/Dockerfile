@@ -41,30 +41,29 @@ RUN pip install reportlab
 # Set the working directory in the container
 WORKDIR /app
 
-# Copy the Flask application into the container at /app
-COPY . /app
+# Create necessary directories
+RUN mkdir -p /app/assets/images \
+    && mkdir -p /app/certs/own
 
-# Copy the WSGI file
-# COPY init_mod_wsgi.py /usr/local/lib/python3.12/site-packages/mod_wsgi/server/__init__.py
+# Copy the application code (from the context which is firmar_python/app)
+COPY . .
+
+# Make sure all directories have correct permissions
+RUN chown -R www-data:www-data /app \
+    && chmod -R 755 /app \
+    && chmod 600 /app/certs/own/TC_clave_csr.key  # Restrict private key permissions
+
+# Update mod_wsgi configuration for larger file uploads
 RUN sed -i "s/default=10485760,/default=1048576000,/" /usr/local/lib/python3.12/site-packages/mod_wsgi/server/__init__.py
 
-# Copy Apache configuration files into place
-# COPY test.conf /etc/apache2/test.conf
-# COPY signapi.conf /etc/apache2/signapi.conf
+# Create necessary directories
+RUN mkdir -p /var/documentos_firmados /var/documentos
 
-# Additional Apache configuration
-#RUN echo "ServerName localhost" >> /etc/apache2/apache2.conf
-#RUN echo "Listen 5000" >> /etc/apache2/ports.conf
+# Set permissions
+RUN chown -R www-data:www-data /app
+RUN chmod -R 755 /app
 
-# Enable the necessary Apache modules and sites
-#RUN a2enmod rewrite
-#RUN a2ensite 000-default
+EXPOSE 5001
 
-# Expose port 5000 on the container
-EXPOSE 5000
-
-# Start Apache in the foreground
-# CMD ["apache2ctl", "-D", "FOREGROUND"]
-
-# Start mod_wsgi-express with auto-reload
-CMD ["mod_wsgi-express", "start-server", "sign.wsgi", "--reload-on-changes", "--user", "www-data", "--group", "www-data", "--port", "5000"]
+# Start mod_wsgi-express with the correct path (updated path)
+CMD ["mod_wsgi-express", "start-server", "/app/config/sign.wsgi", "--reload-on-changes", "--user", "www-data", "--group", "www-data", "--port", "5001"]
