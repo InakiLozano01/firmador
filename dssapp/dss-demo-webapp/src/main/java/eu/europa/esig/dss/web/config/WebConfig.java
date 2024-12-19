@@ -1,13 +1,20 @@
 package eu.europa.esig.dss.web.config;
 
+import com.fasterxml.jackson.core.StreamReadConstraints;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.MessageSource;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.support.ReloadableResourceBundleMessageSource;
+import org.springframework.http.converter.HttpMessageConverter;
+import org.springframework.http.converter.ByteArrayHttpMessageConverter;
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.web.multipart.MultipartResolver;
 import org.springframework.web.servlet.config.annotation.*;
+
+import java.util.List;
 
 @Configuration
 @EnableWebMvc
@@ -67,6 +74,21 @@ public class WebConfig implements WebMvcConfigurer {
 		};
 	}
 
-
+	@Override
+	public void configureMessageConverters(List<HttpMessageConverter<?>> converters) {
+		ObjectMapper objectMapper = new ObjectMapper();
+		objectMapper.getFactory().setStreamReadConstraints(
+			StreamReadConstraints.builder()
+				.maxStringLength(150_000_000)
+				.build()
+		);
+		
+		MappingJackson2HttpMessageConverter converter = new MappingJackson2HttpMessageConverter();
+		converter.setObjectMapper(objectMapper);
+		converters.add(converter);
+		
+		ByteArrayHttpMessageConverter byteConverter = new ByteArrayHttpMessageConverter();
+		converters.add(byteConverter);
+	}
 
 }
