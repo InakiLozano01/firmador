@@ -23,6 +23,8 @@ logger = logging.getLogger(__name__)
 # Define font paths
 FONT_PATHS = [
     "/app/assets/fonts/PTSerif-Regular.ttf",  # Main container path
+    "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf",  # Better Unicode support
+    "/usr/share/fonts/truetype/noto/NotoSerif-Regular.ttf",  # Full Unicode support
     "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",  # Common Linux fallback
     "/usr/share/fonts/TTF/DejaVuSerif.ttf",  # Alternative Linux path
     "C:\\Windows\\Fonts\\times.ttf"  # Windows fallback
@@ -219,6 +221,9 @@ def create_signature_image(text: str, encoded_image: str, path: str, width: int 
         try:
             lines = text.split('\n')
             for line in lines:
+                logger.debug(f"Original text: {line}")
+                logger.debug(f"Text encoding: {line.encode('utf-8')}")
+                line = line.encode('utf-8').decode('utf-8')
                 draw.text((text_start_x, y_text), line, font=font, fill='black')
                 y_text += font.getbbox(line)[3] + 2 * scale_factor
             logger.debug(f"Drew {len(lines)} lines of text")

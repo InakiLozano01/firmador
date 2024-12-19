@@ -1,5 +1,6 @@
 package eu.europa.esig.dss.web.config;
 
+import com.fasterxml.jackson.core.StreamReadConstraints;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
@@ -56,6 +57,7 @@ import jakarta.annotation.PostConstruct;
 import jakarta.xml.ws.Endpoint;
 import jakarta.xml.ws.soap.SOAPBinding;
 import org.apache.cxf.Bus;
+import org.apache.cxf.BusFactory;
 import org.apache.cxf.endpoint.Server;
 import org.apache.cxf.ext.logging.LoggingInInterceptor;
 import org.apache.cxf.ext.logging.LoggingOutInterceptor;
@@ -71,6 +73,8 @@ import org.springframework.boot.web.servlet.ServletRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.ImportResource;
+import org.apache.cxf.Bus;
+import org.apache.cxf.BusFactory;
 
 import java.util.Arrays;
 
@@ -376,6 +380,16 @@ public class CXFConfig {
 		return restTimestampService;
 	}
 
+	private void configureBusProperties(JAXRSServerFactoryBean sfb) {
+		Bus bus = sfb.getBus();
+		if (bus == null) {
+			bus = BusFactory.getDefaultBus();
+		}
+		bus.setProperty("attachment-max-size", 150000000);
+		bus.setProperty("message-max-size", 150000000);
+		sfb.setBus(bus);
+	}
+
 	@Bean
 	public Server createServerValidationRestService() {
 		JAXRSServerFactoryBean sfb = new JAXRSServerFactoryBean();
@@ -384,6 +398,7 @@ public class CXFConfig {
 		sfb.setProvider(jacksonJsonProvider());
 		sfb.setProvider(exceptionRestMapper());
 		sfb.setFeatures(Arrays.asList(createOpenApiFeature()));
+		configureBusProperties(sfb);
 		return sfb.create();
 	}
 
@@ -395,6 +410,7 @@ public class CXFConfig {
 		sfb.setProvider(jacksonJsonProvider());
 		sfb.setProvider(exceptionRestMapper());
 		sfb.setFeatures(Arrays.asList(createOpenApiFeature()));
+		configureBusProperties(sfb);
 		return sfb.create();
 	}
 
@@ -406,6 +422,7 @@ public class CXFConfig {
 		sfb.setProvider(jacksonJsonProvider());
 		sfb.setProvider(exceptionRestMapper());
 		sfb.setFeatures(Arrays.asList(createOpenApiFeature()));
+		configureBusProperties(sfb);
 		return sfb.create();
 	}
 
@@ -417,6 +434,7 @@ public class CXFConfig {
 		sfb.setProvider(jacksonJsonProvider());
 		sfb.setProvider(exceptionRestMapper());
 		sfb.setFeatures(Arrays.asList(createOpenApiFeature()));
+		configureBusProperties(sfb);
 		return sfb.create();
 	}
 
@@ -428,6 +446,7 @@ public class CXFConfig {
 		sfb.setProvider(jacksonJsonProvider());
 		sfb.setProvider(exceptionRestMapper());
 		sfb.setFeatures(Arrays.asList(createOpenApiFeature()));
+		configureBusProperties(sfb);
 		return sfb.create();
 	}
 
@@ -439,6 +458,7 @@ public class CXFConfig {
 		sfb.setProvider(jacksonJsonProvider());
 		sfb.setProvider(exceptionRestMapper());
 		sfb.setFeatures(Arrays.asList(createOpenApiFeature()));
+		configureBusProperties(sfb);
 		return sfb.create();
 	}
 
@@ -450,6 +470,7 @@ public class CXFConfig {
 		sfb.setProvider(jacksonJsonProvider());
 		sfb.setProvider(exceptionRestMapper());
 		sfb.setFeatures(Arrays.asList(createOpenApiFeature()));
+		configureBusProperties(sfb);
 		return sfb.create();
 	}
 
@@ -461,6 +482,7 @@ public class CXFConfig {
 		sfb.setProvider(jacksonJsonProvider());
 		sfb.setProvider(exceptionRestMapper());
 		sfb.setFeatures(Arrays.asList(createOpenApiFeature()));
+		configureBusProperties(sfb);
 		return sfb.create();
 	}
 
@@ -472,6 +494,7 @@ public class CXFConfig {
 		sfb.setProvider(jacksonJsonProvider());
 		sfb.setProvider(exceptionRestMapper());
 		sfb.setFeatures(Arrays.asList(createOpenApiFeature()));
+		configureBusProperties(sfb);
 		return sfb.create();
 	}
 	
@@ -514,6 +537,14 @@ public class CXFConfig {
 		objectMapper.setAnnotationIntrospector(jai);
 		objectMapper.configure(SerializationFeature.INDENT_OUTPUT, true);
 		objectMapper.configure(DeserializationFeature.WRAP_EXCEPTIONS, false);
+		
+		// Configure StreamReadConstraints to allow larger strings
+		objectMapper.getFactory().setStreamReadConstraints(
+			StreamReadConstraints.builder()
+				.maxStringLength(150_000_000) // Increase max string length to 25MB
+				.build()
+		);
+		
 		return objectMapper;
 	}
 	
