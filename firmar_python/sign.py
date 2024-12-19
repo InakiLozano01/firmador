@@ -497,7 +497,7 @@ def firmalote():
     for error in errors_stack:
         docs_not_signed.append(error['idDocFailed'])
 
-    return jsonify({"status": True, "docsSigned": id_docs_signeds, "docsNotSigned": docs_not_signed, "dataToSign": data_to_sign}), 200
+    return jsonify({"status": True, "docsSigned": id_docs_signeds, "docsNotSigned": docs_not_signed, "dataToSign": data_to_sign, "errors": errors_stack}), 200
 
 #2  ##################################################
     ###     Ruta de completado del proceso de      ###
