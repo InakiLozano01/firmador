@@ -498,7 +498,7 @@ class SignaturesService:
                 try:
                     # Extract base64 string from encoded_image dictionary
                     encoded_image_data = app_state.encoded_image.get("data") if isinstance(app_state.encoded_image, dict) else app_state.encoded_image
-                    custom_image = create_signature_image(f"Sistema Yunga TC Tucum��n\n{app_state.datetimesigned}", encoded_image_data, "yunga")
+                    custom_image = create_signature_image(f"Sistema Yunga TC Tucumán\n{app_state.datetimesigned}", encoded_image_data, "yunga")
                     # Extract base64 string from response
                     custom_image = custom_image["data"]
                 except Exception as e:
