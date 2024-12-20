@@ -66,4 +66,4 @@ RUN chmod -R 755 /app
 EXPOSE 5000
 
 # Start mod_wsgi-express with the correct path (updated path)
-CMD ["mod_wsgi-express", "start-server", "/app/config/sign.wsgi", "--reload-on-changes", "--user", "www-data", "--group", "www-data", "--port", "5000"
+CMD ["mod_wsgi-express", "start-server", "/app/config/sign.wsgi", "--reload-on-changes", "--user", "www-data", "--group", "www-data", "--port", "5000"]

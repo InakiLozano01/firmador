@@ -1,7 +1,7 @@
 services:
 
   java-webapp:
-    container_name: firmador-java-refactor
+    container_name: firmador-java
     restart: always
     build:
       context: ./dssapp
@@ -14,7 +14,7 @@ services:
       - firmador_signnet
   
   flask-app:
-    container_name: firmador-python-test
+    container_name: firmador-python
     restart: always
     build:
       context: ./firmar_python/app
