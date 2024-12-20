@@ -22,9 +22,6 @@ import re
 
 from tokenmg import *
 from certificates import *
-from digest import *
-from imagecomp import *
-from createimagetostamp import *
 from signing import *
 from interfaz import *
 
