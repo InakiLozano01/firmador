@@ -70,10 +70,19 @@ class ValidationsService:
         
         try:
             logger.debug(f"Processing {len(data.get('tramites', []))} tramites")
-            for i, tramite in enumerate(reversed(data['tramites'])):
+            tramites = data['tramites']
+
+            for i, tramite in enumerate(tramites):
                 logger.debug(f"Processing tramite {i+1}")
                 try:
-                    signature = tramite.pop('firma', '')
+                    # Create a copy of data up to current tramite
+                    json_str = copy.deepcopy(data)
+                    json_str['tramites'] = tramites[:i+1]  # Include all tramites up to current
+                    
+                    # Get current tramite's signature and remove it for validation
+                    current_tramite = json_str['tramites'][-1]
+                    signature = current_tramite.pop('firma', '')
+                    
                     if not signature or signature == '' or signature is None:
                         error = {
                             "secuencia": tramite.get('secuencia', i),
@@ -92,77 +101,75 @@ class ValidationsService:
                     errors_stack.append(error)
                     continue
             
-            if errors_stack:
-                return None, data_original, False, "Error al procesar las firmas de los trámites", errors_stack
-            
-            json_str = copy.deepcopy(data)
-            try:
-                logger.debug("Validating JADES signature")
-                validation_report = validate_signature_json(json_str, signature)
-                if not validation_report:
+                if errors_stack:
+                    return None, data_original, False, "Error al procesar las firmas de los trámites", errors_stack
+
+                try:
+                    logger.debug("Validating JADES signature")
+                    validation_report = validate_signature_json(json_str, signature)
+                    if not validation_report:
+                        error = {
+                            "message": "No se recibió respuesta de validación JADES",
+                            "details": "La validación no retornó resultados"
+                        }
+                        logger.error("Empty validation response from JADES validation")
+                        errors_stack.append(error)
+                        return None, data_original, False, "Error en la validación JADES", errors_stack
+                    logger.debug("JADES signature validation completed")
+                except Exception as e:
                     error = {
-                        "message": "No se recibió respuesta de validación JADES",
-                        "details": "La validación no retornó resultados"
+                        "message": f"Error al validar JADES: {str(e)}",
+                        "stack": str(e.__traceback__),
+                        "details": "Error en validate_signature_json"
                     }
-                    logger.error("Empty validation response from JADES validation")
+                    logger.error(f"Failed to validate JADES signature: {str(e)}", exc_info=True)
                     errors_stack.append(error)
                     return None, data_original, False, "Error en la validación JADES", errors_stack
-                logger.debug("JADES signature validation completed")
-            except Exception as e:
-                error = {
-                    "message": f"Error al validar JADES: {str(e)}",
-                    "stack": str(e.__traceback__),
-                    "details": "Error en validate_signature_json"
-                }
-                logger.error(f"Failed to validate JADES signature: {str(e)}", exc_info=True)
-                errors_stack.append(error)
-                return None, data_original, False, "Error en la validación JADES", errors_stack
 
-            try:
-                logger.debug("Analyzing JADES validation result")
-                validation_result = validation_analyze(validation_report)
-                if not validation_result:
+                try:
+                    logger.debug("Analyzing JADES validation result")
+                    validation_result = validation_analyze(validation_report)
+                    if not validation_result:
+                        error = {
+                            "message": "No se encontraron firmas válidas en la validación JADES",
+                            "details": "validation_analyze no retornó resultados"
+                        }
+                        logger.error("No valid signatures found in JADES validation")
+                        errors_stack.append(error)
+                        return None, data_original, False, "No se encontraron firmas válidas", errors_stack
+                    logger.debug("JADES validation analysis completed")
+                except Exception as e:
                     error = {
-                        "message": "No se encontraron firmas válidas en la validación JADES",
-                        "details": "validation_analyze no retornó resultados"
+                        "message": f"Error al analizar validación JADES: {str(e)}",
+                        "stack": str(e.__traceback__),
+                        "details": "Error en validation_analyze"
                     }
-                    logger.error("No valid signatures found in JADES validation")
+                    logger.error(f"Failed to analyze JADES validation result: {str(e)}", exc_info=True)
                     errors_stack.append(error)
-                    return None, data_original, False, "No se encontraron firmas válidas", errors_stack
-                logger.debug("JADES validation analysis completed")
-            except Exception as e:
-                error = {
-                    "message": f"Error al analizar validación JADES: {str(e)}",
-                    "stack": str(e.__traceback__),
-                    "details": "Error en validation_analyze"
-                }
-                logger.error(f"Failed to analyze JADES validation result: {str(e)}", exc_info=True)
-                errors_stack.append(error)
-                return None, data_original, False, "Error al analizar la validación", errors_stack
-            
-            first_signature = validation_result[0] if validation_result else None
-            if not first_signature:
-                error = {
-                    "message": "No se encontraron firmas para validar en JADES",
-                    "details": "No se encontró la primera firma en los resultados"
-                }
-                logger.error("No signatures found to validate in JADES")
-                errors_stack.append(error)
-                return None, data_original, False, "No se encontraron firmas para validar", errors_stack
+                    return None, data_original, False, "Error al analizar la validación", errors_stack
 
-            tested = bool(first_signature.get('valid', False))
-            certs_validation = first_signature.get('certs_valid', False)
-            indication = True if certs_validation and tested else False
+                first_signature = validation_result[0] if validation_result else None
+                if not first_signature:
+                    error = {
+                        "message": "No se encontraron firmas para validar en JADES",
+                        "details": "No se encontró la primera firma en los resultados"
+                    }
+                    logger.error("No signatures found to validate in JADES")
+                    errors_stack.append(error)
+                    return None, data_original, False, "No se encontraron firmas para validar", errors_stack
 
-            validation_results.append({
-                'secuencia': tramite['secuencia'],
-                'is_valid': tested,
-                'certs_valid': certs_validation,
-                'subindication': indication,
-                'signature': validation_result
-            })
+                tested = bool(first_signature.get('valid', False))
+                certs_validation = first_signature.get('certs_valid', False)
+                indication = True if certs_validation and tested else False
 
-            validation_results.reverse()
+                validation_results.append({
+                    'secuencia': tramite['secuencia'],
+                    'is_valid': tested,
+                    'certs_valid': certs_validation,
+                    'subindication': indication,
+                    'signature': validation_result
+                })
+
             validation = {
                 'subresults': validation_results,
                 'conclusion': all(result['subindication'] for result in validation_results)
