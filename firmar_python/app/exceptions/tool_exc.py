@@ -1,3 +1,43 @@
+class ImageError(Exception):
+    """Base exception for image operations."""
+    pass
+
+class ImageProcessingError(ImageError):
+    """Exception raised when there's an error processing an image."""
+    pass
+
+class ImageNotFoundError(ImageError):
+    """Exception raised when an image file is not found."""
+    pass
+
+class ImageEncodingError(ImageError):
+    """Exception raised when there's an error encoding an image."""
+    pass
+
+class ImageDecodingError(ImageError):
+    """Exception raised when there's an error decoding an image."""
+    pass
+
+class InvalidImageFormatError(ImageError):
+    """Exception raised when the image format is invalid."""
+    pass
+
+class FontLoadError(ImageError):
+    """Exception raised when there's an error loading a font."""
+    pass
+
+class StampDecodingError(ImageError):
+    """Exception raised when there's an error decoding a stamp."""
+    pass
+
+class ImageCreationError(ImageError):
+    """Exception raised when there's an error creating an image."""
+    pass
+
+class ImageScalingError(ImageError):
+    """Exception raised when there's an error scaling an image."""
+    pass
+
 class WatermarkError(Exception):
     """Base exception for watermark operations."""
     pass

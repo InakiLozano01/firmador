@@ -49,6 +49,10 @@ public class WebSecurityConfiguration {
 
 	@Bean
 	public SecurityFilterChain filterChain(HttpSecurity http, HttpSession httpSession) throws Exception {
+		// Configure maximum request size
+		http.servletApi(servletApi -> servletApi
+			.rolePrefix("")
+		);
 
 		// javadoc uses frames
 		http.headers(headers -> {

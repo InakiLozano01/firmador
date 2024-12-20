@@ -3,8 +3,10 @@
 import requests
 import base64
 import json
-import logging
 from app.exceptions.dss_exc import PDFClosingError, DSSRequestError
+import logging
+
+logger = logging.getLogger(__name__)
 
 def close_pdf(pdf_to_close, json_field_values):
     """

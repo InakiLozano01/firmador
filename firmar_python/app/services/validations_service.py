@@ -1,7 +1,8 @@
+import logging
 from app.utils.validation_utils import process_signature, validation_analyze
-from app.services.dss.dss_valid import validate_signature_pdf, validate_signature_json
+from .dss.dss_valid import validate_signature_pdf, validate_signature_json
 import copy
-import app.exceptions.validation_exc as validation_exc
+from app.exceptions import validation_exc
 import libarchive
 import os
 import json
@@ -13,66 +14,172 @@ import hashlib
 import multiprocessing
 from flask import jsonify
 
+# Configure logging
+logger = logging.getLogger(__name__)
+
 class ValidationsService:
     def __init__(self):
         cpu_count = multiprocessing.cpu_count()
         self.max_workers = cpu_count * 2/3  # Adjust based on testing
+        logger.debug(f"ValidationsService initialized with {self.max_workers} workers")
 
     def validate_signatures_pdf(self, pdf):
+        logger.info("Starting PDF signatures validation")
         pdf_b64 = pdf['pdf']
         id_doc = pdf['id_documento']
+        logger.debug(f"Processing PDF with ID: {id_doc}")
+
         try:
+            logger.debug("Validating PDF signature")
             report = validate_signature_pdf(pdf_b64)
+            logger.debug("PDF signature validation completed")
         except Exception as e:
-            raise validation_exc.InvalidSignatureDataError("Error al validar PDF: Error en validate_pdf: id_doc: " + id_doc)
+            logger.error(f"Failed to validate PDF signature for document {id_doc}: {str(e)}", exc_info=True)
+            raise validation_exc.InvalidSignatureDataError(f"Error al validar PDF: Error en validate_pdf: id_doc: {id_doc}")
+
         try:
+            logger.debug("Analyzing validation report")
             signatures = validation_analyze(report)
+            if not signatures:
+                raise validation_exc.InvalidSignatureDataError(f"Error al validar PDF: No se encontraron firmas válidas: id_doc: {id_doc}")
+            logger.debug("Validation analysis completed")
         except Exception as e:
-            raise validation_exc.InvalidSignatureDataError("Error al validar PDF: Error en validation_analyze: id_doc: " + id_doc)
+            logger.error(f"Failed to analyze validation report for document {id_doc}: {str(e)}", exc_info=True)
+            raise validation_exc.InvalidSignatureDataError(f"Error al validar PDF: Error en validation_analyze: id_doc: {id_doc}")
+
+        logger.info(f"PDF signatures validation completed for document {id_doc}")
         return signatures
     
     def validate_signatures_jades(self, data):
-        validation_results = []
-        data_original = copy.deepcopy(data)
-        for tramite in reversed(data['tramites']):
-            signature = tramite.pop('firma', '')
-            if not signature or signature == '' or signature is None:
-                raise validation_exc.InvalidSignatureDataError("Error al obtener la firma del tramite. Posiblemente el tramite no se haya firmado")
-        json_str = copy.deepcopy(data)
-        try:
-            valid = validate_signature_json(json_str, signature)
-        except Exception as e:
-            raise validation_exc.InvalidSignatureDataError("Error al validar JADES: Error en validate_signature")
-
-        try:
-            validation_result = validation_analyze(valid)
-        except Exception as e:
-            raise validation_exc.InvalidSignatureDataError("Error al validar JADES: Error en validation_analyze")
+        """
+        Validate JADES signatures with comprehensive error handling.
         
-        tested = bool(validation_result[0]['valid'])
-        certs_validation = validation_result[0]['certs_valid']
-        indication = True if certs_validation and tested else False
+        Args:
+            data: The data containing tramites to validate
+            
+        Returns:
+            tuple: (validation_result, data_original, success, message, errors_stack)
+            
+        Raises:
+            InvalidSignatureDataError: For validation-related errors
+        """
+        logger.info("Starting JADES signatures validation")
+        validation_results = []
+        errors_stack = []
+        data_original = copy.deepcopy(data)
+        
+        try:
+            logger.debug(f"Processing {len(data.get('tramites', []))} tramites")
+            for i, tramite in enumerate(reversed(data['tramites'])):
+                logger.debug(f"Processing tramite {i+1}")
+                try:
+                    signature = tramite.pop('firma', '')
+                    if not signature or signature == '' or signature is None:
+                        error = {
+                            "secuencia": tramite.get('secuencia', i),
+                            "message": "Error al obtener la firma del trámite. Posiblemente el trámite no se haya firmado"
+                        }
+                        logger.error(f"Missing signature in tramite {tramite.get('secuencia', i)}")
+                        errors_stack.append(error)
+                        continue
+                except Exception as e:
+                    error = {
+                        "secuencia": tramite.get('secuencia', i),
+                        "message": f"Error procesando firma del trámite: {str(e)}",
+                        "stack": str(e.__traceback__)
+                    }
+                    logger.error(f"Error processing tramite {tramite.get('secuencia', i)}: {str(e)}", exc_info=True)
+                    errors_stack.append(error)
+                    continue
+            
+            if errors_stack:
+                return None, data_original, False, "Error al procesar las firmas de los trámites", errors_stack
+            
+            json_str = copy.deepcopy(data)
+            try:
+                logger.debug("Validating JADES signature")
+                validation_report = validate_signature_json(json_str, signature)
+                if not validation_report:
+                    error = {
+                        "message": "No se recibió respuesta de validación JADES",
+                        "details": "La validación no retornó resultados"
+                    }
+                    logger.error("Empty validation response from JADES validation")
+                    errors_stack.append(error)
+                    return None, data_original, False, "Error en la validación JADES", errors_stack
+                logger.debug("JADES signature validation completed")
+            except Exception as e:
+                error = {
+                    "message": f"Error al validar JADES: {str(e)}",
+                    "stack": str(e.__traceback__),
+                    "details": "Error en validate_signature_json"
+                }
+                logger.error(f"Failed to validate JADES signature: {str(e)}", exc_info=True)
+                errors_stack.append(error)
+                return None, data_original, False, "Error en la validación JADES", errors_stack
 
-        validation_results.append({
-            'secuencia': tramite['secuencia'],
-            'is_valid': tested,
-            'certs_valid': certs_validation,
-            'subindication': indication,
-            'signature': validation_result
-        })
+            try:
+                logger.debug("Analyzing JADES validation result")
+                validation_result = validation_analyze(validation_report)
+                if not validation_result:
+                    error = {
+                        "message": "No se encontraron firmas válidas en la validación JADES",
+                        "details": "validation_analyze no retornó resultados"
+                    }
+                    logger.error("No valid signatures found in JADES validation")
+                    errors_stack.append(error)
+                    return None, data_original, False, "No se encontraron firmas válidas", errors_stack
+                logger.debug("JADES validation analysis completed")
+            except Exception as e:
+                error = {
+                    "message": f"Error al analizar validación JADES: {str(e)}",
+                    "stack": str(e.__traceback__),
+                    "details": "Error en validation_analyze"
+                }
+                logger.error(f"Failed to analyze JADES validation result: {str(e)}", exc_info=True)
+                errors_stack.append(error)
+                return None, data_original, False, "Error al analizar la validación", errors_stack
+            
+            first_signature = validation_result[0] if validation_result else None
+            if not first_signature:
+                error = {
+                    "message": "No se encontraron firmas para validar en JADES",
+                    "details": "No se encontró la primera firma en los resultados"
+                }
+                logger.error("No signatures found to validate in JADES")
+                errors_stack.append(error)
+                return None, data_original, False, "No se encontraron firmas para validar", errors_stack
 
-        validation_results.reverse()
-        validation = {}
-        validation['subresults'] = validation_results
+            tested = bool(first_signature.get('valid', False))
+            certs_validation = first_signature.get('certs_valid', False)
+            indication = True if certs_validation and tested else False
 
-        for result in validation_results:
-            total = bool(result['subindication'])
-            if not total:
-                break
+            validation_results.append({
+                'secuencia': tramite['secuencia'],
+                'is_valid': tested,
+                'certs_valid': certs_validation,
+                'subindication': indication,
+                'signature': validation_result
+            })
 
-        validation['conclusion'] = total
+            validation_results.reverse()
+            validation = {
+                'subresults': validation_results,
+                'conclusion': all(result['subindication'] for result in validation_results)
+            }
 
-        return validation, data_original
+            logger.info("JADES validation completed successfully")
+            return validation, data_original, True, "Validación completada correctamente", errors_stack
+
+        except Exception as e:
+            error = {
+                "message": f"Error inesperado en la validación JADES: {str(e)}",
+                "stack": str(e.__traceback__),
+                "details": "Error general en validate_signatures_jades"
+            }
+            logger.error(f"Unexpected error in JADES validation: {str(e)}", exc_info=True)
+            errors_stack.append(error)
+            return None, data_original, False, "Error inesperado en la validación", errors_stack
     
     def validate_expediente(self, path):
         try:
@@ -218,7 +325,7 @@ class ValidationsService:
                 }
             }), 200
 
-    def process_document(doc, files, doc_order_to_filename):
+    def process_document(self, doc, files, doc_order_to_filename):
         doc_hash = doc['hash_contenido']
         doc_id = doc['id_documento']
         doc_order = str(doc['orden'])
@@ -237,12 +344,28 @@ class ValidationsService:
                 docb64 = base64.b64encode(doc_content).decode('utf-8')
 
                 # Validate the document
-                report, code = validate_signature_pdf(docb64)
-                if code != 200:
-                    raise Exception(f"Error de validación de firma en documento {doc_id}")
-                signatures, code = validation_analyze(report)
-                if code != 200:
-                    raise Exception(f"Error de análisis de validación en documento {doc_id}")
+                try:
+                    validation_report = validate_signature_pdf(docb64)
+                    if not validation_report:
+                        logger.warning(f"No validation report received for document {doc_id}")
+                        result_doc["signatures"] = []  # Empty signatures list instead of None
+                        return result_doc
+                except Exception as e:
+                    logger.error(f"Error validating signature in document {doc_id}: {str(e)}")
+                    result_doc["signatures"] = []  # Empty signatures list instead of None
+                    return result_doc
+                
+                try:
+                    signatures = validation_analyze(validation_report)
+                    # If no signatures found, that's okay - just use an empty list
+                    if not signatures:
+                        logger.info(f"No signatures found in document {doc_id}")
+                        signatures = []
+                except Exception as e:
+                    logger.error(f"Error analyzing validation in document {doc_id}: {str(e)}")
+                    result_doc["signatures"] = []  # Empty signatures list instead of None
+                    return result_doc
+                
                 hash_doc = hashlib.sha256(doc_content).hexdigest()
                 if not doc_hash:
                     valid_hash = False
@@ -257,23 +380,67 @@ class ValidationsService:
             else:
                 result_doc['not_found'] = True
         except Exception as e:
+            logger.error(f"Error processing document {doc_id}: {str(e)}")
             result_doc['error'] = str(e)
+            result_doc["signatures"] = []  # Empty signatures list instead of None
         return result_doc
 
     def process_tramite(self, index, json_str, signature, tramite, files, doc_order_to_filename, max_workers):
         result = {}
         try:
             # Validate the signature using the prepared json_str and signature
-            valid, code = validate_signature_json(json_str, signature)
-            if code != 200:
-                return {"error": "Error en la validación de firma del trámite"}
+            try:
+                validation_report = validate_signature_json(json_str, signature)
+                if not validation_report:
+                    logger.warning("No validation response received for tramite")
+                    return {
+                        'secuencia': tramite['secuencia'],
+                        'is_valid': False,
+                        'certs_valid': False,
+                        'signature': [],
+                        'docs_validation': [],
+                        'docs_not_found': [],
+                        'subindication': f"Trámite {tramite['secuencia']}: La validación fue procesada correctamente pero no se recibió respuesta de validación",
+                        'result_indication': False,
+                        'message': f"Trámite {tramite['secuencia']}: La validación fue procesada correctamente pero no se recibió respuesta de validación"
+                    }
+            except Exception as e:
+                logger.error(f"Error validating tramite signature: {str(e)}")
+                return {
+                    'secuencia': tramite['secuencia'],
+                    'is_valid': False,
+                    'certs_valid': False,
+                    'signature': [],
+                    'docs_validation': [],
+                    'docs_not_found': [],
+                    'subindication': f"Trámite {tramite['secuencia']}: La validación fue procesada correctamente pero hubo un error en la validación",
+                    'result_indication': False,
+                    'message': f"Trámite {tramite['secuencia']}: La validación fue procesada correctamente pero hubo un error en la validación"
+                }
 
-            validation_result, code = validation_analyze(valid)
-            if code != 200:
-                return {"error": "Error en el análisis de validación del trámite"}
+            try:
+                validation_result = validation_analyze(validation_report)
+                if not validation_result:
+                    logger.info("No signatures found in tramite")
+                    validation_result = []
+            except Exception as e:
+                logger.error(f"Error analyzing tramite validation: {str(e)}")
+                return {
+                    'secuencia': tramite['secuencia'],
+                    'is_valid': False,
+                    'certs_valid': False,
+                    'signature': [],
+                    'docs_validation': [],
+                    'docs_not_found': [],
+                    'subindication': f"Trámite {tramite['secuencia']}: La validación fue procesada correctamente pero hubo un error en el análisis",
+                    'result_indication': False,
+                    'message': f"Trámite {tramite['secuencia']}: La validación fue procesada correctamente pero hubo un error en el análisis"
+                }
 
-            tested = bool(validation_result[0]['valid'])
-            certs_validation = validation_result[0]['certs_valid']
+            # Get the first signature result since we're processing one at a time
+            first_signature = validation_result[0] if validation_result else None
+            tested = bool(first_signature.get('valid', False)) if first_signature else False
+            certs_validation = first_signature.get('certs_valid', False) if first_signature else False
 
             docs_validation = []
             docs_not_found = []
@@ -296,9 +463,6 @@ class ValidationsService:
                 if 'error' in result_doc:
                     errors.append(result_doc['error'])
 
-            if errors:
-                return {"error": errors[0]}
-
             hashes_valid = []
             hashes_invalid = []
             for doc in docs_validation:
@@ -308,7 +472,12 @@ class ValidationsService:
                     hashes_valid.append({"id_documento": doc['id_documento'], "orden": doc['orden']})
 
             # Construct detailed validation message
-            if not tested:
+            if not validation_result:
+                indication = f"Trámite {tramite['secuencia']}: La validación fue procesada correctamente. El trámite no contiene firmas."
+                if hashes_invalid:
+                    indication += f" Documentos con hash inválido: {', '.join([f'{doc['id_documento']} (orden {doc['orden']})' for doc in hashes_invalid])}."
+                result_indication = True  # No signatures is a valid state
+            elif not tested:
                 if certs_validation:
                     indication = f"Trámite {tramite['secuencia']}: La validación fue procesada correctamente pero la firma digital es inválida."
                     if hashes_invalid:
@@ -337,7 +506,7 @@ class ValidationsService:
                 'secuencia': tramite['secuencia'],
                 'is_valid': tested,
                 'certs_valid': certs_validation,
-                'signature': validation_result,
+                'signature': validation_result,  # Return the full validation result
                 'docs_validation': docs_validation,
                 'docs_not_found': docs_not_found,
                 'subindication': indication,
@@ -346,4 +515,15 @@ class ValidationsService:
             }
             return result
         except Exception as e:
-            return {"error": f"Error en el procesamiento del trámite: {str(e)}"}
+            logger.error(f"Error processing tramite: {str(e)}")
+            return {
+                'secuencia': tramite.get('secuencia', 'unknown'),
+                'is_valid': False,
+                'certs_valid': False,
+                'signature': [],
+                'docs_validation': [],
+                'docs_not_found': [],
+                'subindication': f"Error en el procesamiento del trámite: {str(e)}",
+                'result_indication': False,
+                'message': f"Error en el procesamiento del trámite: {str(e)}"
+            }
