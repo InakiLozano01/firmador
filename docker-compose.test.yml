@@ -1,0 +1,39 @@
+services:
+
+  java-webapp:
+    container_name: firmador-java-refactor
+    restart: always
+    build:
+      context: ./dssapp
+      dockerfile: Dockerfile
+    ports:
+      - "5555:5555"
+    environment:
+      - TZ=Etc/GMT+3
+    networks:
+      - firmador_signnet
+  
+  flask-app:
+    container_name: firmador-python-test
+    restart: always
+    build:
+      context: ./firmar_python/app
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    environment:
+      - TZ=Etc/GMT+3
+    volumes:
+      - ./firmar_python/app:/app
+      - ./firmar_python/app/assets:/app/assets
+      - /qnap/indice_migracion:/app/expedientes
+      - /qnap/documentos_firmados:/var/documentos_firmados
+      - ../devenv/documentos:/var/documentos
+    depends_on:
+      - java-webapp
+    networks:
+      - firmador_signnet
+
+networks:
+  firmador_signnet:
+    driver: bridge
