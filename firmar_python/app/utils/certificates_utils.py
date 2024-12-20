@@ -5,12 +5,15 @@ import base64
 import re
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
-from app.exceptions.tool_exc import (
-    CertificateDecodingError,
-    CertificateLoadError,
-    CertificateAttributeError,
-    CertificateExtensionError
+from app.exceptions.validation_exc import (
+    SignatureValidationError as CertificateDecodingError,
+    DSServiceConnectionError as CertificateLoadError,
+    InvalidSignatureDataError as CertificateAttributeError,
+    SignatureValidationError as CertificateExtensionError
 )
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 def extract_certificate_info(cert_base64):
     """
@@ -28,32 +31,35 @@ def extract_certificate_info(cert_base64):
         CertificateAttributeError: When required attributes are missing
         CertificateExtensionError: When accessing extensions fails
     """
+    logger.info("Starting certificate info extraction")
     try:
+        logger.debug("Attempting to decode base64 certificate")
         cert_bytes = base64.b64decode(cert_base64)
     except Exception as e:
-        logging.error(f"Failed to decode base64 certificate: {str(e)}")
+        logger.error(f"Failed to decode base64 certificate: {str(e)}", exc_info=True)
         raise CertificateDecodingError(f"Failed to decode base64 certificate: {str(e)}")
 
     try:
+        logger.debug("Loading X.509 certificate")
         cert = x509.load_der_x509_certificate(cert_bytes, default_backend())
     except Exception as e:
-        logging.error(f"Failed to load X.509 certificate: {str(e)}")
+        logger.error(f"Failed to load X.509 certificate: {str(e)}", exc_info=True)
         raise CertificateLoadError(f"Failed to load X.509 certificate: {str(e)}")
 
     try:
-        # Extract CUIL and common name
+        logger.debug("Extracting CUIL and common name")
         cuil = cert.subject.get_attributes_for_oid(x509.NameOID.SERIAL_NUMBER)[0].value
         common_name = cert.subject.get_attributes_for_oid(x509.NameOID.COMMON_NAME)[0].value
     except Exception as e:
-        logging.error(f"Failed to extract certificate attributes: {str(e)}")
+        logger.error(f"Failed to extract certificate attributes: {str(e)}", exc_info=True)
         raise CertificateAttributeError(f"Failed to extract certificate attributes: {str(e)}")
 
     try:
-        # Extract email
+        logger.debug("Extracting email from certificate extensions")
         email = cert.extensions.get_extension_for_class(x509.SubjectAlternativeName).value.get_values_for_type(x509.RFC822Name)
         email = email[0] if email else None
     except Exception as e:
-        logging.error(f"Failed to extract email from certificate: {str(e)}")
+        logger.error(f"Failed to extract email from certificate: {str(e)}", exc_info=True)
         raise CertificateExtensionError(f"Failed to extract email from certificate: {str(e)}")
 
     cuil = re.sub(r'\D', '', cuil)
@@ -67,6 +73,8 @@ def extract_certificate_info(cert_base64):
         }
     }
     
+    logger.info("Successfully extracted certificate info")
+    logger.debug(f"Certificate info: {response}")
     return response
 
 def extract_certificate_info_name(cert_base64):
@@ -84,22 +92,26 @@ def extract_certificate_info_name(cert_base64):
         CertificateLoadError: When certificate loading fails
         CertificateAttributeError: When common name is missing
     """
+    logger.info("Starting certificate name extraction")
     try:
+        logger.debug("Attempting to decode base64 certificate")
         cert_bytes = base64.b64decode(cert_base64)
     except Exception as e:
-        logging.error(f"Failed to decode base64 certificate: {str(e)}")
+        logger.error(f"Failed to decode base64 certificate: {str(e)}", exc_info=True)
         raise CertificateDecodingError(f"Failed to decode base64 certificate: {str(e)}")
 
     try:
+        logger.debug("Loading X.509 certificate")
         cert = x509.load_der_x509_certificate(cert_bytes, default_backend())
     except Exception as e:
-        logging.error(f"Failed to load X.509 certificate: {str(e)}")
+        logger.error(f"Failed to load X.509 certificate: {str(e)}", exc_info=True)
         raise CertificateLoadError(f"Failed to load X.509 certificate: {str(e)}")
 
     try:
+        logger.debug("Extracting common name")
         common_name = cert.subject.get_attributes_for_oid(x509.NameOID.COMMON_NAME)[0].value
     except Exception as e:
-        logging.error(f"Failed to extract common name from certificate: {str(e)}")
+        logger.error(f"Failed to extract common name from certificate: {str(e)}", exc_info=True)
         raise CertificateAttributeError(f"Failed to extract common name from certificate: {str(e)}")
 
     response = {
@@ -109,4 +121,6 @@ def extract_certificate_info_name(cert_base64):
         }
     }
     
+    logger.info("Successfully extracted certificate name")
+    logger.debug(f"Certificate name: {response}")
     return response

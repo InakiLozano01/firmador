@@ -1,8 +1,9 @@
 # Descripcion: Este modulo contiene las funciones necesarias para firmar un documento JSON con la API de DSS
 
-import requests
 import logging
-from typing import Dict, Any
+import json
+import requests
+from typing import Dict, Any, Tuple
 from app.exceptions.dss_exc import DSSRequestError, DSSResponseError, DSSSigningError
 from app.services.dss.requests import build_json_request_body
 
@@ -36,12 +37,7 @@ def get_data_to_sign_tapir_jades(
     stamp: str
 ) -> DSSResponse:
     """Get data to sign with token using JAdES"""
-    request_body = build_json_request_body(
-        json_data=json_data,
-        certificates=certificates,
-        current_time=current_time,
-        stamp=stamp
-    )
+    request_body = build_json_request_body(json_data, certificates, current_time, stamp)
     return _make_dss_request('getDataToSign', request_body)
 
 def sign_document_tapir_jades(
@@ -52,11 +48,5 @@ def sign_document_tapir_jades(
     stamp: str
 ) -> DSSResponse:
     """Sign document with token using JAdES"""
-    request_body = build_json_request_body(
-        json_data=json_data,
-        certificates=certificates,
-        current_time=current_time,
-        stamp=stamp,
-        signature_value=signature_value
-    )
+    request_body = build_json_request_body(json_data, certificates, current_time, stamp, signature_value)
     return _make_dss_request('signDocument', request_body)
