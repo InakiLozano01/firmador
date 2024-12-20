@@ -63,7 +63,7 @@ RUN mkdir -p /var/documentos_firmados /var/documentos
 RUN chown -R www-data:www-data /app
 RUN chmod -R 755 /app
 
-EXPOSE 5001
+EXPOSE 5000
 
 # Start mod_wsgi-express with the correct path (updated path)
-CMD ["mod_wsgi-express", "start-server", "/app/config/sign.wsgi", "--reload-on-changes", "--user", "www-data", "--group", "www-data", "--port", "5001"]
+CMD ["mod_wsgi-express", "start-server", "/app/config/sign.wsgi", "--reload-on-changes", "--user", "www-data", "--group", "www-data", "--port", "5000"]
