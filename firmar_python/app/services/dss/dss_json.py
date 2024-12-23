@@ -6,7 +6,10 @@ import requests
 from typing import Dict, Any, Tuple
 from app.exceptions.dss_exc import DSSRequestError, DSSResponseError, DSSSigningError
 import base64
-from .requests import get_data_to_sign_tapir_jades, sign_document_tapir_jades
+from .requests import (
+    get_data_to_sign_tapir_jades as dss_get_data_jades,
+    sign_document_tapir_jades as dss_sign_jades
+)
 
 DSSResponse = Dict[str, Any]
 
@@ -88,7 +91,14 @@ def get_data_to_sign_tapir_jades(json_data, certificates, current_time, stamp):
             }
         })
         
-        response = get_data_to_sign_tapir_jades(json_str, certificates, current_time, stamp)
+        # Make the API call - Note the renamed function
+        response = dss_get_data_jades(json_str, certificates, current_time, stamp)
+        
+        # Log the raw response
+        logger.debug("Raw DSS API Response", extra={
+            "response": json.dumps(response) if isinstance(response, dict) else str(response)
+        })
+        
         if isinstance(response, tuple):
             response, status_code = response
             if status_code != 200:
@@ -100,39 +110,66 @@ def get_data_to_sign_tapir_jades(json_data, certificates, current_time, stamp):
             "data": {
                 "response": {
                     **response,
-                    "bytes": response.get("bytes", "")  # Include the base64 response bytes
+                    "bytes_preview": response.get("bytes", "")[:100]
                 }
             }
         })
         return response
     except Exception as e:
         logger.error("Error in get_data_to_sign_tapir_jades", extra={
-            "data": {
-                "error": str(e),
-                "json_base64": json_str,
-                "certificates": certificates,
-                "current_time": current_time,
-                "stamp": stamp
-            }
+            "error": str(e),
+            "json_base64": json_str,
+            "certificates": certificates,
+            "current_time": current_time,
+            "stamp": stamp
         })
         raise DSSSigningError(f"Failed to get data to sign with DSS API: {str(e)}")
 
 def sign_document_tapir_jades(json_data, signature_value, certificates, current_time, stamp):
     try:
-        # If json_data is already a string, assume it's base64 encoded
-        if isinstance(json_data, str):
-            json_str = json_data
-        else:
-            json_str = base64.b64encode(json.dumps(json_data).encode('utf-8')).decode('utf-8')
-            
-        response = sign_document_tapir_jades(json_str, signature_value, certificates, current_time, stamp)
+        # Convert json_data to base64 for logging
+        json_str = json_data if isinstance(json_data, str) else base64.b64encode(json.dumps(json_data).encode('utf-8')).decode('utf-8')
+        
+        logger.info("Starting sign_document_tapir_jades", extra={
+            "data": {
+                "json_base64": json_str,
+                "signature_value": signature_value[:100],  # Preview of signature
+                "certificates": certificates,
+                "current_time": current_time,
+                "stamp": stamp
+            }
+        })
+        
+        # Make the API call - Note the renamed function
+        response = dss_sign_jades(json_str, signature_value, certificates, current_time, stamp)
+        
+        # Log the raw response
+        logger.debug("Raw DSS API Response", extra={
+            "response": json.dumps(response) if isinstance(response, dict) else str(response)
+        })
+        
         if isinstance(response, tuple):
             response, status_code = response
             if status_code != 200:
                 raise DSSResponseError(response.get("message", "Unknown error"))
         if not isinstance(response, dict) or "bytes" not in response:
             raise DSSResponseError("Invalid response format from DSS API")
+            
+        logger.info("Completed sign_document_tapir_jades", extra={
+            "data": {
+                "response": {
+                    **response,
+                    "bytes_preview": response.get("bytes", "")[:100]
+                }
+            }
+        })
         return response
     except Exception as e:
-        logger.error(f"Error in sign_document_tapir_jades: {str(e)}")
+        logger.error("Error in sign_document_tapir_jades", extra={
+            "error": str(e),
+            "json_base64": json_str,
+            "certificates": certificates,
+            "current_time": current_time,
+            "stamp": stamp
+        })
         raise DSSSigningError(f"Failed to sign document with DSS API: {str(e)}")

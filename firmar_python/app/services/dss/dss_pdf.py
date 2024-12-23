@@ -2,7 +2,12 @@ import base64
 import logging
 import hashlib
 import json
-from .requests import get_data_to_sign_tapir, sign_document_tapir, get_data_to_sign_own, sign_document_own
+from .requests import (
+    get_data_to_sign_tapir as dss_get_data_tapir,
+    sign_document_tapir as dss_sign_tapir,
+    get_data_to_sign_own as dss_get_data_own,
+    sign_document_own as dss_sign_own
+)
 from ...exceptions.dss_exc import DSSRequestError, DSSResponseError, DSSSigningError
 
 logger = logging.getLogger(__name__)
@@ -53,7 +58,7 @@ def get_data_to_sign_certificate(pdf, certificates, current_time, field_id, stam
         log_image_details(logger, "INPUT_PDF", pdf_str)
             
         # Make the API call
-        response = get_data_to_sign_own(pdf_str, certificates, current_time, field_id, stamp, encoded_image)
+        response = dss_get_data_own(pdf_str, certificates, current_time, field_id, stamp, encoded_image)
         
         # Log the raw response
         logger.debug("Raw DSS API Response", extra={
@@ -105,7 +110,7 @@ def sign_document_certificate(pdf, signature_value, certificates, current_time, 
         log_image_details(logger, "INPUT_PDF", pdf_str)
         
         # Make the API call
-        response = sign_document_own(pdf_str, signature_value, certificates, current_time, field_id, stamp, encoded_image)
+        response = dss_sign_own(pdf_str, signature_value, certificates, current_time, field_id, stamp, encoded_image)
         
         # Log the raw response
         logger.debug("Raw DSS API Response", extra={
@@ -140,7 +145,7 @@ def get_data_to_sign_token(pdf, certificates, current_time, field_id, stamp, enc
         else:
             pdf_str = base64.b64encode(pdf).decode('utf-8')
             
-        response = get_data_to_sign_tapir(pdf_str, certificates, current_time, field_id, stamp, encoded_image)
+        response = dss_get_data_tapir(pdf_str, certificates, current_time, field_id, stamp, encoded_image)
         if isinstance(response, tuple):
             response, status_code = response
             if status_code != 200:
@@ -160,7 +165,7 @@ def sign_document_token(pdf, signature_value, certificates, current_time, field_
         else:
             pdf_str = base64.b64encode(pdf).decode('utf-8')
             
-        response = sign_document_tapir(pdf_str, signature_value, certificates, current_time, field_id, stamp, encoded_image)
+        response = dss_sign_tapir(pdf_str, signature_value, certificates, current_time, field_id, stamp, encoded_image)
         if isinstance(response, tuple):
             response, status_code = response
             if status_code != 200:
