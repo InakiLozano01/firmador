@@ -16,7 +16,7 @@ jobs:
         
       - name: Auto Deploy en rama testing
         run: |
-          cd /home/espaciodocker/firmador-documentos
+          cd /home/espaciodocker/f_test
           git pull origin testing
 
   deploy_master:
