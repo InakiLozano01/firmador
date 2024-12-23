@@ -1,13 +1,14 @@
 import logging
 import copy
 import json
-from flask import jsonify
+from flask import jsonify, current_app
 from app.config.state import app_state
 from datetime import datetime
 import time as tiempo
 import base64
 import hashlib
 import io
+import os
 from app.utils.certificates_utils import extract_certificate_info_name
 from app.services.dss.dss_pdf import get_data_to_sign_token, get_data_to_sign_certificate, sign_document_certificate, sign_document_token
 from app.services.local_certs import get_certificate_from_local, get_signature_value_own
@@ -20,13 +21,69 @@ from app.exceptions import signature_exc
 # Configure logging
 logger = logging.getLogger(__name__)
 
+def setup_logging():
+    """Setup logging configuration"""
+    try:
+        # Use /tmp directory which should be writable
+        log_dir = '/tmp/firmar_logs'
+        os.makedirs(log_dir, exist_ok=True)
+        
+        # Setup file handler
+        log_file = os.path.join(log_dir, 'signatures_detailed.log')
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setLevel(logging.DEBUG)
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+        
+        # Also add a stream handler for console output
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.INFO)
+        console_handler.setFormatter(formatter)
+        logger.addHandler(console_handler)
+        
+        logger.setLevel(logging.DEBUG)
+        logger.info(f"Logging initialized. Log file: {log_file}")
+        return log_dir
+    except Exception as e:
+        # If we can't set up file logging, just set up console logging
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.INFO)
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        console_handler.setFormatter(formatter)
+        logger.addHandler(console_handler)
+        logger.setLevel(logging.DEBUG)
+        logger.warning(f"Could not set up file logging: {str(e)}. Falling back to console logging only.")
+        return None
+
+# Set up logging and get log directory
+log_dir = setup_logging()
+
+def save_intermediate_pdf(pdf_data: str, id_doc: str, step: str):
+    """Save intermediate PDF during signing process"""
+    try:
+        # Use /tmp directory which should be writable
+        intermediate_dir = '/tmp/firmar_intermediate_pdfs'
+        os.makedirs(intermediate_dir, exist_ok=True)
+        
+        filename = os.path.join(intermediate_dir, f'{id_doc}_{step}_{int(tiempo.time())}.pdf')
+        with open(filename, 'wb') as f:
+            f.write(base64.b64decode(pdf_data))
+        logger.debug(f"Saved intermediate PDF: {filename}")
+        return filename
+    except Exception as e:
+        logger.error(f"Failed to save intermediate PDF: {str(e)}")
+        return None
+
 class SignaturesService:
     def __init__(self):
+        """Initialize SignaturesService"""
         logger.debug("SignaturesService initialized")
-        pass
 
     def init_signature_pdf(self, pdf, certificates):
         logger.info("Starting PDF signature initialization")
+        logger.debug(f"Input PDF data: {json.dumps(pdf, indent=2)}")
+        logger.debug(f"Certificates data: {json.dumps(certificates, indent=2)}")
         
         # Initialize return variables
         error = None
@@ -54,14 +111,16 @@ class SignaturesService:
 
         app_state.current_time = int(tiempo.time() * 1000)
         app_state.datetimesigned = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-
-        role = name + ", " + stamp + ", " + area
-        logger.debug(f"Generated role: {role}")
+        app_state.isclosing = is_closing
 
         if is_digital:
             try:
                 logger.debug("Extracting certificate info for digital signature")
-                name = extract_certificate_info_name(certificates['certificate'])
+                cert_info = extract_certificate_info_name(certificates['certificate'])
+                if cert_info['status'] and 'data' in cert_info and 'common_name' in cert_info['data']:
+                    name = cert_info['data']['common_name']
+                else:
+                    raise Exception("Invalid certificate info format")
                 logger.debug(f"Extracted name from certificate: {name}")
             except Exception as e:
                 logger.error(f"Failed to extract certificate info: {str(e)}", exc_info=True)
@@ -84,10 +143,14 @@ class SignaturesService:
                 # Extract base64 string from response
                 custom_image = custom_image["data"]
                 logger.debug("Signature image created successfully")
+                # Log the image data
+                logger.debug(f"Generated signature image (first 100 chars): {custom_image[:100]}...")
             except Exception as e:
                 logger.error(f"Failed to create signature image: {str(e)}", exc_info=True)
                 error = ({"idDocFailed": id_doc, "message": f"Error al crear imagen de firma: {str(e)}"})
                 raise signature_exc.SignatureValidationError(f"Error al crear imagen de firma: {str(e)}")
+            
+        role = name + ", " + stamp + ", " + area
 
         logger.debug(f"Processing signature with parameters - Digital: {is_digital}, Closing: {is_closing}")
         match (is_digital, is_closing):
@@ -97,6 +160,8 @@ class SignaturesService:
                     data_to_sign_response = get_data_to_sign_token(pdf_b64, certificates, app_state.current_time, field_id, role, custom_image)
                     data_to_sign = (data_to_sign_response["bytes"])
                     logger.debug("Successfully obtained data to sign")
+                    # Log the data to sign
+                    logger.debug(f"Data to sign (first 100 chars): {data_to_sign[:100]}...")
                 except Exception as e:
                     logger.error(f"Failed to get data to sign for digital closing signature: {str(e)}", exc_info=True)
                     error = ({"idDocFailed": id_doc, "message": f"Error al obtener datos para firmar: {str(e)}"})
@@ -107,6 +172,8 @@ class SignaturesService:
                     data_to_sign_response = get_data_to_sign_token(pdf_b64, certificates, app_state.current_time, field_id, role, custom_image)
                     data_to_sign = (data_to_sign_response["bytes"])
                     logger.debug("Successfully obtained data to sign")
+                    # Log the data to sign
+                    logger.debug(f"Data to sign (first 100 chars): {data_to_sign[:100]}...")
                 except Exception as e:
                     logger.error(f"Failed to get data to sign for digital signature: {str(e)}", exc_info=True)
                     error = ({"idDocFailed": id_doc, "message": f"Error al obtener datos para firmar: {str(e)}"})
@@ -197,6 +264,8 @@ class SignaturesService:
     
     def end_signature_pdf(self, pdfs, certificates):
         logger.info("Starting PDF signature finalization")
+        logger.debug(f"Input PDFs data: {json.dumps(pdfs, indent=2)}")
+        logger.debug(f"Certificates data: {json.dumps(certificates, indent=2)}")
         
         # Initialize return variables
         error = None
@@ -260,18 +329,24 @@ class SignaturesService:
                         signed_pdf_response = sign_document_token(pdf_b64, signature_value, certificates, app_state.current_time, field_id, role, custom_image)
                         if not isinstance(signed_pdf_response, dict) or 'bytes' not in signed_pdf_response:
                             raise Exception("Invalid response format from sign_document_token")
+                        # Save intermediate PDF
+                        save_intermediate_pdf(signed_pdf_response['bytes'], id_doc, "after_token_sign")
                     except Exception as e:
                         logger.error(f"Failed to sign document: {str(e)}", exc_info=True)
                         error = {"idDocFailed": id_doc, "message": f"Error al firmar documento: {str(e)}", "stack": str(e.__traceback__)}
                         raise Exception(f"Error al firmar documento: {str(e)}")
                     try:
                         lastpdf = get_number_and_date_then_close(signed_pdf_response['bytes'], id_doc)
+                        # Save intermediate PDF
+                        save_intermediate_pdf(lastpdf, id_doc, "after_number_date")
                     except Exception as e:
                         logger.error(f"Failed to close PDF: {str(e)}", exc_info=True)
                         error = {"idDocFailed": id_doc, "message": f"Error al cerrar PDF: {str(e)}", "stack": str(e.__traceback__)}
                         raise Exception(f"Error al cerrar PDF: {str(e)}")
                     try:
                         signed_pdf_base64_closed = self.sign_own_pdf(lastpdf, True, closing_place, stamp, area, name, app_state.datetimesigned, role)
+                        # Save intermediate PDF
+                        save_intermediate_pdf(signed_pdf_base64_closed, id_doc, "after_own_sign")
                     except Exception as e:
                         logger.error(f"Failed to add closing signature: {str(e)}", exc_info=True)
                         error = {"idDocFailed": id_doc, "message": f"Error al firmar documento: {str(e)}", "stack": str(e.__traceback__)}
@@ -284,6 +359,8 @@ class SignaturesService:
                         signed_pdf_response = sign_document_token(pdf_b64, signature_value, certificates, app_state.current_time, field_id, role, custom_image)
                         if not isinstance(signed_pdf_response, dict) or 'bytes' not in signed_pdf_response:
                             raise Exception("Invalid response format from sign_document_token")
+                        # Save intermediate PDF
+                        save_intermediate_pdf(signed_pdf_response['bytes'], id_doc, "after_token_sign")
                     except Exception as e:
                         logger.error(f"Failed to sign document: {str(e)}", exc_info=True)
                         error = {"idDocFailed": id_doc, "message": f"Error al firmar documento: {str(e)}", "stack": str(e.__traceback__)}
@@ -366,7 +443,11 @@ class SignaturesService:
 
             if isdigital:
                 try:
-                    name = extract_certificate_info_name(certificates['certificate'])
+                    cert_info = extract_certificate_info_name(certificates['certificate'])
+                    if cert_info['status'] and 'data' in cert_info and 'common_name' in cert_info['data']:
+                        name = cert_info['data']['common_name']
+                    else:
+                        raise Exception("Invalid certificate info format")
                 except Exception as e:
                     error = {
                         "idExpFailed": f"{index['numero']}/{index['anio']}/{index['codigo']}/{index['letra']}", 
@@ -438,7 +519,11 @@ class SignaturesService:
 
             if isdigital:
                 try:
-                    name = extract_certificate_info_name(certificates['certificate'])
+                    cert_info = extract_certificate_info_name(certificates['certificate'])
+                    if cert_info['status'] and 'data' in cert_info and 'common_name' in cert_info['data']:
+                        name = cert_info['data']['common_name']
+                    else:
+                        raise Exception("Invalid certificate info format")
                 except Exception as e:
                     error = ({"idExpFailed": f"{index['numero']}/{index['anio']}/{index['codigo']}/{index['letra']}", "message": "Error al extraer nombre del certificado: " + str(e)})
                     raise Exception("Error al extraer nombre del certificado: " + str(e))
@@ -523,13 +608,19 @@ class SignaturesService:
         try:
             logger.debug("Getting data to sign")
             data_to_sign_response = get_data_to_sign_certificate(pdf, certificates, app_state.current_time, field_to_sign, role, custom_image)
+            # Log the custom image being used
+            logger.debug(f"Using custom image (first 100 chars): {custom_image[:100]}...")
         except Exception as e:
             logger.error(f"Failed to get data to sign: {str(e)}", exc_info=True)
             raise signature_exc.SignatureProcessError(f"Error al obtener datos para firmar: {str(e)}")
         try:
             logger.debug("Getting signature value")
             data_to_sign = data_to_sign_response["bytes"]
+            # Log the data to sign
+            logger.debug(f"Data to sign (first 100 chars): {data_to_sign[:100]}...")
             signature_value = get_signature_value_own(data_to_sign)
+            # Log the signature value
+            logger.debug(f"Signature value (first 100 chars): {signature_value[:100]}...")
         except Exception as e:
             logger.error(f"Failed to get signature value: {str(e)}", exc_info=True)
             raise signature_exc.SignatureProcessError(f"Error al obtener valor de firma: {str(e)}")
@@ -553,19 +644,30 @@ class SignaturesService:
             app_state.datetimesigned = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
             
             certificates = get_certificate_from_local()
+            logger.debug("Local certificates obtained successfully")
         except Exception as e:
+            logger.error(f"Failed to get local certificate: {str(e)}", exc_info=True)
             raise Exception("Error al obtener certificado local: " + str(e))
         try:
             data_to_sign_response = get_data_to_sign_tapir_jades(json, certificates, app_state.current_time, role)
+            logger.debug("Successfully obtained data to sign for JADES")
         except Exception as e:
+            logger.error(f"Failed to get data to sign for JADES: {str(e)}", exc_info=True)
             raise Exception("Error al obtener datos para firmar: " + str(e))
         data_to_sign_bytes = data_to_sign_response["bytes"]
+        # Log the data to sign
+        logger.debug(f"JADES data to sign (first 100 chars): {data_to_sign_bytes[:100]}...")
         try:
             signature_value = get_signature_value_own(data_to_sign_bytes)
+            # Log the signature value
+            logger.debug(f"JADES signature value (first 100 chars): {signature_value[:100]}...")
         except Exception as e:
+            logger.error(f"Failed to get signature value for JADES: {str(e)}", exc_info=True)
             raise Exception("Error al obtener valor de firma: " + str(e))
         try:
             signed_json_response = sign_document_tapir_jades(json, signature_value, certificates, app_state.current_time, role)
+            logger.debug("JADES document signed successfully")
         except Exception as e:
+            logger.error(f"Failed to sign JADES document: {str(e)}", exc_info=True)
             raise Exception("Error al firmar documento: " + str(e))
         return signed_json_response['bytes']

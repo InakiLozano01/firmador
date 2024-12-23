@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 def create_app():
     try:
-        logger.info("Creating Flask application")
+        logger.info('Creating Flask application')
         app = Flask(__name__)
         
         # Configuration
@@ -23,13 +23,13 @@ def create_app():
         
         # Register routes
         register_routes(app)
-        logger.info("Routes registered successfully")
+        logger.info('Routes registered successfully')
 
         # Add error handlers
         @app.errorhandler(Exception)
         def handle_exception(e):
-            logger.error(f"Unhandled exception: {str(e)}", exc_info=True)
-            return {"status": False, "message": f"Internal server error: {str(e)}"}, 500
+            logger.error(f'Unhandled exception: {str(e)}', exc_info=True)
+            return {'status': False, 'message': f'Internal server error: {str(e)}'}, 500
 
         @app.before_request
         def log_request_info():
@@ -43,17 +43,19 @@ def create_app():
             
         return app
     except Exception as e:
-        logger.error(f"Failed to create application: {str(e)}", exc_info=True)
+        logger.error(f'Failed to create application: {str(e)}', exc_info=True)
         raise
 
 try:
-    logger.info("Initializing application")
+    logger.info('Initializing application')
     app = create_app()
     app_state = AppState()
-    logger.info("Application initialized successfully")
+    app_state.load_settings()
+    logger.info('Application initialized successfully')
 except Exception as e:
-    logger.error(f"Failed to initialize application: {str(e)}", exc_info=True)
+    logger.error(f'Failed to initialize application: {str(e)}', exc_info=True)
     raise
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', debug=True, port=5000)
