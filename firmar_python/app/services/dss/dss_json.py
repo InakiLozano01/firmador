@@ -13,20 +13,16 @@ from .requests import (
 
 DSSResponse = Dict[str, Any]
 
-# At the top of the file, after the imports
+# Configure logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-# Create a file handler
-file_handler = logging.FileHandler('dss_json.log')
-file_handler.setLevel(logging.DEBUG)
-
-# Create a formatter
+# Create console handler with detailed formatting
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.DEBUG)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-file_handler.setFormatter(formatter)
-
-# Add the handler to the logger
-logger.addHandler(file_handler)
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
 
 def _make_dss_request(endpoint: str, request_body: Dict[str, Any]) -> DSSResponse:
     """Make a request to the DSS API"""
