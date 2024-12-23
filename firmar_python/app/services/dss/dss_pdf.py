@@ -1,108 +1,173 @@
-import requests
+import base64
 import logging
-from typing import Dict, Any, Tuple
-from app.exceptions.dss_exc import DSSRequestError, DSSResponseError, DSSSigningError
-from app.services.dss.requests import build_request_body
+import hashlib
+import json
+from .requests import get_data_to_sign_tapir, sign_document_tapir, get_data_to_sign_own, sign_document_own
+from ...exceptions.dss_exc import DSSRequestError, DSSResponseError, DSSSigningError
 
-DSSResponse = Dict[str, Any]
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
-def _make_dss_request(endpoint: str, request_body: Dict[str, Any]) -> DSSResponse:
-    """Make a request to the DSS API"""
+# Create a file handler
+file_handler = logging.FileHandler('dss_pdf.log')
+file_handler.setLevel(logging.DEBUG)
+
+# Create a formatter
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(formatter)
+
+# Add the handler to the logger
+logger.addHandler(file_handler)
+
+def log_image_details(logger, prefix: str, image_data: str, extra_info: dict = None):
+    """Helper function to log image details consistently"""
+    if not image_data:
+        logger.info(f"{prefix} - No image data")
+        return
+        
     try:
-        response = requests.post(f'http://java-webapp:5555/services/rest/signature/one-document/{endpoint}', json=request_body)
-        
-        if response.status_code != 200:
-            raise DSSResponseError(f"DSS API returned status code {response.status_code}")
-        
-        response_data = response.json()
-        if "bytes" not in response_data:
-            raise DSSSigningError("DSS API response missing 'bytes' field")
-        
-        return response_data
-        
-    except requests.RequestException as e:
-        logging.error(f"DSS API request error: {str(e)}")
-        raise DSSRequestError(f"Failed to connect to DSS API: {str(e)}")
+        info = {
+            "length": len(image_data),
+            "preview": image_data[:100],
+            "hash": hashlib.sha256(image_data.encode()).hexdigest(),
+            **(extra_info or {})
+        }
+        logger.info(f"{prefix} - Image details", extra={"image_data": info})
     except Exception as e:
-        logging.error(f"Unexpected error in DSS API request: {str(e)}")
-        raise DSSSigningError(f"Unexpected error during signing: {str(e)}")
+        logger.error(f"Error logging image details: {str(e)}")
 
-def get_data_to_sign_certificate(
-    pdf: str,
-    certificates: Dict[str, Any],
-    current_time: int,
-    field_id: str,
-    stamp: str,
-    encoded_image: str
-) -> DSSResponse:
-    """Get data to sign with certificate"""
-    request_body = build_request_body(
-        pdf=pdf,
-        certificates=certificates,
-        current_time=current_time,
-        field_id=field_id,
-        stamp=stamp,
-        encoded_image=encoded_image
-    )
-    return _make_dss_request('getDataToSign', request_body)
+def get_data_to_sign_certificate(pdf, certificates, current_time, field_id, stamp, encoded_image):
+    try:
+        # Log input image
+        log_image_details(logger, "INPUT_IMAGE", encoded_image, {
+            "field_id": field_id,
+            "stamp": stamp
+        })
+        
+        # Convert PDF if needed and log it
+        if isinstance(pdf, str):
+            pdf_str = pdf
+        else:
+            pdf_str = base64.b64encode(pdf).decode('utf-8')
+        
+        log_image_details(logger, "INPUT_PDF", pdf_str)
+            
+        # Make the API call
+        response = get_data_to_sign_own(pdf_str, certificates, current_time, field_id, stamp, encoded_image)
+        
+        # Log the raw response
+        logger.debug("Raw DSS API Response", extra={
+            "response": json.dumps(response) if isinstance(response, dict) else str(response)
+        })
+        
+        if isinstance(response, tuple):
+            response, status_code = response
+            if status_code != 200:
+                raise DSSResponseError(response.get("message", "Unknown error"))
+                
+        if not isinstance(response, dict) or "bytes" not in response:
+            raise DSSResponseError("Invalid response format from DSS API")
+            
+        # Log the response bytes
+        log_image_details(logger, "OUTPUT_BYTES", response.get("bytes", ""))
+        
+        return response
+        
+    except Exception as e:
+        logger.error("Error in get_data_to_sign_certificate", extra={
+            "error": str(e),
+            "input_image_hash": hashlib.sha256(encoded_image.encode()).hexdigest() if encoded_image else None
+        })
+        raise DSSSigningError(f"Failed to get data to sign with DSS API: {str(e)}")
+    
+def sign_document_certificate(pdf, signature_value, certificates, current_time, field_id, stamp, encoded_image):
+    try:
+        # Log input image
+        log_image_details(logger, "INPUT_IMAGE", encoded_image, {
+            "field_id": field_id,
+            "stamp": stamp
+        })
+        
+        # Log signature value
+        logger.info("Signature Value", extra={
+            "signature_value": {
+                "length": len(signature_value),
+                "preview": signature_value[:100]
+            }
+        })
+        
+        # Convert PDF if needed and log it
+        if isinstance(pdf, str):
+            pdf_str = pdf
+        else:
+            pdf_str = base64.b64encode(pdf).decode('utf-8')
+            
+        log_image_details(logger, "INPUT_PDF", pdf_str)
+        
+        # Make the API call
+        response = sign_document_own(pdf_str, signature_value, certificates, current_time, field_id, stamp, encoded_image)
+        
+        # Log the raw response
+        logger.debug("Raw DSS API Response", extra={
+            "response": json.dumps(response) if isinstance(response, dict) else str(response)
+        })
+        
+        if isinstance(response, tuple):
+            response, status_code = response
+            if status_code != 200:
+                raise DSSResponseError(response.get("message", "Unknown error"))
+                
+        if not isinstance(response, dict) or "bytes" not in response:
+            raise DSSResponseError("Invalid response format from DSS API")
+            
+        # Log the response bytes
+        log_image_details(logger, "OUTPUT_BYTES", response.get("bytes", ""))
+        
+        return response
+        
+    except Exception as e:
+        logger.error("Error in sign_document_certificate", extra={
+            "error": str(e),
+            "input_image_hash": hashlib.sha256(encoded_image.encode()).hexdigest() if encoded_image else None
+        })
+        raise DSSSigningError(f"Failed to sign document with DSS API: {str(e)}")
 
-def sign_document_certificate(
-    pdf: str,
-    signature_value: str,
-    certificates: Dict[str, Any],
-    current_time: int,
-    field_id: str,
-    stamp: str,
-    encoded_image: str
-) -> DSSResponse:
-    """Sign document with certificate"""
-    request_body = build_request_body(
-        pdf=pdf,
-        certificates=certificates,
-        current_time=current_time,
-        field_id=field_id,
-        stamp=stamp,
-        encoded_image=encoded_image,
-        signature_value=signature_value
-    )
-    return _make_dss_request('signDocument', request_body)
+def get_data_to_sign_token(pdf, certificates, current_time, field_id, stamp, encoded_image):
+    try:
+        # If pdf is already a string, assume it's base64 encoded
+        if isinstance(pdf, str):
+            pdf_str = pdf
+        else:
+            pdf_str = base64.b64encode(pdf).decode('utf-8')
+            
+        response = get_data_to_sign_tapir(pdf_str, certificates, current_time, field_id, stamp, encoded_image)
+        if isinstance(response, tuple):
+            response, status_code = response
+            if status_code != 200:
+                raise DSSResponseError(response.get("message", "Unknown error"))
+        if not isinstance(response, dict) or "bytes" not in response:
+            raise DSSResponseError("Invalid response format from DSS API")
+        return response
+    except Exception as e:
+        logging.error(f"Error in get_data_to_sign_token: {str(e)}")
+        raise DSSSigningError(f"Failed to get data to sign with DSS API: {str(e)}")
 
-def get_data_to_sign_token(
-    pdf: str,
-    certificates: Dict[str, Any],
-    current_time: int,
-    field_id: str,
-    stamp: str,
-    encoded_image: str
-) -> DSSResponse:
-    """Get data to sign with token"""
-    request_body = build_request_body(
-        pdf=pdf,
-        certificates=certificates,
-        current_time=current_time,
-        field_id=field_id,
-        stamp=stamp,
-        encoded_image=encoded_image
-    )
-    return _make_dss_request('getDataToSign', request_body)
-
-def sign_document_token(
-    pdf: str,
-    signature_value: str,
-    certificates: Dict[str, Any],
-    current_time: int,
-    field_id: str,
-    stamp: str,
-    encoded_image: str
-) -> DSSResponse:
-    """Sign document with token"""
-    request_body = build_request_body(
-        pdf=pdf,
-        certificates=certificates,
-        current_time=current_time,
-        field_id=field_id,
-        stamp=stamp,
-        encoded_image=encoded_image,
-        signature_value=signature_value
-    )
-    return _make_dss_request('signDocument', request_body)
+def sign_document_token(pdf, signature_value, certificates, current_time, field_id, stamp, encoded_image):
+    try:
+        # If pdf is already a string, assume it's base64 encoded
+        if isinstance(pdf, str):
+            pdf_str = pdf
+        else:
+            pdf_str = base64.b64encode(pdf).decode('utf-8')
+            
+        response = sign_document_tapir(pdf_str, signature_value, certificates, current_time, field_id, stamp, encoded_image)
+        if isinstance(response, tuple):
+            response, status_code = response
+            if status_code != 200:
+                raise DSSResponseError(response.get("message", "Unknown error"))
+        if not isinstance(response, dict) or "bytes" not in response:
+            raise DSSResponseError("Invalid response format from DSS API")
+        return response
+    except Exception as e:
+        logging.error(f"Error in sign_document_token: {str(e)}")
+        raise DSSSigningError(f"Failed to sign document with DSS API: {str(e)}")
