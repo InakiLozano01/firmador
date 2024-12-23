@@ -1,7 +1,7 @@
 services:
 
   java-webapp:
-    container_name: firmador-java-refactor
+    container_name: firmador-java
     restart: always
     build:
       context: ./dssapp
@@ -14,7 +14,7 @@ services:
       - firmador_signnet
   
   flask-app:
-    container_name: firmador-python-test
+    container_name: firmador-python
     restart: always
     build:
       context: ./firmar_python/app
@@ -28,7 +28,7 @@ services:
       - ./firmar_python/app/assets:/app/assets
       - /qnap/indice_migracion:/app/expedientes
       - /qnap/documentos_firmados:/var/documentos_firmados
-      - ../devenv/documentos:/var/documentos
+      - ../tapir/documentos_temp:/var/documentos
     depends_on:
       - java-webapp
     networks:
