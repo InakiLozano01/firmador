@@ -28,7 +28,7 @@ services:
       - ./firmar_python/app/assets:/app/assets
       - /qnap/indice_migracion:/app/expedientes
       - /qnap/documentos_firmados:/var/documentos_firmados
-      - ../tapir/documentos:/var/documentos
+      - ../devenv/documentos:/var/documentos
     depends_on:
       - java-webapp
     networks:
