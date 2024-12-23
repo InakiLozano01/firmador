@@ -1,18 +1,27 @@
 import logging
-from app.utils.validation_utils import process_signature, validation_analyze
-from .dss.dss_valid import validate_signature_pdf, validate_signature_json
-import copy
-from app.exceptions import validation_exc
-import libarchive
-import os
+from datetime import datetime
+import time as tiempo
 import json
-import re
-import unicodedata
-from concurrent.futures import ThreadPoolExecutor
 import base64
 import hashlib
 import multiprocessing
-from flask import jsonify
+import io
+import json
+from datetime import datetime
+import base64
+import hashlib
+import copy
+from app.config.state import app_state
+from app.utils.certificates_utils import extract_certificate_info_name
+from app.services.dss.dss_pdf import get_data_to_sign_token, get_data_to_sign_certificate, sign_document_certificate, sign_document_token
+from app.services.local_certs import get_certificate_from_local, get_signature_value_own
+from app.utils.image_utils import create_signature_image
+from app.utils.db import get_number_and_date_then_close, unlock_pdf_and_close_task
+from app.utils.saving import save_signed_pdf
+from app.services.dss.dss_json import get_data_to_sign_tapir_jades, sign_document_tapir_jades
+from app.exceptions import signature_exc
+
+
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -280,24 +289,18 @@ class SignaturesService:
                         signed_pdf_response = sign_document_token(pdf_b64, signature_value, certificates, app_state.current_time, field_id, role, custom_image)
                         if not isinstance(signed_pdf_response, dict) or 'bytes' not in signed_pdf_response:
                             raise Exception("Invalid response format from sign_document_token")
-                        # Save intermediate PDF
-                        save_intermediate_pdf(signed_pdf_response['bytes'], id_doc, "after_token_sign")
                     except Exception as e:
                         logger.error(f"Failed to sign document: {str(e)}", exc_info=True)
                         error = {"idDocFailed": id_doc, "message": f"Error al firmar documento: {str(e)}", "stack": str(e.__traceback__)}
                         raise Exception(f"Error al firmar documento: {str(e)}")
                     try:
                         lastpdf = get_number_and_date_then_close(signed_pdf_response['bytes'], id_doc)
-                        # Save intermediate PDF
-                        save_intermediate_pdf(lastpdf, id_doc, "after_number_date")
                     except Exception as e:
                         logger.error(f"Failed to close PDF: {str(e)}", exc_info=True)
                         error = {"idDocFailed": id_doc, "message": f"Error al cerrar PDF: {str(e)}", "stack": str(e.__traceback__)}
                         raise Exception(f"Error al cerrar PDF: {str(e)}")
                     try:
                         signed_pdf_base64_closed = self.sign_own_pdf(lastpdf, True, closing_place, stamp, area, name, app_state.datetimesigned, role)
-                        # Save intermediate PDF
-                        save_intermediate_pdf(signed_pdf_base64_closed, id_doc, "after_own_sign")
                     except Exception as e:
                         logger.error(f"Failed to add closing signature: {str(e)}", exc_info=True)
                         error = {"idDocFailed": id_doc, "message": f"Error al firmar documento: {str(e)}", "stack": str(e.__traceback__)}
@@ -310,8 +313,6 @@ class SignaturesService:
                         signed_pdf_response = sign_document_token(pdf_b64, signature_value, certificates, app_state.current_time, field_id, role, custom_image)
                         if not isinstance(signed_pdf_response, dict) or 'bytes' not in signed_pdf_response:
                             raise Exception("Invalid response format from sign_document_token")
-                        # Save intermediate PDF
-                        save_intermediate_pdf(signed_pdf_response['bytes'], id_doc, "after_token_sign")
                     except Exception as e:
                         logger.error(f"Failed to sign document: {str(e)}", exc_info=True)
                         error = {"idDocFailed": id_doc, "message": f"Error al firmar documento: {str(e)}", "stack": str(e.__traceback__)}
