@@ -16,3 +16,66 @@
 2024-12-23 09:53:26,961 - app.services.dss.dss_pdf - INFO - INPUT_PDF - Image details
 2024-12-23 09:53:27,005 - app.services.dss.dss_pdf - DEBUG - Raw DSS API Response
 2024-12-23 09:53:27,006 - app.services.dss.dss_pdf - INFO - OUTPUT_BYTES - Image details
+2024-12-23 09:58:04,757 - app.services.dss.dss_pdf - INFO - INPUT_IMAGE - Image details
+2024-12-23 09:58:04,757 - app.services.dss.dss_pdf - INFO - INPUT_PDF - Image details
+2024-12-23 09:58:04,837 - app.services.dss.dss_pdf - DEBUG - Raw DSS API Response
+2024-12-23 09:58:04,837 - app.services.dss.dss_pdf - INFO - OUTPUT_BYTES - Image details
+2024-12-23 09:58:04,897 - app.services.dss.dss_pdf - INFO - INPUT_IMAGE - Image details
+2024-12-23 09:58:04,898 - app.services.dss.dss_pdf - INFO - Signature Value
+2024-12-23 09:58:04,898 - app.services.dss.dss_pdf - INFO - INPUT_PDF - Image details
+2024-12-23 09:58:04,937 - app.services.dss.dss_pdf - DEBUG - Raw DSS API Response
+2024-12-23 09:58:04,938 - app.services.dss.dss_pdf - INFO - OUTPUT_BYTES - Image details
+2024-12-23 09:58:04,964 - app.services.dss.dss_pdf - INFO - INPUT_IMAGE - Image details
+2024-12-23 09:58:04,965 - app.services.dss.dss_pdf - INFO - INPUT_PDF - Image details
+2024-12-23 09:58:04,993 - app.services.dss.dss_pdf - DEBUG - Raw DSS API Response
+2024-12-23 09:58:04,993 - app.services.dss.dss_pdf - INFO - OUTPUT_BYTES - Image details
+2024-12-23 09:58:05,044 - app.services.dss.dss_pdf - INFO - INPUT_IMAGE - Image details
+2024-12-23 09:58:05,044 - app.services.dss.dss_pdf - INFO - Signature Value
+2024-12-23 09:58:05,045 - app.services.dss.dss_pdf - INFO - INPUT_PDF - Image details
+2024-12-23 09:58:05,086 - app.services.dss.dss_pdf - DEBUG - Raw DSS API Response
+2024-12-23 09:58:05,087 - app.services.dss.dss_pdf - INFO - OUTPUT_BYTES - Image details
+2024-12-23 09:59:24,456 - app.services.dss.dss_pdf - INFO - INPUT_IMAGE - Image details
+2024-12-23 09:59:24,456 - app.services.dss.dss_pdf - INFO - INPUT_PDF - Image details
+2024-12-23 09:59:24,529 - app.services.dss.dss_pdf - DEBUG - Raw DSS API Response
+2024-12-23 09:59:24,529 - app.services.dss.dss_pdf - INFO - OUTPUT_BYTES - Image details
+2024-12-23 09:59:24,580 - app.services.dss.dss_pdf - INFO - INPUT_IMAGE - Image details
+2024-12-23 09:59:24,580 - app.services.dss.dss_pdf - INFO - Signature Value
+2024-12-23 09:59:24,581 - app.services.dss.dss_pdf - INFO - INPUT_PDF - Image details
+2024-12-23 09:59:24,615 - app.services.dss.dss_pdf - DEBUG - Raw DSS API Response
+2024-12-23 09:59:24,616 - app.services.dss.dss_pdf - INFO - OUTPUT_BYTES - Image details
+2024-12-23 09:59:24,642 - app.services.dss.dss_pdf - INFO - INPUT_IMAGE - Image details
+2024-12-23 09:59:24,642 - app.services.dss.dss_pdf - INFO - INPUT_PDF - Image details
+2024-12-23 09:59:24,671 - app.services.dss.dss_pdf - DEBUG - Raw DSS API Response
+2024-12-23 09:59:24,671 - app.services.dss.dss_pdf - INFO - OUTPUT_BYTES - Image details
+2024-12-23 09:59:24,722 - app.services.dss.dss_pdf - INFO - INPUT_IMAGE - Image details
+2024-12-23 09:59:24,722 - app.services.dss.dss_pdf - INFO - Signature Value
+2024-12-23 09:59:24,723 - app.services.dss.dss_pdf - INFO - INPUT_PDF - Image details
+2024-12-23 09:59:24,762 - app.services.dss.dss_pdf - DEBUG - Raw DSS API Response
+2024-12-23 09:59:24,763 - app.services.dss.dss_pdf - INFO - OUTPUT_BYTES - Image details
+2024-12-23 10:02:16,126 - app.services.dss.dss_pdf - INFO - INPUT_IMAGE - Image details
+2024-12-23 10:02:16,126 - app.services.dss.dss_pdf - INFO - INPUT_PDF - Image details
+2024-12-23 10:02:16,201 - app.services.dss.dss_pdf - DEBUG - Raw DSS API Response
+2024-12-23 10:02:16,201 - app.services.dss.dss_pdf - INFO - OUTPUT_BYTES - Image details
+2024-12-23 10:02:16,257 - app.services.dss.dss_pdf - INFO - INPUT_IMAGE - Image details
+2024-12-23 10:02:16,257 - app.services.dss.dss_pdf - INFO - Signature Value
+2024-12-23 10:02:16,257 - app.services.dss.dss_pdf - INFO - INPUT_PDF - Image details
+2024-12-23 10:02:16,292 - app.services.dss.dss_pdf - DEBUG - Raw DSS API Response
+2024-12-23 10:02:16,293 - app.services.dss.dss_pdf - INFO - OUTPUT_BYTES - Image details
+2024-12-23 10:02:16,318 - app.services.dss.dss_pdf - INFO - INPUT_IMAGE - Image details
+2024-12-23 10:02:16,319 - app.services.dss.dss_pdf - INFO - INPUT_PDF - Image details
+2024-12-23 10:02:16,346 - app.services.dss.dss_pdf - DEBUG - Raw DSS API Response
+2024-12-23 10:02:16,346 - app.services.dss.dss_pdf - INFO - OUTPUT_BYTES - Image details
+2024-12-23 10:02:16,397 - app.services.dss.dss_pdf - INFO - INPUT_IMAGE - Image details
+2024-12-23 10:02:16,397 - app.services.dss.dss_pdf - INFO - Signature Value
+2024-12-23 10:02:16,397 - app.services.dss.dss_pdf - INFO - INPUT_PDF - Image details
+2024-12-23 10:02:16,437 - app.services.dss.dss_pdf - DEBUG - Raw DSS API Response
+2024-12-23 10:02:16,438 - app.services.dss.dss_pdf - INFO - OUTPUT_BYTES - Image details
+2024-12-23 10:03:39,787 - app.services.dss.dss_pdf - INFO - INPUT_IMAGE - Image details
+2024-12-23 10:03:39,787 - app.services.dss.dss_pdf - INFO - INPUT_PDF - Image details
+2024-12-23 10:03:39,816 - app.services.dss.dss_pdf - DEBUG - Raw DSS API Response
+2024-12-23 10:03:39,816 - app.services.dss.dss_pdf - INFO - OUTPUT_BYTES - Image details
+2024-12-23 10:03:39,868 - app.services.dss.dss_pdf - INFO - INPUT_IMAGE - Image details
+2024-12-23 10:03:39,868 - app.services.dss.dss_pdf - INFO - Signature Value
+2024-12-23 10:03:39,869 - app.services.dss.dss_pdf - INFO - INPUT_PDF - Image details
+2024-12-23 10:03:39,911 - app.services.dss.dss_pdf - DEBUG - Raw DSS API Response
+2024-12-23 10:03:39,912 - app.services.dss.dss_pdf - INFO - OUTPUT_BYTES - Image details
