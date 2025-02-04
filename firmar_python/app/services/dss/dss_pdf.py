@@ -38,6 +38,18 @@ def log_image_details(logger, prefix: str, image_data: str, extra_info: dict = N
     except Exception as e:
         logger.error(f"Error logging image details: {str(e)}")
 
+def _handle_error_response(response):
+    """Helper function to handle error responses consistently"""
+    if hasattr(response, 'json'):
+        try:
+            error_data = response.json()
+            error_message = error_data.get('message', 'Unknown error')
+        except Exception:
+            error_message = str(response)
+    else:
+        error_message = str(response)
+    return error_message
+
 def get_data_to_sign_certificate(pdf, certificates, current_time, field_id, stamp, encoded_image):
     try:
         # Log input image
@@ -65,7 +77,8 @@ def get_data_to_sign_certificate(pdf, certificates, current_time, field_id, stam
         if isinstance(response, tuple):
             response, status_code = response
             if status_code != 200:
-                raise DSSResponseError(response.get("message", "Unknown error"))
+                error_message = _handle_error_response(response)
+                raise DSSResponseError(error_message)
                 
         if not isinstance(response, dict) or "bytes" not in response:
             raise DSSResponseError("Invalid response format from DSS API")
@@ -117,7 +130,8 @@ def sign_document_certificate(pdf, signature_value, certificates, current_time, 
         if isinstance(response, tuple):
             response, status_code = response
             if status_code != 200:
-                raise DSSResponseError(response.get("message", "Unknown error"))
+                error_message = _handle_error_response(response)
+                raise DSSResponseError(error_message)
                 
         if not isinstance(response, dict) or "bytes" not in response:
             raise DSSResponseError("Invalid response format from DSS API")
@@ -146,7 +160,8 @@ def get_data_to_sign_token(pdf, certificates, current_time, field_id, stamp, enc
         if isinstance(response, tuple):
             response, status_code = response
             if status_code != 200:
-                raise DSSResponseError(response.get("message", "Unknown error"))
+                error_message = _handle_error_response(response)
+                raise DSSResponseError(error_message)
         if not isinstance(response, dict) or "bytes" not in response:
             raise DSSResponseError("Invalid response format from DSS API")
         return response
@@ -166,7 +181,8 @@ def sign_document_token(pdf, signature_value, certificates, current_time, field_
         if isinstance(response, tuple):
             response, status_code = response
             if status_code != 200:
-                raise DSSResponseError(response.get("message", "Unknown error"))
+                error_message = _handle_error_response(response)
+                raise DSSResponseError(error_message)
         if not isinstance(response, dict) or "bytes" not in response:
             raise DSSResponseError("Invalid response format from DSS API")
         return response
