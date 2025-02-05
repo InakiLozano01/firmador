@@ -1,7 +1,7 @@
 # 🔏 Firmador de Documentos - Sistema Integral de Firma Digital
 
 <div align="center">
-  <img src="./firmar_python/logo_tribunal_para_tapir_250px.png" alt="Logo TAPIR" width="250" style="background-color: white;"/>
+  <img src="./firmar_python/app/assets/images/logo_tribunal_para_tapir_250px.png" alt="Logo TAPIR" width="250" style="background-color: white;"/>
 
   [![Estado](https://img.shields.io/badge/Estado-Desarrollo%20y%20Testeo-yellow)]()
   [![Python](https://img.shields.io/badge/Python-3.12+-3776AB.svg?style=flat&logo=python&logoColor=white)]()
