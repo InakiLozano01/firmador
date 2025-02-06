@@ -34,6 +34,21 @@ services:
     networks:
       - firmador_signnet
 
+  frontend:
+    container_name: firmador-frontend
+    restart: always
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    environment:
+      - TZ=Etc/GMT+3
+    depends_on:
+      - flask-app
+    networks:
+      - firmador_signnet
+
 networks:
   firmador_signnet:
     driver: bridge
