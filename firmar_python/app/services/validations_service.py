@@ -39,7 +39,11 @@ class ValidationsService:
 
         try:
             logger.debug("Analyzing validation report")
-            signatures = validation_analyze(report)
+            result = validation_analyze(report)
+            if isinstance(result, tuple):
+                signatures, _ = result
+            else:
+                signatures = result
             if not signatures:
                 raise validation_exc.InvalidSignatureDataError(f"Error al validar PDF: No se encontraron firmas válidas: id_doc: {id_doc}")
             logger.debug("Validation analysis completed")
@@ -92,12 +96,15 @@ class ValidationsService:
                         continue
 
                     # Analyze validation results
-                    validation_result = validation_analyze(validation_report)
-
+                    result_val = validation_analyze(validation_report)
+                    if isinstance(result_val, tuple):
+                        validation_result, _ = result_val
+                    else:
+                        validation_result = result_val
                     # Process validation result
-                    first_signature = validation_result[0]
-                    tested = bool(first_signature.get('valid', False))
-                    certs_valid = first_signature.get('certs_valid', False)
+                    first_signature = validation_result[0] if validation_result else None
+                    tested = bool(first_signature.get('valid', False)) if first_signature else False
+                    certs_valid = first_signature.get('certs_valid', False) if first_signature else False
                     indication = tested and certs_valid
 
                     validation_results.append({
@@ -316,7 +323,11 @@ class ValidationsService:
                     return result_doc
                 
                 try:
-                    signatures = validation_analyze(validation_report)
+                    result_doc_val = validation_analyze(validation_report)
+                    if isinstance(result_doc_val, tuple):
+                        signatures, _ = result_doc_val
+                    else:
+                        signatures = result_doc_val
                     # If no signatures found, that's okay - just use an empty list
                     if not signatures:
                         logger.info(f"No signatures found in document {doc_id}")
@@ -350,8 +361,8 @@ class ValidationsService:
         try:
             # Validate the signature using the prepared json_str and signature
             try:
-                validation_report = validate_signature_json(json_str, signature)
-                if not validation_report:
+                validation_report, status_code = validate_signature_json(json_str, signature)
+                if status_code != 200 or not validation_report:
                     logger.warning("No validation response received for tramite")
                     return {
                         'secuencia': tramite['secuencia'],
@@ -379,12 +390,16 @@ class ValidationsService:
                 }
 
             try:
-                validation_result = validation_analyze(validation_report)
+                result_tramite = validation_analyze(validation_report)
+                if isinstance(result_tramite, tuple):
+                    validation_result, _ = result_tramite
+                else:
+                    validation_result = result_tramite
                 if not validation_result:
                     logger.info("No signatures found in tramite")
                     validation_result = []
             except Exception as e:
-                logger.error(f"Error analyzing tramite validation: {str(e)}")
+                logger.error(f"Error analyzing validation in tramite: {str(e)}")
                 return {
                     'secuencia': tramite['secuencia'],
                     'is_valid': False,
