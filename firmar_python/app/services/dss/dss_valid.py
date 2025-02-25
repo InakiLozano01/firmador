@@ -58,7 +58,7 @@ def validate_signature_json(data, signature):
         response = requests.post(
             'http://java-webapp:5555/services/rest/validation/validateSignature',
             json=body,
-            timeout=10
+            timeout=30
         )
         
         if response.status_code != 200:
@@ -113,7 +113,7 @@ def validate_signature_pdf(data):
     }
     
     try:
-        response = requests.post('http://java-webapp:5555/services/rest/validation/validateSignature', json=body, timeout=10)
+        response = requests.post('http://java-webapp:5555/services/rest/validation/validateSignature', json=body, timeout=30)
         response.raise_for_status()
         return response.json()
     except requests.exceptions.ConnectionError as e:
