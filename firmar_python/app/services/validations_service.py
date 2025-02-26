@@ -162,14 +162,28 @@ class ValidationsService:
                         
                     entry_pathname = entry.pathname
                     if isinstance(entry_pathname, bytes):
-                        try:
-                            entry_pathname = entry_pathname.decode('utf-8')
-                        except UnicodeDecodeError:
-                            entry_pathname = entry_pathname.decode('latin-1')
+                        # Try decoding using 'cp1252' first, as it usually handles accented characters correctly on Windows
+                        encodings = ['cp1252', 'utf-8', 'latin-1', 'iso-8859-1']
+                        decoded = None
+                        for encoding in encodings:
+                            try:
+                                decoded = entry_pathname.decode(encoding)
+                                break
+                            except UnicodeDecodeError:
+                                continue
+                        if decoded is None:
+                            decoded = entry_pathname.decode('latin-1')
+                        # Post-process to fix misinterpreted characters using a mapping dictionary
+                        misinterpretations = { '¢': 'ó', '¡': 'í' }
+                        for wrong, correct in misinterpretations.items():
+                            decoded = decoded.replace(wrong, correct)
+                        entry_pathname = decoded
 
-                    entry_path = unicodedata.normalize('NFKD', entry_pathname).encode('ascii', 'ignore').decode('ascii')
-                    normalized_path = os.path.normpath(entry_path)
+                    normalized_path = os.path.normpath(entry_pathname)
                     file_name = os.path.basename(normalized_path)
+                    # Remove any directory prefix from the filename
+                    file_name = file_name.split('\\')[-1]  # Handle Windows-style paths
+                    file_name = file_name.split('/')[-1]   # Handle Unix-style paths
                     content = b''.join(entry.get_blocks())
                     files[file_name] = content
 
