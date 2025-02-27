@@ -162,21 +162,44 @@ class ValidationsService:
                         
                     entry_pathname = entry.pathname
                     if isinstance(entry_pathname, bytes):
-                        # Try decoding using 'cp1252' first, as it usually handles accented characters correctly on Windows
-                        encodings = ['cp1252', 'utf-8', 'latin-1', 'iso-8859-1']
-                        decoded = None
-                        for encoding in encodings:
+                        # Try Windows-1252 first
+                        try:
+                            decoded = entry_pathname.decode('cp1252')
+                        except UnicodeDecodeError:
                             try:
-                                decoded = entry_pathname.decode(encoding)
-                                break
+                                decoded = entry_pathname.decode('utf-8')
                             except UnicodeDecodeError:
-                                continue
-                        if decoded is None:
-                            decoded = entry_pathname.decode('latin-1')
-                        # Post-process to fix misinterpreted characters using a mapping dictionary
-                        misinterpretations = { '¢': 'ó', '¡': 'í' }
+                                decoded = entry_pathname.decode('latin-1')
+                        
+                        # Handle the specific case of '‚' which should be 'é'
+                        decoded = decoded.replace('‚', 'é')
+                        
+                        # Enhanced mapping for commonly misinterpreted characters
+                        misinterpretations = {
+                            '¢': 'ó',
+                            '¡': 'í',
+                            'Ã©': 'é',
+                            'Ã±': 'ñ',
+                            'Ã¡': 'á',
+                            'Ã­': 'í',
+                            'Ã³': 'ó',
+                            'Ãº': 'ú',
+                            'Ã': 'í',
+                            'Â': '',
+                            '\x82': 'é',
+                            '\x87': 'ç',
+                            '\x91': 'ñ',
+                            '\x92': 'ó',
+                            '\x93': 'í'
+                        }
+                        
+                        # Apply character replacements
                         for wrong, correct in misinterpretations.items():
                             decoded = decoded.replace(wrong, correct)
+                        
+                        # Normalize to composed form
+                        decoded = unicodedata.normalize('NFC', decoded)
+                        
                         entry_pathname = decoded
 
                     normalized_path = os.path.normpath(entry_pathname)
