@@ -171,9 +171,6 @@ class ValidationsService:
                             except UnicodeDecodeError:
                                 decoded = entry_pathname.decode('latin-1')
                         
-                        # Handle the specific case of '‚' which should be 'é'
-                        decoded = decoded.replace('‚', 'é')
-                        
                         # Enhanced mapping for commonly misinterpreted characters
                         misinterpretations = {
                             '¢': 'ó',
@@ -190,14 +187,22 @@ class ValidationsService:
                             '\x87': 'ç',
                             '\x91': 'ñ',
                             '\x92': 'ó',
-                            '\x93': 'í'
+                            '\x93': 'í',
+                            '‚': 'é',
+                            '¥': 'Ñ',
+                            'Ð': 'Ñ',
+                            '±': 'ñ'
                         }
                         
-                        # Apply character replacements
+                        # First handle specific problematic characters
+                        if '¥' in decoded:
+                            decoded = decoded.replace('¥', 'Ñ')
+                        
+                        # Apply all other character replacements
                         for wrong, correct in misinterpretations.items():
                             decoded = decoded.replace(wrong, correct)
                         
-                        # Normalize to composed form
+                        # Normalize to composed form while preserving Ñ/ñ
                         decoded = unicodedata.normalize('NFC', decoded)
                         
                         entry_pathname = decoded
