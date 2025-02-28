@@ -13,6 +13,7 @@ import base64
 import hashlib
 import multiprocessing
 from flask import jsonify
+import chardet
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -162,14 +163,43 @@ class ValidationsService:
                         
                     entry_pathname = entry.pathname
                     if isinstance(entry_pathname, bytes):
-                        # Try Windows-1252 first
-                        try:
-                            decoded = entry_pathname.decode('cp1252')
-                        except UnicodeDecodeError:
+                        # Log raw bytes for debugging
+                        logger.debug(f"Raw filename bytes: {entry_pathname!r}")
+                        
+                        # Use chardet for detection first
+                        detected = chardet.detect(entry_pathname)
+                        detected_encoding = detected['encoding']
+                        confidence = detected['confidence']
+                        logger.debug(f"Detected encoding: {detected_encoding} with confidence: {confidence:.2f}")
+                        
+                        # Initialize decoded as None
+                        decoded = None
+                        
+                        # If high confidence detection, try that first
+                        if confidence > 0.7 and detected_encoding:
                             try:
-                                decoded = entry_pathname.decode('utf-8')
+                                decoded = entry_pathname.decode(detected_encoding)
+                                logger.debug(f"Successfully decoded with detected encoding {detected_encoding}: {decoded}")
                             except UnicodeDecodeError:
-                                decoded = entry_pathname.decode('latin-1')
+                                logger.debug(f"Failed to decode with detected encoding {detected_encoding} despite high confidence")
+                        
+                        # Try Windows-1252 if we haven't decoded yet
+                        if decoded is None:
+                            try:
+                                decoded = entry_pathname.decode('cp1252')
+                                logger.debug(f"Decoded with cp1252: {decoded}")
+                            except UnicodeDecodeError:
+                                try:
+                                    decoded = entry_pathname.decode('utf-8')
+                                    logger.debug(f"Decoded with utf-8: {decoded}")
+                                except UnicodeDecodeError:
+                                    try:
+                                        decoded = entry_pathname.decode('latin-1')
+                                        logger.debug(f"Decoded with latin-1: {decoded}")
+                                    except UnicodeDecodeError:
+                                        # Use 'ignore' instead of 'replace' to silently drop invalid characters
+                                        decoded = entry_pathname.decode('iso-8859-1', errors='ignore')
+                                        logger.debug(f"Decoded with iso-8859-1 (with ignore): {decoded}")
                         
                         # Enhanced mapping for commonly misinterpreted characters
                         misinterpretations = {
@@ -191,19 +221,45 @@ class ValidationsService:
                             '‚': 'é',
                             '¥': 'Ñ',
                             'Ð': 'Ñ',
-                            '±': 'ñ'
+                            '±': 'ñ',
+                            # Add degree symbol mapping
+                            'Â°': '°',  # UTF-8 decomposed form
+                            'ÂB0': '°', # Another possible encoding
+                            '\xB0': '°', # Hex representation in some encodings
+                            '°C': '°C',  # Preserve degree Celsius
+                            '°F': '°F',  # Preserve degree Fahrenheit
+                            # Common degree symbol misinterpretations
+                            'Â°': '°',
+                            '¦': '°',
+                            '\xF8': '°' # Sometimes degree appears as ø
                         }
                         
-                        # First handle specific problematic characters
+                        # Store original for comparison
+                        original_decoded = decoded
+                        
+                        # Special handling for problematic characters first
                         if '¥' in decoded:
                             decoded = decoded.replace('¥', 'Ñ')
+                            
+                        # Special handling for degree symbol
+                        for deg_repr in ['\xB0', 'Â°', '¦', '\xF8']:
+                            if deg_repr in decoded:
+                                decoded = decoded.replace(deg_repr, '°')
                         
                         # Apply all other character replacements
                         for wrong, correct in misinterpretations.items():
                             decoded = decoded.replace(wrong, correct)
                         
-                        # Normalize to composed form while preserving Ñ/ñ
+                        # Normalize to composed form while preserving special characters
+                        # Use NFC instead of NFKC to preserve more character distinctions
                         decoded = unicodedata.normalize('NFC', decoded)
+                        
+                        # Log ALL filenames, not just ones with special characters
+                        logger.debug(f"Final decoded filename: {decoded}")
+                        
+                        # Also log any transformations that occurred
+                        if original_decoded != decoded:
+                            logger.debug(f"Character transformation applied: {original_decoded!r} -> {decoded!r}")
                         
                         entry_pathname = decoded
 
