@@ -155,6 +155,8 @@ class ValidationsService:
             doc_order_to_filename = {}
             pdf_count = 0
             
+            logger.info(f"Processing expediente at path: {path}")
+            
             # Extract and process files from ZIP
             with libarchive.file_reader(path) as archive:
                 for entry in archive:
@@ -183,75 +185,89 @@ class ValidationsService:
                             except UnicodeDecodeError:
                                 logger.debug(f"Failed to decode with detected encoding {detected_encoding} despite high confidence")
                         
-                        # Try Windows-1252 if we haven't decoded yet
+                        # Try common encodings in a specific order if we haven't decoded yet
                         if decoded is None:
-                            try:
-                                decoded = entry_pathname.decode('cp1252')
-                                logger.debug(f"Decoded with cp1252: {decoded}")
-                            except UnicodeDecodeError:
+                            encodings_to_try = ['cp1252', 'utf-8', 'latin-1', 'iso-8859-1']
+                            for encoding in encodings_to_try:
                                 try:
-                                    decoded = entry_pathname.decode('utf-8')
-                                    logger.debug(f"Decoded with utf-8: {decoded}")
+                                    decoded = entry_pathname.decode(encoding)
+                                    logger.debug(f"Decoded with {encoding}: {decoded}")
+                                    break
                                 except UnicodeDecodeError:
-                                    try:
-                                        decoded = entry_pathname.decode('latin-1')
-                                        logger.debug(f"Decoded with latin-1: {decoded}")
-                                    except UnicodeDecodeError:
-                                        # Use 'ignore' instead of 'replace' to silently drop invalid characters
-                                        decoded = entry_pathname.decode('iso-8859-1', errors='ignore')
-                                        logger.debug(f"Decoded with iso-8859-1 (with ignore): {decoded}")
-                        
-                        # Enhanced mapping for commonly misinterpreted characters
-                        misinterpretations = {
-                            '¢': 'ó',
-                            '¡': 'í',
-                            'Ã©': 'é',
-                            'Ã±': 'ñ',
-                            'Ã¡': 'á',
-                            'Ã­': 'í',
-                            'Ã³': 'ó',
-                            'Ãº': 'ú',
-                            'Ã': 'í',
-                            'Â': '',
-                            '\x82': 'é',
-                            '\x87': 'ç',
-                            '\x91': 'ñ',
-                            '\x92': 'ó',
-                            '\x93': 'í',
-                            '‚': 'é',
-                            '¥': 'Ñ',
-                            'Ð': 'Ñ',
-                            '±': 'ñ',
-                            # Add degree symbol mapping
-                            'Â°': '°',  # UTF-8 decomposed form
-                            'ÂB0': '°', # Another possible encoding
-                            '\xB0': '°', # Hex representation in some encodings
-                            '°C': '°C',  # Preserve degree Celsius
-                            '°F': '°F',  # Preserve degree Fahrenheit
-                            # Common degree symbol misinterpretations
-                            'Â°': '°',
-                            '¦': '°',
-                            '\xF8': '°' # Sometimes degree appears as ø
-                        }
+                                    continue
+                            
+                            # If all attempts failed, use a fallback with 'ignore' error handling
+                            if decoded is None:
+                                decoded = entry_pathname.decode('iso-8859-1', errors='ignore')
+                                logger.debug(f"Decoded with iso-8859-1 (with ignore): {decoded}")
+                                
+                        # Log each specific accented character for debugging
+                        for i, char in enumerate(decoded):
+                            if not (32 <= ord(char) <= 126):  # non-ASCII character
+                                logger.debug(f"Character at position {i}: '{char}' (Unicode: U+{ord(char):04X})")
                         
                         # Store original for comparison
                         original_decoded = decoded
                         
-                        # Special handling for problematic characters first
-                        if '¥' in decoded:
-                            decoded = decoded.replace('¥', 'Ñ')
+                        # Character-by-character conversion approach
+                        # This mapping specifically handles common encoding issues with Spanish characters
+                        char_mapping = {
+                            # Non-breaking space often confused with accented characters
+                            '\xa0': 'á',  # This specific case maps non-breaking space to 'á'
                             
-                        # Special handling for degree symbol
-                        for deg_repr in ['\xB0', 'Â°', '¦', '\xF8']:
-                            if deg_repr in decoded:
-                                decoded = decoded.replace(deg_repr, '°')
+                            # Common Latin-1/Windows-1252 codes for Spanish accented characters
+                            '\xe1': 'á', '\xc1': 'Á',
+                            '\xe9': 'é', '\xc9': 'É',
+                            '\xed': 'í', '\xcd': 'Í',
+                            '\xf3': 'ó', '\xd3': 'Ó',
+                            '\xfa': 'ú', '\xda': 'Ú',
+                            '\xf1': 'ñ', '\xd1': 'Ñ',
+                            '\xfc': 'ü', '\xdc': 'Ü',
+                            
+                            # UTF-8 double-byte sequences that might appear when incorrectly decoded
+                            'Ã¡': 'á', 'Ã\x81': 'Á',
+                            'Ã©': 'é', 'Ã\x89': 'É',
+                            'Ã­': 'í', 'Ã\x8d': 'Í',
+                            'Ã³': 'ó', 'Ã\x93': 'Ó',
+                            'Ãº': 'ú', 'Ã\x9a': 'Ú',
+                            'Ã±': 'ñ', 'Ã\x91': 'Ñ',
+                            'Ã¼': 'ü', 'Ã\x9c': 'Ü',
+                            
+                            # Other common misinterpretations
+                            '¢': 'ó', '¡': 'í',
+                            '¥': 'Ñ', '±': 'ñ',
+                            'Â': '', # Often appears as a prefix to special chars
+                            
+                            # Spanish punctuation
+                            '\xbf': '¿', '\xa1': '¡',
+                            
+                            # Degree symbol and variants
+                            'Â°': '°', '\xB0': '°', '¦': '°', '\xF8': '°'
+                        }
                         
-                        # Apply all other character replacements
-                        for wrong, correct in misinterpretations.items():
-                            decoded = decoded.replace(wrong, correct)
+                        # Process the filename character by character
+                        result = []
+                        i = 0
+                        while i < len(decoded):
+                            # Check for two-character sequences first (like 'Ã¡')
+                            if i < len(decoded) - 1:
+                                two_chars = decoded[i:i+2]
+                                if two_chars in char_mapping:
+                                    result.append(char_mapping[two_chars])
+                                    i += 2
+                                    continue
+                            
+                            # Check for single character mapping
+                            if decoded[i] in char_mapping:
+                                result.append(char_mapping[decoded[i]])
+                            else:
+                                result.append(decoded[i])
+                            i += 1
                         
-                        # Normalize to composed form while preserving special characters
-                        # Use NFC instead of NFKC to preserve more character distinctions
+                        # Create the new decoded string
+                        decoded = ''.join(result)
+                        
+                        # Normalize to composed form
                         decoded = unicodedata.normalize('NFC', decoded)
                         
                         # Log ALL filenames, not just ones with special characters
