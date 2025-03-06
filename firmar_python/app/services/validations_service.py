@@ -242,7 +242,25 @@ class ValidationsService:
                             '\xbf': '¿', '\xa1': '¡',
                             
                             # Degree symbol and variants
-                            'Â°': '°', '\xB0': '°', '¦': '°', '\xF8': '°'
+                            'Â°': '°', '\xB0': '°', '¦': '°', '\xF8': '°',
+                            
+                            # Ordinal indicators (º, ª) and common misinterpretations
+                            '§': 'º',  # Section sign → masculine ordinal
+                            '\xa7': 'º', # Raw section sign → masculine ordinal
+                            '\xba': 'º', # Correct code for masculine ordinal
+                            '\xaa': 'ª', # Feminine ordinal
+                            
+                            # Apostrophe variants
+                            '\u2019': "'", '\x92': "'", '\u2018': "'",  # Right and left single quotation marks
+                            
+                            # Additional Spanish characters and their misinterpretations
+                            '\xb7': '·', # Middle dot (used in Catalan)
+                            '\xad': '-', # Soft hyphen
+                            
+                            # More common encoding problems
+                            '\x82': 'é', '\x87': 'ç',
+                            '\x91': 'ñ', '\x92': 'ó', '\x93': 'í',
+                            '‚': 'é'
                         }
                         
                         # Process the filename character by character
