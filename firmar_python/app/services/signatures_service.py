@@ -69,9 +69,21 @@ class SignaturesService:
         logger.debug(f"Signature parameters - Field: {field_id}, Name: {name}, Area: {area}")
         logger.debug(f"Document properties - Is closing: {is_closing}, Is digital: {is_digital}, Is cover: {es_caratula}")
 
-        app_state.current_time = int(tiempo.time() * 1000)
+        # Use the enhanced app_state methods to generate and store a timestamp for this document
+        document_timestamp = app_state.set_document_timestamp(id_doc)
+        
+        # Still set app_state.current_time for backward compatibility
+        app_state.current_time = document_timestamp
         app_state.datetimesigned = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         app_state.isclosing = is_closing
+        
+        # Store document-specific data using the new method
+        app_state.set_document_data(id_doc, 'datetimesigned', app_state.datetimesigned)
+        app_state.set_document_data(id_doc, 'isclosing', is_closing)
+        
+        logger.debug(f"Set app_state.current_time to {app_state.current_time} for document {id_doc}")
+        logger.debug(f"Set app_state.datetimesigned to {app_state.datetimesigned} for document {id_doc}")
+        logger.debug(f"Set app_state.isclosing to {app_state.isclosing} for document {id_doc}")
 
         if is_digital:
             try:
@@ -84,13 +96,16 @@ class SignaturesService:
                 logger.debug(f"Extracted name from certificate: {name}")
             except Exception as e:
                 logger.error(f"Failed to extract certificate info: {str(e)}", exc_info=True)
-                raise signature_exc.SignatureValidationError(f"Error extracting certificate info: {str(e)}")
+                error = {"idDocFailed": id_doc, "message": f"Error al extraer nombre del certificado: {str(e)}", "stack": str(e.__traceback__)}
+                return id_doc, error, data_to_sign
             try:
                 datetime.strptime(app_state.datetimesigned, "%d/%m/%Y %H:%M:%S")
             except ValueError:
                 logger.debug("Converting datetime format")
                 dt = datetime.strptime(app_state.datetimesigned, "%Y-%m-%d %H:%M:%S")
                 app_state.datetimesigned = dt.strftime("%d/%m/%Y %H:%M:%S")
+                # Update the document-specific data too
+                app_state.set_document_data(id_doc, 'datetimesigned', app_state.datetimesigned)
                 logger.debug(f"Converted datetime: {app_state.datetimesigned}")
             
             try:
@@ -116,8 +131,8 @@ class SignaturesService:
         match (is_digital, is_closing):
             case (True, True):
                 try:
-                    logger.debug("Getting data to sign for digital closing signature")
-                    data_to_sign_response = get_data_to_sign_token(pdf_b64, certificates, app_state.current_time, field_id, role, custom_image)
+                    logger.debug(f"Getting data to sign for digital closing signature using timestamp {document_timestamp}")
+                    data_to_sign_response = get_data_to_sign_token(pdf_b64, certificates, document_timestamp, field_id, role, custom_image)
                     data_to_sign = (data_to_sign_response["bytes"])
                     logger.debug("Successfully obtained data to sign")
                     # Log the data to sign
@@ -128,8 +143,8 @@ class SignaturesService:
                     raise signature_exc.SignatureValidationError(f"Error al obtener datos para firmar: {str(e)}")
             case (True, False):
                 try:
-                    logger.debug("Getting data to sign for digital signature")
-                    data_to_sign_response = get_data_to_sign_token(pdf_b64, certificates, app_state.current_time, field_id, role, custom_image)
+                    logger.debug(f"Getting data to sign for digital signature using timestamp {document_timestamp}")
+                    data_to_sign_response = get_data_to_sign_token(pdf_b64, certificates, document_timestamp, field_id, role, custom_image)
                     data_to_sign = (data_to_sign_response["bytes"])
                     logger.debug("Successfully obtained data to sign")
                     # Log the data to sign
@@ -220,6 +235,8 @@ class SignaturesService:
                 raise signature_exc.SignatureValidationError(f"Error al guardar PDF firmado: {str(e)}")
 
         logger.info(f"PDF signature initialization completed for document ID: {id_doc}")
+        # Log that we're using the document-specific timestamp
+        logger.debug(f"Using document timestamp {document_timestamp} for data_to_sign generation")
         return id_doc, error, data_to_sign
     
     def end_signature_pdf(self, pdfs, certificates):
@@ -246,6 +263,24 @@ class SignaturesService:
             signature_value = pdfs['signatureValue']
             id_user = pdfs['id_usuario']
             filepath = pdfs['path_file']
+            
+            # Use the enhanced app_state method to get the document-specific timestamp
+            document_timestamp = app_state.get_document_timestamp(id_doc)
+            logger.debug(f"Retrieved document-specific timestamp {document_timestamp} for document {id_doc}")
+            
+            # Get document-specific data
+            doc_datetimesigned = app_state.get_document_data(id_doc, 'datetimesigned', app_state.datetimesigned)
+            doc_isclosing = app_state.get_document_data(id_doc, 'isclosing', is_closing)
+            
+            # Temporarily set app_state values to this document's values for compatibility
+            # with existing code that uses app_state directly
+            old_current_time = app_state.current_time
+            old_datetimesigned = app_state.datetimesigned
+            old_isclosing = app_state.isclosing
+            
+            app_state.current_time = document_timestamp
+            app_state.datetimesigned = doc_datetimesigned
+            app_state.isclosing = doc_isclosing
 
             logger.debug(f"Processing PDF with ID: {id_doc}")
             logger.debug(f"Signature parameters - Field: {field_id}, Name: {name}, Area: {area}")
@@ -286,7 +321,8 @@ class SignaturesService:
             match (is_digital, is_closing):
                 case (True, True):
                     try:
-                        signed_pdf_response = sign_document_token(pdf_b64, signature_value, certificates, app_state.current_time, field_id, role, custom_image)
+                        # Use document_timestamp instead of app_state.current_time
+                        signed_pdf_response = sign_document_token(pdf_b64, signature_value, certificates, document_timestamp, field_id, role, custom_image)
                         if not isinstance(signed_pdf_response, dict) or 'bytes' not in signed_pdf_response:
                             raise Exception("Invalid response format from sign_document_token")
                     except Exception as e:
@@ -310,7 +346,8 @@ class SignaturesService:
 
                 case (True, False):
                     try:
-                        signed_pdf_response = sign_document_token(pdf_b64, signature_value, certificates, app_state.current_time, field_id, role, custom_image)
+                        # Use document_timestamp instead of app_state.current_time
+                        signed_pdf_response = sign_document_token(pdf_b64, signature_value, certificates, document_timestamp, field_id, role, custom_image)
                         if not isinstance(signed_pdf_response, dict) or 'bytes' not in signed_pdf_response:
                             raise Exception("Invalid response format from sign_document_token")
                     except Exception as e:
@@ -344,20 +381,29 @@ class SignaturesService:
                 logger.debug(f"Saving signed PDF to filepath: {filepath}")
                 save_signed_pdf(finalpdf, filepath)
                 logger.debug("Successfully saved signed PDF")
+                
+                # Clean up the timestamp entry for this document after successful processing
+                app_state.remove_document_timestamp(id_doc)
+                if id_doc in app_state.doc_data:
+                    app_state.doc_data.pop(id_doc, None)
+                
             except Exception as e:
                 logger.error(f"Failed to save signed PDF: {str(e)}", exc_info=True)
                 error = {"idDocFailed": id_doc, "message": f"Error al guardar PDF firmado: {str(e)}", "stack": str(e.__traceback__)}
                 raise Exception(f"Error al guardar PDF firmado: {str(e)}")
             
+            # Restore previous app_state values
+            app_state.current_time = old_current_time
+            app_state.datetimesigned = old_datetimesigned
+            app_state.isclosing = old_isclosing
+            
             logger.info(f"PDF signature finalization completed for document ID: {id_doc}")
             return id_doc, error
         except Exception as e:
-            logger.error(f"Error in end_signature_pdf: {str(e)}", exc_info=True)
-            if not error:
-                error = {"idDocFailed": id_doc if 'id_doc' in locals() else None, 
-                        "message": f"Error en end_signature_pdf: {str(e)}", 
-                        "stack": str(e.__traceback__)}
-            return None, error
+            logger.error(f"Error during signature finalization: {str(e)}", exc_info=True)
+            if error is None:
+                error = {"idDocFailed": id_doc, "message": f"Error al finalizar firma: {str(e)}", "stack": str(e.__traceback__)}
+            return id_doc, error
     
     def init_sign_jades(self, index_data, certificates, data_signature):
         """
