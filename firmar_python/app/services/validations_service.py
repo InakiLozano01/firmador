@@ -224,6 +224,16 @@ class ValidationsService:
                             '\xf1': 'ñ', '\xd1': 'Ñ',
                             '\xfc': 'ü', '\xdc': 'Ü',
                             
+                            # Currency sign often misinterpreted as 'ñ'
+                            '¤': 'ñ',      # Direct currency sign
+                            '\xa4': 'ñ',   # Latin-1 currency sign
+                            '\u00a4': 'ñ', # Unicode currency sign
+                            
+                            # Pound symbol often misinterpreted as 'ú'
+                            '£': 'ú',      # Direct pound symbol
+                            '\xa3': 'ú',   # Latin-1 pound symbol
+                            '\u00a3': 'ú', # Unicode pound symbol
+                            
                             # UTF-8 double-byte sequences that might appear when incorrectly decoded
                             'Ã¡': 'á', 'Ã\x81': 'Á',
                             'Ã©': 'é', 'Ã\x89': 'É',
@@ -232,6 +242,15 @@ class ValidationsService:
                             'Ãº': 'ú', 'Ã\x9a': 'Ú',
                             'Ã±': 'ñ', 'Ã\x91': 'Ñ',
                             'Ã¼': 'ü', 'Ã\x9c': 'Ü',
+                            
+                            # Additional encodings for 'ú' that might be causing issues
+                            '\xc3\xba': 'ú',  # UTF-8 raw bytes
+                            '\xfa': 'ú',      # ISO-8859-1/Latin-1
+                            '\x81': 'ú',      # Another potential variant
+                            '\x97': 'ú',      # Another potential variant
+                            'Ãš': 'ú',        # Another potential variant
+                            'ú': 'ú',         # Direct mapping to ensure preservation
+                            '\u00fa': 'ú',    # Unicode escape sequence
                             
                             # Other common misinterpretations
                             '¢': 'ó', '¡': 'í',
