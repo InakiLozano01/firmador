@@ -47,6 +47,7 @@ def save_signed_pdf(signed_pdf_base64, filename):
     Raises:
         PDFSaveError: Si ocurre un error al guardar el archivo PDF.
     """
+    
     logger.info(f"Starting to save signed PDF to {filename}")
     try:
         logger.debug("Decoding base64 PDF data")

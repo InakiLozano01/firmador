@@ -21,6 +21,18 @@ class SignaturesController:
         success = True
         message = "Firma iniciada correctamente"
         
+        # Pre-initialize timestamps for all documents in this batch before processing any document
+        # This ensures that all documents have their timestamps set before any processing begins
+        for i, pdf in enumerate(pdfs):
+            try:
+                id_doc = pdf.get('id_doc')
+                if id_doc:
+                    # Generate and store a unique timestamp for this document
+                    timestamp = app_state.set_document_timestamp(id_doc)
+                    logger.debug(f"Pre-initialized timestamp {timestamp} for document {id_doc} ({i+1}/{len(pdfs)})")
+            except Exception as e:
+                logger.error(f"Error pre-initializing timestamp for document {i+1}: {str(e)}", exc_info=True)
+        
         for i, pdf in enumerate(pdfs):
             logger.debug(f"Processing PDF {i+1}/{len(pdfs)}")
             try:
@@ -48,11 +60,16 @@ class SignaturesController:
                     logger.debug("Rolling back database connection")
                     app_state.conn.rollback()
                     app_state.conn.close()
-            if app_state.conn and app_state.conn.closed == 0:
-                logger.debug("Committing and closing database connection")
-                app_state.conn.commit()
-                app_state.conn.close()
         
+        # Log that timestamps are stored in app_state
+        logger.debug(f"Timestamps for {len(app_state.doc_timestamps)} documents stored in app_state.doc_timestamps")
+        
+        if app_state.conn and app_state.conn.closed == 0:
+            logger.debug("Committing and closing database connection")
+            app_state.conn.commit()
+            app_state.conn.close()
+        
+        id_docs_signeds.sort()
         docs_not_signed = []
         for error in errors_stack:
             if error.get('idDocFailed'):
@@ -68,6 +85,16 @@ class SignaturesController:
         id_docs_signeds = []
         errors_stack = []
         
+        # Log available timestamps before processing
+        logger.debug(f"Using timestamps for {len(app_state.doc_timestamps)} documents from app_state.doc_timestamps")
+        
+        # Verify that all documents in the batch have timestamps
+        for i, pdf in enumerate(pdfs):
+            id_doc = pdf.get('id_doc')
+            if id_doc and id_doc not in app_state.doc_timestamps:
+                logger.warning(f"Document {id_doc} does not have a pre-initialized timestamp. Initializing now.")
+                app_state.set_document_timestamp(id_doc)
+        
         for i, pdf in enumerate(pdfs):
             logger.debug(f"Processing PDF {i+1}/{len(pdfs)}")
             try:
@@ -79,7 +106,12 @@ class SignaturesController:
                     errors_stack.append(error_stack)
                     logger.warning(f"Failed to finalize signature for PDF {i+1}: {error_stack}")
             except Exception as e:
-                logger.error(f"Exception during PDF {i+1} signature finalization: {str(e)}", exc_info=True)
+                id_doc = pdf.get('id_doc', 'unknown')
+                logger.error(f"Exception during PDF {i+1} (ID: {id_doc}) signature finalization: {str(e)}", exc_info=True)
+                errors_stack.append({
+                    "idDocFailed": id_doc,
+                    "message": str(e)
+                })
                 if app_state.conn and app_state.conn.closed == 0:
                     logger.debug("Rolling back database connection")
                     app_state.conn.rollback()
@@ -89,9 +121,18 @@ class SignaturesController:
                 app_state.conn.commit()
                 app_state.conn.close()
         
+        # Check if any timestamps remain after processing
+        remaining_timestamps = len(app_state.doc_timestamps)
+        if remaining_timestamps > 0:
+            logger.warning(f"{remaining_timestamps} document timestamps were not properly cleaned up")
+            # Clear any remaining timestamps to avoid memory leaks
+            app_state.doc_timestamps.clear()
+            app_state.doc_data.clear()
+        
         docs_not_signed = []
         for error in errors_stack:
-            docs_not_signed.append(error['idDocFailed'])
+            if error.get('idDocFailed'):
+                docs_not_signed.append(error['idDocFailed'])
         
         logger.info(f"PDF signature finalization completed. Successful: {len(id_docs_signeds)}, Failed: {len(docs_not_signed)}")
         return id_docs_signeds, docs_not_signed, errors_stack
