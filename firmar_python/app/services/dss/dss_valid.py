@@ -114,11 +114,32 @@ def validate_signature_pdf(data):
     
     try:
         response = requests.post('http://java-webapp:5555/services/rest/validation/validateSignature', json=body, timeout=30)
+        
+        # Log full response details for debugging
+        logger.debug(f"DSS validate_signature_pdf response: status={response.status_code}, content={response.text[:100]}")
+        
+        if response.status_code == 500:
+            error_content = response.text
+            logger.warning(f"500 error from validation service. Response content: {error_content[:1000]}")
+            
+            # Look for format recognition errors in the response
+            if "Document format not recognized" in error_content or "Document format not recognized/handled" in error_content or "format not recognized" in error_content:
+                # Create a special exception with a marker that can be detected at higher levels
+                error = SignatureValidationError(f"PDF_FORMAT_ERROR: {error_content[:500]}")
+                error.is_format_error = True  # Add a special attribute to the exception
+                raise error
+            else:
+                # For other 500 errors
+                raise SignatureValidationError(f"Validation service error (500): {error_content[:500]}")
+            
         response.raise_for_status()
         return response.json()
     except requests.exceptions.ConnectionError as e:
+        logger.error(f"Connection error to DSS service: {str(e)}")
         raise DSServiceConnectionError(details=str(e))
     except requests.exceptions.RequestException as e:
+        if not hasattr(e, 'is_format_error'):  # Only add this if it's not our custom format error
+            logger.error(f"Request error to DSS service: {str(e)}")
         raise SignatureValidationError(f"Error validating PDF signature: {str(e)}")
 
 def validation_analyze(validation_report):
