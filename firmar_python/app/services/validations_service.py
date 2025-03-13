@@ -14,6 +14,9 @@ import hashlib
 import multiprocessing
 from flask import jsonify
 import chardet
+import tempfile
+import shutil
+import zipfile
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -157,41 +160,28 @@ class ValidationsService:
             
             logger.info(f"Processing expediente at path: {path}")
             
-            # Extract and process files from ZIP
-            with libarchive.file_reader(path) as archive:
-                for entry in archive:
-                    if entry.isdir:
-                        continue
+            # Create temporary directory for extraction and processing
+            temp_dir = tempfile.mkdtemp(prefix="expediente_")
+            extract_dir = os.path.join(temp_dir, "extracted")
+            os.makedirs(extract_dir, exist_ok=True)
+            
+            logger.info(f"Created temporary extraction directory: {extract_dir}")
+            
+            try:
+                # Extract all files from the original archive
+                with libarchive.file_reader(path) as archive:
+                    for entry in archive:
+                        if entry.isdir:
+                            continue
                         
-                    entry_pathname = entry.pathname
-                    if isinstance(entry_pathname, bytes):
-                        # Log raw bytes for debugging
-                        logger.debug(f"Raw filename bytes: {entry_pathname!r}")
-                        
-                        # Use chardet for detection first
-                        detected = chardet.detect(entry_pathname)
-                        detected_encoding = detected['encoding']
-                        confidence = detected['confidence']
-                        logger.debug(f"Detected encoding: {detected_encoding} with confidence: {confidence:.2f}")
-                        
-                        # Initialize decoded as None
-                        decoded = None
-                        
-                        # If high confidence detection, try that first
-                        if confidence > 0.7 and detected_encoding:
-                            try:
-                                decoded = entry_pathname.decode(detected_encoding)
-                                logger.debug(f"Successfully decoded with detected encoding {detected_encoding}: {decoded}")
-                            except UnicodeDecodeError:
-                                logger.debug(f"Failed to decode with detected encoding {detected_encoding} despite high confidence")
-                        
-                        # Try common encodings in a specific order if we haven't decoded yet
-                        if decoded is None:
+                        entry_pathname = entry.pathname
+                        if isinstance(entry_pathname, bytes):
+                            # Try common encodings in a specific order
+                            decoded = None
                             encodings_to_try = ['cp1252', 'utf-8', 'latin-1', 'iso-8859-1']
                             for encoding in encodings_to_try:
                                 try:
                                     decoded = entry_pathname.decode(encoding)
-                                    logger.debug(f"Decoded with {encoding}: {decoded}")
                                     break
                                 except UnicodeDecodeError:
                                     continue
@@ -199,139 +189,71 @@ class ValidationsService:
                             # If all attempts failed, use a fallback with 'ignore' error handling
                             if decoded is None:
                                 decoded = entry_pathname.decode('iso-8859-1', errors='ignore')
-                                logger.debug(f"Decoded with iso-8859-1 (with ignore): {decoded}")
-                                
-                        # Log each specific accented character for debugging
-                        for i, char in enumerate(decoded):
-                            if not (32 <= ord(char) <= 126):  # non-ASCII character
-                                logger.debug(f"Character at position {i}: '{char}' (Unicode: U+{ord(char):04X})")
+                            
+                            entry_pathname = decoded
+                        
+                        # Normalize path and get just the filename
+                        normalized_path = os.path.normpath(entry_pathname)
+                        file_name = os.path.basename(normalized_path)
+                        # Remove any directory prefix from the filename
+                        file_name = file_name.split('\\')[-1]  # Handle Windows-style paths
+                        file_name = file_name.split('/')[-1]   # Handle Unix-style paths
                         
                         # Store original for comparison
-                        original_decoded = decoded
+                        original_filename = file_name
                         
-                        # Character-by-character conversion approach
-                        # This mapping specifically handles common encoding issues with Spanish characters
-                        char_mapping = {
-                            # Non-breaking space often confused with accented characters
-                            '\xa0': 'á',  # This specific case maps non-breaking space to 'á'
-                            
-                            # Common Latin-1/Windows-1252 codes for Spanish accented characters
-                            '\xe1': 'á', '\xc1': 'Á',
-                            '\xe9': 'é', '\xc9': 'É',
-                            '\xed': 'í', '\xcd': 'Í',
-                            '\xf3': 'ó', '\xd3': 'Ó',
-                            '\xfa': 'ú', '\xda': 'Ú',
-                            '\xf1': 'ñ', '\xd1': 'Ñ',
-                            '\xfc': 'ü', '\xdc': 'Ü',
-                            
-                            # Currency sign often misinterpreted as 'ñ'
-                            '¤': 'ñ',      # Direct currency sign
-                            '\xa4': 'ñ',   # Latin-1 currency sign
-                            '\u00a4': 'ñ', # Unicode currency sign
-                            
-                            # Pound symbol often misinterpreted as 'ú'
-                            '£': 'ú',      # Direct pound symbol
-                            '\xa3': 'ú',   # Latin-1 pound symbol
-                            '\u00a3': 'ú', # Unicode pound symbol
-                            
-                            # UTF-8 double-byte sequences that might appear when incorrectly decoded
-                            'Ã¡': 'á', 'Ã\x81': 'Á',
-                            'Ã©': 'é', 'Ã\x89': 'É',
-                            'Ã­': 'í', 'Ã\x8d': 'Í',
-                            'Ã³': 'ó', 'Ã\x93': 'Ó',
-                            'Ãº': 'ú', 'Ã\x9a': 'Ú',
-                            'Ã±': 'ñ', 'Ã\x91': 'Ñ',
-                            'Ã¼': 'ü', 'Ã\x9c': 'Ü',
-                            
-                            # Additional encodings for 'ú' that might be causing issues
-                            '\xc3\xba': 'ú',  # UTF-8 raw bytes
-                            '\xfa': 'ú',      # ISO-8859-1/Latin-1
-                            '\x81': 'ú',      # Another potential variant
-                            '\x97': 'ú',      # Another potential variant
-                            'Ãš': 'ú',        # Another potential variant
-                            'ú': 'ú',         # Direct mapping to ensure preservation
-                            '\u00fa': 'ú',    # Unicode escape sequence
-                            
-                            # Other common misinterpretations
-                            '¢': 'ó', '¡': 'í',
-                            '¥': 'Ñ', '±': 'ñ',
-                            'Â': '', # Often appears as a prefix to special chars
-                            
-                            # Spanish punctuation
-                            '\xbf': '¿', '\xa1': '¡',
-                            
-                            # Degree symbol and variants
-                            'Â°': '°', '\xB0': '°', '¦': '°', '\xF8': '°',
-                            
-                            # Ordinal indicators (º, ª) and common misinterpretations
-                            '§': 'º',  # Section sign → masculine ordinal
-                            '\xa7': 'º', # Raw section sign → masculine ordinal
-                            '\xba': 'º', # Correct code for masculine ordinal
-                            '\xaa': 'ª', # Feminine ordinal
-                            
-                            # Apostrophe variants
-                            '\u2019': "'", '\x92': "'", '\u2018': "'",  # Right and left single quotation marks
-                            
-                            # Additional Spanish characters and their misinterpretations
-                            '\xb7': '·', # Middle dot (used in Catalan)
-                            '\xad': '-', # Soft hyphen
-                            
-                            # More common encoding problems
-                            '\x82': 'é', '\x87': 'ç',
-                            '\x91': 'ñ', '\x92': 'ó', '\x93': 'í',
-                            '‚': 'é'
-                        }
+                        # Sanitize the filename using regex
+                        # Keep alphanumeric, underscore, dot, hyphen, spaces, and parentheses
+                        sanitized_name = re.sub(r'[^a-zA-Z0-9_.\-() áéíóúÁÉÍÓÚ]', '', original_filename)
                         
-                        # Process the filename character by character
-                        result = []
-                        i = 0
-                        while i < len(decoded):
-                            # Check for two-character sequences first (like 'Ã¡')
-                            if i < len(decoded) - 1:
-                                two_chars = decoded[i:i+2]
-                                if two_chars in char_mapping:
-                                    result.append(char_mapping[two_chars])
-                                    i += 2
-                                    continue
-                            
-                            # Check for single character mapping
-                            if decoded[i] in char_mapping:
-                                result.append(char_mapping[decoded[i]])
-                            else:
-                                result.append(decoded[i])
-                            i += 1
+                        # Extract the file content
+                        content = b''.join(entry.get_blocks())
                         
-                        # Create the new decoded string
-                        decoded = ''.join(result)
+                        # Save the file with the sanitized name
+                        output_path = os.path.join(extract_dir, sanitized_name)
+                        with open(output_path, 'wb') as f:
+                            f.write(content)
                         
-                        # Normalize to composed form
-                        decoded = unicodedata.normalize('NFC', decoded)
+                        # Log if the name was changed
+                        if original_filename != sanitized_name:
+                            logger.info(f"Renamed file: {original_filename!r} -> {sanitized_name!r}")
+                
+                
+                # Now create a new ZIP file at the original path, replacing it
+                with zipfile.ZipFile(path, 'w') as new_zip:
+                    for root, _, filenames in os.walk(extract_dir):
+                        for filename in filenames:
+                            file_path = os.path.join(root, filename)
+                            # Add file to the archive with just the filename (no path)
+                            new_zip.write(file_path, arcname=filename)
+                
+                logger.info(f"Replaced original archive with sanitized version at {path}")
+                
+                # Now process the sanitized archive
+                files = {}
+                with zipfile.ZipFile(path, 'r') as archive:
+                    for file_info in archive.infolist():
+                        file_name = file_info.filename
+                        with archive.open(file_info) as file:
+                            content = file.read()
+                            files[file_name] = content
                         
-                        # Log ALL filenames, not just ones with special characters
-                        logger.debug(f"Final decoded filename: {decoded}")
-                        
-                        # Also log any transformations that occurred
-                        if original_decoded != decoded:
-                            logger.debug(f"Character transformation applied: {original_decoded!r} -> {decoded!r}")
-                        
-                        entry_pathname = decoded
-
-                    normalized_path = os.path.normpath(entry_pathname)
-                    file_name = os.path.basename(normalized_path)
-                    # Remove any directory prefix from the filename
-                    file_name = file_name.split('\\')[-1]  # Handle Windows-style paths
-                    file_name = file_name.split('/')[-1]   # Handle Unix-style paths
-                    content = b''.join(entry.get_blocks())
-                    files[file_name] = content
-
-                    if file_name.lower().endswith('.pdf'):
-                        pdf_count += 1
-                        base_name = os.path.splitext(file_name)[0]
-                        match = re.match(r'[^_]+_([^_]+)_?', base_name)
-                        if match:
-                            doc_order = match.group(1)
-                            doc_order_to_filename[doc_order] = file_name
-
+                        if file_name.lower().endswith('.pdf'):
+                            pdf_count += 1
+                            base_name = os.path.splitext(file_name)[0]
+                            match = re.match(r'[^_]+_([^_]+)_?', base_name)
+                            if match:
+                                doc_order = match.group(1)
+                                doc_order_to_filename[doc_order] = file_name
+            
+            finally:
+                # Clean up temp directory and its contents
+                try:
+                    shutil.rmtree(temp_dir)
+                    logger.info(f"Cleaned up temporary directory: {temp_dir}")
+                except Exception as e:
+                    logger.error(f"Error cleaning up temporary directory: {e}")
+            
             # Find and validate index.json
             index_json = None
             for filename, content in files.items():
