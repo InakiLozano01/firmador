@@ -453,12 +453,22 @@ class ValidationsService:
             "valid_hash": False,
             "doc_filename": None,
             "signatures": None,
-            "not_found": False
+            "not_found": False,
+            "invalid_format": False  # Add new field for format validation
         }
         try:
             if doc_order in doc_order_to_filename:
                 doc_filename = doc_order_to_filename[doc_order]
                 doc_content = files[doc_filename]
+                
+                # Set the filename regardless of validation outcome
+                result_doc["doc_filename"] = doc_filename
+                
+                # Calculate hash and check validity regardless of validation outcome
+                hash_doc = hashlib.sha256(doc_content).hexdigest()
+                valid_hash = False if not doc_hash else (hash_doc == doc_hash.lower())
+                result_doc["valid_hash"] = valid_hash
+                
                 docb64 = base64.b64encode(doc_content).decode('utf-8')
 
                 # Validate the document
@@ -471,6 +481,20 @@ class ValidationsService:
                 except Exception as e:
                     logger.error(f"Error validating signature in document {doc_id}: {str(e)}")
                     result_doc["signatures"] = []  # Empty signatures list instead of None
+                    
+                    # Check if this is a format recognition error
+                    error_str = str(e)
+                    logger.debug(f"Checking error message for format issues: {error_str}")
+                    
+                    # Look for our special marker or other indicators of format problems
+                    if "PDF_FORMAT_ERROR" in error_str or "Document format not recognized" in error_str:
+                        result_doc["invalid_format"] = True
+                        logger.info(f"Document {doc_id} format not recognized by validation service (explicit marker)")
+                    # Fallback: For PDFs, most 500 errors from validation are format issues
+                    elif "500 Server Error" in error_str and "validateSignature" in error_str:
+                        result_doc["invalid_format"] = True
+                        logger.info(f"Document {doc_id} likely has format issues (500 error from validation service): {error_str}")
+                    
                     return result_doc
                 
                 try:
@@ -488,17 +512,7 @@ class ValidationsService:
                     result_doc["signatures"] = []  # Empty signatures list instead of None
                     return result_doc
                 
-                hash_doc = hashlib.sha256(doc_content).hexdigest()
-                if not doc_hash:
-                    valid_hash = False
-                else:
-                    valid_hash = (hash_doc == doc_hash.lower())
-
-                result_doc.update({
-                    "valid_hash": valid_hash,
-                    "doc_filename": doc_filename,
-                    "signatures": signatures
-                })
+                result_doc["signatures"] = signatures
             else:
                 result_doc['not_found'] = True
         except Exception as e:
