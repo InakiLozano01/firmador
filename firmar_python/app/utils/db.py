@@ -74,10 +74,19 @@ def get_number_and_date_then_close(pdf_to_close, id_doc):
             logger.error(f"Document processing error: {datos_json['message']}")
             raise DocumentProcessingError(f"Error getting date and number: {datos_json['message']}")
 
-        json_field_values1 = {
-            "numero": datos_json['numero'],
-            "fecha": datetime.strptime(datos_json['fecha'], '%Y-%m-%d').strftime('%d/%m/%Y')
-        }
+        only_date = datos_json['solo_fecha'] == 1
+
+        if only_date:
+            json_field_values1 = {
+                "numero": f"{datos_json['numero']} / {datetime.strptime(datos_json['fecha'], '%Y-%m-%d').strftime('%Y')}",
+                "fecha": f"{datetime.strptime(datos_json['fecha'], '%Y-%m-%d').strftime('%d de %B de %Y').replace('January', 'enero').replace('February', 'febrero').replace('March', 'marzo').replace('April', 'abril').replace('May', 'mayo').replace('June', 'junio').replace('July', 'julio').replace('August', 'agosto').replace('September', 'septiembre').replace('October', 'octubre').replace('November', 'noviembre').replace('December', 'diciembre')}"
+            }
+        else:
+            json_field_values1 = {
+                "numero": f"{datos_json['numero']} / {datetime.strptime(datos_json['fecha'], '%Y-%m-%d').strftime('%Y')}",
+                "fecha": f"San Miguel de Tucumán, {datetime.strptime(datos_json['fecha'], '%Y-%m-%d').strftime('%d de %B de %Y').replace('January', 'enero').replace('February', 'febrero').replace('March', 'marzo').replace('April', 'abril').replace('May', 'mayo').replace('June', 'junio').replace('July', 'julio').replace('August', 'agosto').replace('September', 'septiembre').replace('October', 'octubre').replace('November', 'noviembre').replace('December', 'diciembre')}"
+            }
+
         json_field_values = json.dumps(json_field_values1)
         logger.debug(f"Field values prepared: {json_field_values}")
 
