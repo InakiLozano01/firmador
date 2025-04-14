@@ -77,7 +77,10 @@ def get_number_and_date_then_close(pdf_to_close, id_doc):
             logger.error(f"Document processing error: {datos_json['message']}")
             raise DocumentProcessingError(f"Error getting date and number: {datos_json['message']}")
 
-        only_date = datos_json['solo_fecha'] == 1
+        try:
+            only_date = datos_json['solo_fecha'] == 1
+        except:
+            only_date = False
 
         if only_date:
             json_field_values1 = {
