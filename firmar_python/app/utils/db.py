@@ -7,6 +7,9 @@ import psycopg2
 from datetime import datetime
 from app.services.dss.close_pdf import close_pdf
 from app.exceptions.tool_exc import DatabaseConnectionError, DatabaseTransactionError, DocumentProcessingError, PDFClosingError
+import PyPDF2
+import base64
+import io
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -87,12 +90,24 @@ def get_number_and_date_then_close(pdf_to_close, id_doc):
                 "fecha": f"San Miguel de Tucumán, {datetime.strptime(datos_json['fecha'], '%Y-%m-%d').strftime('%d de %B de %Y').replace('January', 'enero').replace('February', 'febrero').replace('March', 'marzo').replace('April', 'abril').replace('May', 'mayo').replace('June', 'junio').replace('July', 'julio').replace('August', 'agosto').replace('September', 'septiembre').replace('October', 'octubre').replace('November', 'noviembre').replace('December', 'diciembre')}"
             }
 
-        json_field_values = json.dumps(json_field_values1)
-        logger.debug(f"Field values prepared: {json_field_values}")
+        pdf_base64_string = pdf_to_close # Keep original base64 string
+        pdf_bytes = base64.b64decode(pdf_to_close) # Decode for PyPDF2
+        pdf_reader = PyPDF2.PdfReader(io.BytesIO(pdf_bytes))
+        pdf_number_of_pages = len(pdf_reader.pages)
+        logger.debug(f"PDF number of pages: {pdf_number_of_pages}")
+
+        final_json_field_values = {}
+
+        for i in range(pdf_number_of_pages):
+            final_json_field_values[f"numero{i+1}"] = json_field_values1["numero"]
+
+        final_json_field_values["fecha"] = json_field_values1["fecha"]
 
         try:
             logger.debug("Attempting to close PDF")
-            pdf = close_pdf(pdf_to_close, json_field_values)
+            final_json_field_values_string = json.dumps(final_json_field_values) # Serialize dict to JSON string
+            logger.debug(f"Passing field values to close_pdf: {final_json_field_values_string}")
+            pdf = close_pdf(pdf_base64_string, final_json_field_values_string) # Pass JSON string
             logger.debug("PDF closed successfully")
             return pdf
         except Exception as e:
