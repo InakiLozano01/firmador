@@ -153,7 +153,7 @@ def decode_image(encoded_image: str) -> dict:
         logger.error(f"Unexpected error during image processing: {str(e)}", exc_info=True)
         raise ImageProcessingError(f"Unexpected error during image processing: {str(e)}")
 
-def create_signature_image(text: str, encoded_image: str, path: str, width: int = 270, height: int = 80, scale_factor: int = 3,usuario: str = '') -> dict:
+def create_signature_image(text: str, encoded_image: str, path: str, width: int = 270, height: int = 50, scale_factor: int = 3,usuario: str = '') -> dict:
     """
     Create a signature image with text and a stamp.
     
@@ -180,13 +180,13 @@ def create_signature_image(text: str, encoded_image: str, path: str, width: int 
         # Create a new image with white background at higher resolution
         high_res_width, high_res_height = width * scale_factor, height * scale_factor
         logger.debug(f"Creating new image with dimensions {high_res_width}x{high_res_height}")
-        img = Image.new('RGB', (int(high_res_width), int(high_res_height)),'#00ffff')
+        img = Image.new('RGB', (int(high_res_width), int(high_res_height)),'#ffffff')
         draw = ImageDraw.Draw(img)
         
         # Try to load a suitable font
         logger.debug("Loading font")
-        font = get_available_font(26,6) # 6 font roboto 
-        font_bold = get_available_font(34,7) # 7 font roboto  BOLD
+        font = get_available_font(18,6) # 6 font roboto 
+        font_bold = get_available_font(24,7) # 7 font roboto  BOLD
         logger.debug("Font loaded successfully")
         
         # Decode and open the stamp image
@@ -211,11 +211,11 @@ def create_signature_image(text: str, encoded_image: str, path: str, width: int 
             raise ImageScalingError(f"Error scaling stamp image: {str(e)}")
         
         # Calculate positions
-        stamp_x = (high_res_width/2) - (stamp_max_width/2)  #2 * scale_factor
+        stamp_x = (high_res_width/2) - (stamp_max_width/2) + 5 #2 * scale_factor
         stamp_y = (high_res_height - stamp.height) // 2
-        text_start_x = stamp_x + stamp.width + 10
-        text_y = stamp_y - 20 #margen de 10
-        pos_y_user = stamp_y #margen de 10
+        text_start_x = stamp_x + stamp.width + 5
+        text_y = stamp_y + 20 #margen de 10
+        pos_y_user = stamp_y + 20 #margen de 10
 
         # Draw text USUARIO
         logger.debug("Drawing text USUARIO")
@@ -233,7 +233,7 @@ def create_signature_image(text: str, encoded_image: str, path: str, width: int 
                 left, top, right, bottom = font_bold.getbbox(line)
                 text_width = right - left
                 text_height = bottom - top
-                x = stamp_x - text_width - 5 # 5 ajuste para centrar alineado a la derecha
+                x = stamp_x - text_width  # 5 ajuste para centrar alineado a la derecha
                 draw.text((x , pos_y_user), line, font=font_bold, fill='black', align='right')
                 pos_y_user += font_bold.getbbox(line)[3] + 2 * scale_factor
 
@@ -261,20 +261,8 @@ def create_signature_image(text: str, encoded_image: str, path: str, width: int 
                 line = line.encode('utf-8').decode('utf-8')
                 left, top, right, bottom = font_bold.getbbox(line)
                 text_width = right - left
-                if text_width >(high_res_width/2):
-                    logger.debug(f"Text too long, splitting: {line}")
-                    words = line.split()
-                    len_words = len(words)
-                    if len_words > 2:
-                        draw.text((text_start_x, text_y), words[0] + " " + words[1], font=font, fill='black', align='left')
-                        text_y += font.getbbox(line)[3] + 2 * scale_factor
-                        draw.text((text_start_x, text_y), words[2] , font=font, fill='black', align='left')
-                    else:
-                        draw.text((text_start_x, text_y), words[0] , font=font, fill='black', align='left')
-                        text_y += font.getbbox(line)[3] + 2 * scale_factor
-                        draw.text((text_start_x, text_y), words[1] , font=font, fill='black', align='left')
-                else:
-                    draw.text((text_start_x, text_y), line, font=font, fill='black', align='left')
+                
+                draw.text((text_start_x, text_y), line, font=font, fill='black', align='left')
 
                 text_y += font.getbbox(line)[3] + 2 * scale_factor
 
@@ -290,8 +278,8 @@ def create_signature_image(text: str, encoded_image: str, path: str, width: int 
             img.save(buffer, format="PNG", optimize=True, dpi=(200, 200))
             high_res_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
             
-            """ # Scale down the image
-            img_scaled = img.resize((width, height), Image.LANCZOS)
+            # Scale down the image
+            """  img_scaled = img.resize((width, height), Image.LANCZOS)
             logger.debug(f"Image scaled down to {width}x{height}")
             try:
                 with open("signature_image.png", "wb") as f:
