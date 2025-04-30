@@ -56,7 +56,7 @@ def validate_signature_json(data, signature):
         })
         
         response = requests.post(
-            'http://localhost:5555/services/rest/validation/validateSignature',
+            'http://java-webapp:5555/services/rest/validation/validateSignature',
             json=body,
             timeout=30
         )
@@ -113,7 +113,7 @@ def validate_signature_pdf(data):
     }
     
     try:
-        response = requests.post('http://localhost:5555/services/rest/validation/validateSignature', json=body, timeout=30)
+        response = requests.post('http://java-webapp:5555/services/rest/validation/validateSignature', json=body, timeout=30)
         
         # Log full response details for debugging
         logger.debug(f"DSS validate_signature_pdf response: status={response.status_code}, content={response.text[:100]}")
