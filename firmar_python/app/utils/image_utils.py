@@ -289,7 +289,7 @@ def create_signature_image(text: str, encoded_image: str, path: str, width: int 
             img.save(buffer, format="PNG", optimize=True, dpi=(200, 200))
             high_res_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
             
-            # Scale down the image
+            """ # Scale down the image
             img_scaled = img.resize((width, height), Image.LANCZOS)
             logger.debug(f"Image scaled down to {width}x{height}")
             try:
@@ -297,7 +297,7 @@ def create_signature_image(text: str, encoded_image: str, path: str, width: int 
                     f.write(base64.b64decode(high_res_base64))
                 logger.info("High-resolution image saved to the root of the project as 'signature_image.png'")
             except Exception as e:
-               raise ImageCreationError(f"<img src='data:image/png;base64,{high_res_base64}' />")  
+               raise ImageCreationError(f"<img src='data:image/png;base64,{high_res_base64}' />")   """
             
             logger.info("Signature image created successfully")
             return {
