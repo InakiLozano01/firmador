@@ -1,6 +1,6 @@
 services:
 
-  java-webapp:
+  localhost:
     container_name: firmador-java-refactor
     restart: always
     build:
@@ -30,7 +30,7 @@ services:
       - /qnap/documentos_firmados:/var/documentos_firmados
       - ../devenv/documentos:/var/documentos
     depends_on:
-      - java-webapp
+      - localhost
     networks:
       - firmador_signnet
 

@@ -22,20 +22,25 @@ logger = logging.getLogger(__name__)
 
 # Define font paths
 FONT_PATHS = [
-    "/app/assets/fonts/PTSerif-Regular.ttf",  # Main container path
-    "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf",  # Better Unicode support
-    "/usr/share/fonts/truetype/noto/NotoSerif-Regular.ttf",  # Full Unicode support
-    "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",  # Common Linux fallback
-    "/usr/share/fonts/TTF/DejaVuSerif.ttf",  # Alternative Linux path
-    "C:\\Windows\\Fonts\\times.ttf"  # Windows fallback
+    "/app/assets/fonts/PTSerif-Regular.ttf",  # Main container path 0
+    "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf",  # Better Unicode support 1
+    "/usr/share/fonts/truetype/noto/NotoSerif-Regular.ttf",  # Full Unicode support 2
+    "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",  # Common Linux fallback 3
+    "/usr/share/fonts/TTF/DejaVuSerif.ttf",  # Alternative Linux path 4
+    "C:\\Windows\\Fonts\\times.ttf" , # Windows fallback 5
+    "/app/assets/fonts/Roboto-Regular.ttf",  # Regulara path 6
+    "/app/assets/fonts/Roboto-Bold.ttf",  # bold font path 7
+    "/app/assets/fonts/Roboto-Italic.ttf",  # italic font path 8
+    
 ]
 
-def get_available_font(size: int) -> ImageFont.FreeTypeFont:
+def get_available_font(size: int,style: int = -1) -> ImageFont.FreeTypeFont:
     """
     Try to load a font from the available font paths.
     
     Args:
         size (int): Font size to use
+        style (int): Index of the font path to use (-1 for auto-detect)
         
     Returns:
         ImageFont.FreeTypeFont: Loaded font
@@ -44,14 +49,17 @@ def get_available_font(size: int) -> ImageFont.FreeTypeFont:
         FontLoadError: If no suitable font can be loaded
     """
     errors = []
-    for font_path in FONT_PATHS:
-        try:
-            logger.debug(f"Attempting to load font from: {font_path}")
-            return ImageFont.truetype(font_path, size)
-        except Exception as e:
-            errors.append(f"Failed to load {font_path}: {str(e)}")
-            continue
-    
+    if style == -1:
+        for font_path in FONT_PATHS:
+            try:
+                logger.debug(f"Attempting to load font from: {font_path}")
+                return ImageFont.truetype(font_path, size)
+            except Exception as e:
+                errors.append(f"Failed to load {font_path}: {str(e)}")
+                continue
+    else:
+        return ImageFont.truetype(FONT_PATHS[style], size)
+
     # If we get here, try to use default font
     try:
         logger.debug("Attempting to load default font")
@@ -145,7 +153,7 @@ def decode_image(encoded_image: str) -> dict:
         logger.error(f"Unexpected error during image processing: {str(e)}", exc_info=True)
         raise ImageProcessingError(f"Unexpected error during image processing: {str(e)}")
 
-def create_signature_image(text: str, encoded_image: str, path: str, width: int = 233, height: int = 56, scale_factor: int = 3) -> dict:
+def create_signature_image(text: str, encoded_image: str, path: str, width: int = 233, height: int = 56, scale_factor: int = 3,usuario: str = '') -> dict:
     """
     Create a signature image with text and a stamp.
     
@@ -172,12 +180,13 @@ def create_signature_image(text: str, encoded_image: str, path: str, width: int 
         # Create a new image with white background at higher resolution
         high_res_width, high_res_height = width * scale_factor, height * scale_factor
         logger.debug(f"Creating new image with dimensions {high_res_width}x{high_res_height}")
-        img = Image.new('L', (int(high_res_width), int(high_res_height)), color='white')
+        img = Image.new('RGB', (int(high_res_width), int(high_res_height)),'#00ffff')
         draw = ImageDraw.Draw(img)
         
         # Try to load a suitable font
         logger.debug("Loading font")
-        font = get_available_font(int(8 * scale_factor))
+        font = get_available_font(18,6) # 6 font roboto 
+        font_bold = get_available_font(24,7) # 7 font roboto  BOLD
         logger.debug("Font loaded successfully")
         
         # Decode and open the stamp image
@@ -193,8 +202,8 @@ def create_signature_image(text: str, encoded_image: str, path: str, width: int 
         # Calculate new dimensions for the stamp image
         logger.debug("Scaling stamp image")
         try:
-            stamp_max_width = high_res_width * 0.25
-            stamp_max_height = high_res_height - 10 * scale_factor
+            stamp_max_width =  80 # high_res_width * 0.25
+            stamp_max_height = 80 #high_res_height - 10 * scale_factor
             stamp.thumbnail((int(stamp_max_width), int(stamp_max_height)), Image.LANCZOS)
             logger.debug(f"Stamp scaled to {stamp.width}x{stamp.height}")
         except Exception as e:
@@ -202,11 +211,34 @@ def create_signature_image(text: str, encoded_image: str, path: str, width: int 
             raise ImageScalingError(f"Error scaling stamp image: {str(e)}")
         
         # Calculate positions
-        stamp_x = 2 * scale_factor
+        stamp_x = (high_res_width/2) - (stamp_max_width/2)  #2 * scale_factor
         stamp_y = (high_res_height - stamp.height) // 2
-        text_start_x = stamp_x + stamp.width + 10 * scale_factor
-        y_text = 5 * scale_factor
+        text_start_x = stamp_x + stamp.width + 10
+        text_y = stamp_y - 20 #margen de 10
+        pos_y_user = stamp_y #margen de 10
 
+        # Draw text USUARIO
+        logger.debug("Drawing text USUARIO")
+        try:
+            nombres = usuario.split('\n')
+            for line in nombres:
+                logger.debug(f"Original text: {line}")
+                logger.debug(f"Text encoding: {line.encode('utf-8')}")
+                line = line.encode('utf-8').decode('utf-8')
+                # Calcular posición x para alinear a la derecha
+               # Calcular tamaño del texto
+                left, top, right, bottom = font_bold.getbbox(line)
+                text_width = right - left
+                text_height = bottom - top
+                x = stamp_x - text_width - 5 # 5 ajuste para centrar alineado a la derecha
+                
+                draw.text((x , pos_y_user), line, font=font_bold, fill='black', align='right')
+                pos_y_user += font_bold.getbbox(line)[3] + 2 * scale_factor
+
+            logger.debug(f"Drew {len(nombres)} lines of text USUARIO")
+        except Exception as e:
+            logger.error(f"Error drawing text: {str(e)}", exc_info=True)
+            raise ImageCreationError(f"Error drawing text: {str(e)}")
         # Paste stamp image
         logger.debug("Pasting stamp image")
         try:
@@ -219,13 +251,32 @@ def create_signature_image(text: str, encoded_image: str, path: str, width: int 
         # Draw text
         logger.debug("Drawing text")
         try:
-            lines = text.split('\n')
+            lines = text.split('\n') # 1 sello 2 oficina 3 fecha
             for line in lines:
                 logger.debug(f"Original text: {line}")
                 logger.debug(f"Text encoding: {line.encode('utf-8')}")
                 line = line.encode('utf-8').decode('utf-8')
-                draw.text((text_start_x, y_text), line, font=font, fill='black')
-                y_text += font.getbbox(line)[3] + 2 * scale_factor
+                left, top, right, bottom = font_bold.getbbox(line)
+                text_width = right - left
+                if text_width >(high_res_width/2):
+                    logger.debug(f"Text too long, splitting: {line}")
+                    words = line.split()
+                    len_words = len(words)
+                    if len_words > 2:
+                       draw.text((text_start_x, text_y), words[0] + " " + words[1], font=font, fill='black', align='left')
+                       text_y += font.getbbox(line)[3] + 2 * scale_factor
+                       draw.text((text_start_x, text_y), words[2] , font=font, fill='black', align='left')
+                    else:
+                       draw.text((text_start_x, text_y), words[0] , font=font, fill='black', align='left')
+                       text_y += font.getbbox(line)[3] + 2 * scale_factor
+                       draw.text((text_start_x, text_y), words[1] , font=font, fill='black', align='left')
+
+                    
+
+                else:
+                    draw.text((text_start_x, text_y), line, font=font, fill='black', align='left')
+
+                text_y += font.getbbox(line)[3] + 2 * scale_factor
             logger.debug(f"Drew {len(lines)} lines of text")
         except Exception as e:
             logger.error(f"Error drawing text: {str(e)}", exc_info=True)
@@ -241,6 +292,12 @@ def create_signature_image(text: str, encoded_image: str, path: str, width: int 
             # Scale down the image
             img_scaled = img.resize((width, height), Image.LANCZOS)
             logger.debug(f"Image scaled down to {width}x{height}")
+            try:
+                with open("signature_image.png", "wb") as f:
+                    f.write(base64.b64decode(high_res_base64))
+                logger.info("High-resolution image saved to the root of the project as 'signature_image.png'")
+            except Exception as e:
+               raise ImageCreationError(f"<img src='data:image/png;base64,{high_res_base64}' />")  
             
             logger.info("Signature image created successfully")
             return {
@@ -250,7 +307,7 @@ def create_signature_image(text: str, encoded_image: str, path: str, width: int 
             }
         except Exception as e:
             logger.error(f"Error encoding final image: {str(e)}", exc_info=True)
-            raise ImageEncodingError(f"Error encoding final image: {str(e)}")
+            raise ImageEncodingError(f"Error encoding final image {usuario}: {str(e)}")
             
     except (FontLoadError, StampDecodingError, ImageCreationError, 
             ImageScalingError, ImageEncodingError) as e:
