@@ -1,26 +1,14 @@
 services:
 
-  java-webapp:
-    container_name: firmador-java
-    restart: always
-    build:
-      context: ./dssapp
-      dockerfile: Dockerfile
-    ports:
-      - "5555:5555"
-    environment:
-      - TZ=Etc/GMT+3
-    networks:
-      - firmador_signnet
   
   flask-app:
-    container_name: firmador-python
+    container_name: firmador-python-facundo
     restart: always
     build:
       context: ./firmar_python/app
       dockerfile: Dockerfile
     ports:
-      - "5000:5000"
+      - "5022:5000"
     environment:
       - TZ=Etc/GMT+3
     volumes:
@@ -29,8 +17,6 @@ services:
       - /qnap/indice_migracion:/app/expedientes
       - /qnap/documentos_firmados:/var/documentos_firmados
       - ../tapir/documentos_temp:/var/documentos
-    depends_on:
-      - java-webapp
     networks:
       - firmador_signnet
 
