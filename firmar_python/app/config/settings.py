@@ -25,5 +25,6 @@ class Settings:
 
     # Assets paths
     LOGO_PATH = os.path.join(APP_ROOT, 'assets', 'images', 'logo_tribunal_para_tapir_250px.png')
+    LOGO_YUNGA_PATH = os.path.join(APP_ROOT, 'assets', 'images', os.getenv('LOGO_YUNGA_FILE'))
 
 settings = Settings() 
