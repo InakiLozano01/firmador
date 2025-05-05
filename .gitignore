@@ -15,5 +15,5 @@ firmar_python/firma_cliente/token_lib.json
 actions-runner
 .venv
 .cursorrules
-__pycache__
+__pycache__/
 
