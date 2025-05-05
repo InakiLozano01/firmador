@@ -22,12 +22,7 @@ logger = logging.getLogger(__name__)
 
 # Define font paths
 FONT_PATHS = [
-    "/app/assets/fonts/PTSerif-Regular.ttf",  # Main container path
-    "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf",  # Better Unicode support
-    "/usr/share/fonts/truetype/noto/NotoSerif-Regular.ttf",  # Full Unicode support
-    "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",  # Common Linux fallback
-    "/usr/share/fonts/TTF/DejaVuSerif.ttf",  # Alternative Linux path
-    "C:\\Windows\\Fonts\\times.ttf"  # Windows fallback
+    "/app/assets/fonts/PTSerif-Regular.ttf"
 ]
 
 def get_available_font(size: int) -> ImageFont.FreeTypeFont:
