@@ -28,9 +28,9 @@ FONT_PATHS = [
     "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",  # Common Linux fallback 3
     "/usr/share/fonts/TTF/DejaVuSerif.ttf",  # Alternative Linux path 4
     "C:\\Windows\\Fonts\\times.ttf" , # Windows fallback 5
-    "/app/assets/fonts/Roboto-Regular.ttf",  # Regulara path 6
-    "/app/assets/fonts/Roboto-Bold.ttf",  # bold font path 7
-    "/app/assets/fonts/Roboto-Italic.ttf",  # italic font path 8
+    "/app/assets/fonts/RobotoCondensed-Regular.ttf",  # Regulara path 6
+    "/app/assets/fonts/RobotoCondensed-Bold.ttf",  # bold font path 7
+    "/app/assets/fonts/RobotoCondensed-Italic.ttf",  # italic font path 8
     
 ]
 
