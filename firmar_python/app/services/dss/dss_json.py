@@ -35,7 +35,7 @@ def _make_dss_request(endpoint: str, request_body: Dict[str, Any]) -> DSSRespons
             }
         })
         
-        response = requests.post(f'http://java-webapp:5555/services/rest/signature/one-document/{endpoint}', json=request_body)
+        response = requests.post(f'http://192.168.41.190:5555/services/rest/signature/one-document/{endpoint}', json=request_body)
         
         # Log the response
         logger.info("DSS API Response", extra={

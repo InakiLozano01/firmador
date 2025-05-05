@@ -153,7 +153,7 @@ def decode_image(encoded_image: str) -> dict:
         logger.error(f"Unexpected error during image processing: {str(e)}", exc_info=True)
         raise ImageProcessingError(f"Unexpected error during image processing: {str(e)}")
 
-def create_signature_image(text: str, encoded_image: str, path: str, width: int = 270, height: int = 50, scale_factor: int = 3,usuario: str = '') -> dict:
+def create_signature_image(text: str, encoded_image: str, path: str, width: int = 270, height: int = 66, scale_factor: int = 3,usuario: str = '') -> dict:
     """
     Create a signature image with text and a stamp.
     
@@ -179,13 +179,14 @@ def create_signature_image(text: str, encoded_image: str, path: str, width: int 
     try:
         # Create a new image with white background at higher resolution
         high_res_width, high_res_height = width * scale_factor, height * scale_factor
+        
         logger.debug(f"Creating new image with dimensions {high_res_width}x{high_res_height}")
         img = Image.new('RGB', (int(high_res_width), int(high_res_height)),'#ffffff')
         draw = ImageDraw.Draw(img)
         
         # Try to load a suitable font
         logger.debug("Loading font")
-        font = get_available_font(18,6) # 6 font roboto 
+        font = get_available_font(24,6) # 6 font roboto 
         font_bold = get_available_font(24,7) # 7 font roboto  BOLD
         logger.debug("Font loaded successfully")
         
@@ -214,7 +215,7 @@ def create_signature_image(text: str, encoded_image: str, path: str, width: int 
         stamp_x = (high_res_width/2) - (stamp_max_width/2) + 5 #2 * scale_factor
         stamp_y = (high_res_height - stamp.height) // 2
         text_start_x = stamp_x + stamp.width + 5
-        text_y = stamp_y + 20 #margen de 10
+        text_y = stamp_y  + 5 #margen de 10
         pos_y_user = stamp_y + 20 #margen de 10
 
         # Draw text USUARIO
@@ -261,8 +262,22 @@ def create_signature_image(text: str, encoded_image: str, path: str, width: int 
                 line = line.encode('utf-8').decode('utf-8')
                 left, top, right, bottom = font_bold.getbbox(line)
                 text_width = right - left
-                
-                draw.text((text_start_x, text_y), line, font=font, fill='black', align='left')
+                if text_width >(high_res_width/2):
+                    logger.debug(f"Text too long, splitting: {line}")
+                    words = line.split()
+                    len_words = len(words)
+                    if len_words > 2:
+                        draw.text((text_start_x, text_y), words[0] + " " + words[1], font=font, fill='black', align='left')
+                        text_y += font.getbbox(line)[3] + 2 * scale_factor
+                        draw.text((text_start_x, text_y), words[2] , font=font, fill='black', align='left')
+                    else:
+                        draw.text((text_start_x, text_y), words[0] , font=font, fill='black', align='left')
+                        text_y += font.getbbox(line)[3] + 2 * scale_factor
+                        draw.text((text_start_x, text_y), words[1] , font=font, fill='black', align='left')
+                else:
+                    draw.text((text_start_x, text_y), line, font=font, fill='black', align='left')
+
+               # draw.text((text_start_x, text_y), line, font=font, fill='black', align='left')
 
                 text_y += font.getbbox(line)[3] + 2 * scale_factor
 
@@ -278,15 +293,165 @@ def create_signature_image(text: str, encoded_image: str, path: str, width: int 
             img.save(buffer, format="PNG", optimize=True, dpi=(200, 200))
             high_res_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
             
-            # Scale down the image
-            """  img_scaled = img.resize((width, height), Image.LANCZOS)
+            """ # Scale down the image
+            img_scaled = img.resize((width, height), Image.LANCZOS)
             logger.debug(f"Image scaled down to {width}x{height}")
             try:
                 with open("signature_image.png", "wb") as f:
                     f.write(base64.b64decode(high_res_base64))
                 logger.info("High-resolution image saved to the root of the project as 'signature_image.png'")
             except Exception as e:
-               raise ImageCreationError(f"<img src='data:image/png;base64,{high_res_base64}' />")   """
+               raise ImageCreationError(f"<img src='data:image/png;base64,{high_res_base64}' />") """   
+            
+            logger.info("Signature image created successfully")
+
+            return {
+                "success": True,
+                "data": high_res_base64,
+                "message": "Signature image created successfully"
+            }
+        except Exception as e:
+            logger.error(f"Error encoding final image: {str(e)}", exc_info=True)
+            raise ImageEncodingError(f"Error encoding final image {usuario}: {str(e)}")
+            
+    except (FontLoadError, StampDecodingError, ImageCreationError, 
+            ImageScalingError, ImageEncodingError) as e:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error during signature image creation: {str(e)}", exc_info=True)
+        raise ImageProcessingError(f"Unexpected error during signature image creation: {str(e)}")
+    
+
+def create_signature_image_system(text: str, encoded_image: str, path: str, width: int = 270, height: int = 66, scale_factor: int = 3,usuario: str = '') -> dict:
+    """
+    Create a signature image with text and a stamp para el System.
+    
+    Args:
+        text (str): The text to add to the signature image
+        encoded_image (str): Base64 encoded stamp image
+        path (str): Path identifier for the image
+        width (int): Final width of the scaled image (default: 233)
+        height (int): Final height of the scaled image (default: 56)
+        scale_factor (int): Scale factor for initial high-resolution image (default: 3)
+        
+    Returns:
+        dict: Dictionary containing the encoded high-resolution image and status
+        
+    Raises:
+        FontLoadError: If there's an error loading the required font
+        StampDecodingError: If there's an error decoding the stamp image
+        ImageCreationError: If there's an error creating the signature image
+        ImageScalingError: If there's an error scaling the image
+        ImageProcessingError: For any other unexpected errors
+    """
+    logger.info("Starting signature image creation")
+    try:
+        # Create a new image with white background at higher resolution
+        high_res_width, high_res_height = width * scale_factor, height * scale_factor
+        
+        logger.debug(f"Creating new image with dimensions {high_res_width}x{high_res_height}")
+        img = Image.new('RGB', (int(high_res_width), int(high_res_height)),'#ffffff')
+        draw = ImageDraw.Draw(img)
+        
+        # Try to load a suitable font
+        logger.debug("Loading font")
+        font = get_available_font(24,6) # 6 font roboto 
+        font_bold = get_available_font(24,7) # 7 font roboto  BOLD
+        logger.debug("Font loaded successfully")
+        
+        # Decode and open the stamp image
+        logger.debug("Decoding stamp image")
+        try:
+            stamp_data = base64.b64decode(encoded_image)
+            stamp = Image.open(io.BytesIO(stamp_data))
+            logger.debug("Stamp image decoded successfully")
+        except (base64.binascii.Error, IOError) as e:
+            logger.error(f"Error decoding stamp image: {str(e)}", exc_info=True)
+            raise StampDecodingError(f"Error decoding stamp image: {str(e)}")
+
+        # Calculate new dimensions for the stamp image
+        logger.debug("Scaling stamp image")
+        try:
+            stamp_max_width =  50 # high_res_width * 0.25
+            stamp_max_height = 50 #high_res_height - 10 * scale_factor
+            stamp.thumbnail((int(stamp_max_width), int(stamp_max_height)), Image.LANCZOS)
+            logger.debug(f"Stamp scaled to {stamp.width}x{stamp.height}")
+        except Exception as e:
+            logger.error(f"Error scaling stamp image: {str(e)}", exc_info=True)
+            raise ImageScalingError(f"Error scaling stamp image: {str(e)}")
+        
+        # Calculate positions
+        stamp_x = (high_res_width/2) - (stamp_max_width/2) - 80 #2 * scale_factor
+        stamp_y = (high_res_height - stamp.height) // 2
+        text_start_x = stamp_x + stamp.width + 10
+        text_y = stamp_y   
+        pos_y_user = stamp_y + 10
+
+        # Draw text USUARIO
+        logger.debug("Drawing text USUARIO")
+        try:
+            nombreslower = usuario.split('\n')
+            nombres =  []
+            for line in nombreslower:
+                nombres.append(line.upper())
+            for line in nombres:
+                logger.debug(f"Original text: {line}")
+                logger.debug(f"Text encoding: {line.encode('utf-8')}")
+                line = line.encode('utf-8').decode('utf-8')
+                # Calcular posición x para alinear a la derecha
+                # Calcular tamaño del texto
+                left, top, right, bottom = font_bold.getbbox(line)
+                text_width = right - left
+                text_height = bottom - top
+                x = stamp_x - text_width -10  # 5 ajuste para centrar alineado a la derecha
+                draw.text((x , pos_y_user), line, font=font_bold, fill='black', align='right')
+                pos_y_user += font_bold.getbbox(line)[3] + 2 * scale_factor
+
+            logger.debug(f"Drew {len(nombres)} lines of text USUARIO")
+        except Exception as e:
+            logger.error(f"Error drawing text: {str(e)}", exc_info=True)
+            raise ImageCreationError(f"Error drawing text: {str(e)}")
+
+        # Paste stamp image
+        logger.debug("Pasting stamp image")
+        try:
+            img.paste(stamp, (int(stamp_x), int(stamp_y)), stamp if stamp.mode == 'RGBA' else None)
+            logger.debug("Stamp pasted successfully")
+        except Exception as e:
+            logger.error(f"Error pasting stamp image: {str(e)}", exc_info=True)
+            raise ImageCreationError(f"Error pasting stamp image: {str(e)}")
+
+        # Draw text
+        logger.debug("Drawing text")
+        try:
+            lines = text.split('\n') # 1 sello 2 oficina 3 fecha
+            for line in lines:
+               
+                line = line.encode('utf-8').decode('utf-8')
+                draw.text((text_start_x, text_y), line, font=font, fill='black', align='left')
+                text_y += font.getbbox(line)[3] + 2 * scale_factor
+
+            logger.debug(f"Drew {len(lines)} lines of text")
+        except Exception as e:
+            logger.error(f"Error drawing text: {str(e)}", exc_info=True)
+            raise ImageCreationError(f"Error drawing text: {str(e)}")
+
+        # Save and encode high resolution image
+        logger.debug("Saving and encoding final image")
+        try:
+            buffer = io.BytesIO()
+            img.save(buffer, format="PNG", optimize=True, dpi=(200, 200))
+            high_res_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+            
+            """ # Scale down the image
+            img_scaled = img.resize((width, height), Image.LANCZOS)
+            logger.debug(f"Image scaled down to {width}x{height}")
+            try:
+                with open("signature_image.png", "wb") as f:
+                    f.write(base64.b64decode(high_res_base64))
+                logger.info("High-resolution image saved to the root of the project as 'signature_image.png'")
+            except Exception as e:
+               raise ImageCreationError(f"<img src='data:image/png;base64,{high_res_base64}' />") """   
             
             logger.info("Signature image created successfully")
 
