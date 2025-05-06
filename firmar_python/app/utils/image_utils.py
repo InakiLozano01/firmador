@@ -153,17 +153,18 @@ def decode_image(encoded_image: str) -> dict:
         logger.error(f"Unexpected error during image processing: {str(e)}", exc_info=True)
         raise ImageProcessingError(f"Unexpected error during image processing: {str(e)}")
 
-def create_signature_image(text: str, encoded_image: str, path: str, width: int = 280, height: int = 40, scale_factor: int = 3,usuario: str = '') -> dict:
+def create_signature_image(text: str, encoded_image: str, path: str, width: int = 280, height: int = 40, scale_factor: int = 3, usuario: str = '') -> dict:
     """
-    Create a signature image with text and a stamp.
+    Create a signature image with text and a stamp, with all elements properly centered.
     
     Args:
-        text (str): The text to add to the signature image
-        encoded_image (str): Base64 encoded stamp image
+        text (str): The text to add to the signature image (info section)
+        encoded_image (str): Base64 encoded stamp image (logo)
         path (str): Path identifier for the image
-        width (int): Final width of the scaled image (default: 233)
-        height (int): Final height of the scaled image (default: 56)
+        width (int): Final width of the scaled image (default: 280)
+        height (int): Final height of the scaled image (default: 40)
         scale_factor (int): Scale factor for initial high-resolution image (default: 3)
+        usuario (str): User name/information to display
         
     Returns:
         dict: Dictionary containing the encoded high-resolution image and status
@@ -181,16 +182,16 @@ def create_signature_image(text: str, encoded_image: str, path: str, width: int 
         high_res_width, high_res_height = width * scale_factor, height * scale_factor
         
         logger.debug(f"Creating new image with dimensions {high_res_width}x{high_res_height}")
-        img = Image.new('RGB', (int(high_res_width), int(high_res_height)),'#fAff22')
+        img = Image.new('RGB', (int(high_res_width), int(high_res_height)), '#fAff22')
         draw = ImageDraw.Draw(img)
         
-        # Try to load a suitable font
-        logger.debug("Loading font")
-        font = get_available_font(24,6) # 6 font roboto 
-        font_bold = get_available_font(32,7) # 7 font roboto  BOLD
-        logger.debug("Font loaded successfully")
+        # Try to load suitable fonts
+        logger.debug("Loading fonts")
+        font_regular = get_available_font(24, 6)  # Regular font for info text
+        font_bold = get_available_font(32, 7)     # Bold font for user name
+        logger.debug("Fonts loaded successfully")
         
-        # Decode and open the stamp image
+        # Decode and open the stamp image (logo)
         logger.debug("Decoding stamp image")
         try:
             stamp_data = base64.b64decode(encoded_image)
@@ -200,110 +201,139 @@ def create_signature_image(text: str, encoded_image: str, path: str, width: int 
             logger.error(f"Error decoding stamp image: {str(e)}", exc_info=True)
             raise StampDecodingError(f"Error decoding stamp image: {str(e)}")
 
-        # Calculate new dimensions for the stamp image
+        # Calculate new dimensions for the stamp image (logo)
         logger.debug("Scaling stamp image")
         try:
-            stamp_max_width =  50 # high_res_width * 0.25
-            stamp_max_height = 50 #high_res_height - 10 * scale_factor
+            stamp_max_width = 50
+            stamp_max_height = 50
             stamp.thumbnail((int(stamp_max_width), int(stamp_max_height)), Image.LANCZOS)
             logger.debug(f"Stamp scaled to {stamp.width}x{stamp.height}")
         except Exception as e:
             logger.error(f"Error scaling stamp image: {str(e)}", exc_info=True)
             raise ImageScalingError(f"Error scaling stamp image: {str(e)}")
         
-        # Calculate positions
-        stamp_x = (high_res_width/2) - (stamp_max_width/2)  #2 * scale_factor
-        stamp_y = (high_res_height/2) - (stamp_max_height/2) 
-        text_start_x = stamp_x + stamp.width + 5
-        text_height = 0
-        #Distancia de Y con respecto a y del lienzo
-        text_y = stamp_y  - 30 #margen de 10
-       
-        # Draw text
-        logger.debug("Drawing text")
-        try:
-            lines = text.split('\n') # 1 sello 2 oficina 3 fecha
-            for line in lines:
-                logger.debug(f"Original text: {line}")
-                logger.debug(f"Text encoding: {line.encode('utf-8')}")
-                line = line.encode('utf-8').decode('utf-8').upper()
-                left, top, right, bottom = font_bold.getbbox(line)
-                text_height += bottom - top
-                text_width = right - left
-                if text_width >(high_res_width/2):
-                    logger.debug(f"Text too long, splitting: {line}")
-                    words = line.split()
-                    len_words = len(words)
-                    if len_words > 2:
-                        draw.text((text_start_x, text_y), words[0] + " " + words[1], font=font, fill='black', align='left')
-                        text_y += font.getbbox(line)[3] + 3 
-                        draw.text((text_start_x, text_y), " ".join(words[2:]) , font=font, fill='black', align='left')
-                    else:
-                        draw.text((text_start_x, text_y), words[0] , font=font, fill='black', align='left')
-                        text_y += font.getbbox(line)[3] + 3 
-                        draw.text((text_start_x, text_y), words[1] , font=font, fill='black', align='left')
-                else:
-                    draw.text((text_start_x, text_y), line, font=font, fill='black', align='left')
-
-               # draw.text((text_start_x, text_y), line, font=font, fill='black', align='left')
-
-                text_y += font.getbbox(line)[3] + 3 
-
-            logger.debug(f"Drew {len(lines)} lines of text")
-        except Exception as e:
-            logger.error(f"Error drawing text: {str(e)}", exc_info=True)
-            raise ImageCreationError(f"Error drawing text: {str(e)}")
+        # Pre-process text blocks to calculate heights for proper centering
+        logger.debug("Calculating text heights for vertical centering")
         
-
-        pos_y_user = (high_res_height/2) - (text_height/2) 
-        # Draw text USUARIO
-        logger.debug("Drawing text USUARIO")
+        # Process user text to calculate its height
+        user_lines = usuario.split('\n')
+        user_total_height = 0
+        for line in user_lines:
+            line = line.upper()
+            left, top, right, bottom = font_bold.getbbox(line)
+            line_height = bottom - top
+            
+            # Check if line needs to be split
+            if (right - left) > (high_res_width / 3):
+                words = line.split()
+                if len(words) > 2:
+                    user_total_height += line_height + (1 * scale_factor)  # First part
+                    user_total_height += line_height + (1 * scale_factor)  # Second part
+                else:
+                    user_total_height += line_height + (1 * scale_factor)  # First part
+                    user_total_height += line_height + (1 * scale_factor)  # Second part
+            else:
+                user_total_height += line_height + (1 * scale_factor)
+        
+        # Process info text to calculate its height
+        info_lines = text.split('\n')
+        info_total_height = 0
+        for line in info_lines:
+            line = line.upper()
+            left, top, right, bottom = font_regular.getbbox(line)
+            line_height = bottom - top
+            
+            # Check if line needs to be split
+            if (right - left) > (high_res_width / 3):
+                words = line.split()
+                if len(words) > 2:
+                    info_total_height += line_height + 3  # First part
+                    info_total_height += line_height + 3  # Second part
+                else:
+                    info_total_height += line_height + 3  # First part
+                    info_total_height += line_height + 3  # Second part
+            else:
+                info_total_height += line_height + 3
+        
+        # Find the tallest element to use for vertical centering
+        max_height = max(user_total_height, stamp_max_height, info_total_height)
+        
+        # Calculate vertical positions to center all elements
+        center_y = high_res_height / 2
+        user_start_y = center_y - (user_total_height / 2)
+        stamp_y = center_y - (stamp_max_height / 2)
+        info_start_y = center_y - (info_total_height / 2)
+        
+        # Calculate horizontal positions with logo section smaller than 1/3
+        logo_section_width = stamp_max_width + 20  # Logo width plus margin
+        remaining_width = high_res_width - logo_section_width
+        
+        # Divide the remaining space equally between user and info sections
+        user_section_width = remaining_width / 2
+        info_section_width = remaining_width / 2
+        
+        # User section (left)
+        user_section_right_edge = user_section_width
+        
+        # Logo section (middle)
+        stamp_x = user_section_width + (logo_section_width / 2) - (stamp.width / 2)
+        
+        # Info section (right)
+        info_section_start_x = user_section_width + logo_section_width
+        info_section_center_x = info_section_start_x + (info_section_width / 2)
+        
+        # Draw USER text block (left side but right-aligned)
+        logger.debug("Drawing USER text block")
+        current_y = user_start_y
         try:
-            nombreslower = usuario.split('\n')
-            nombres =  []
-            for line in nombreslower:
-                nombres.append(line.upper())
-            for line in nombres:
-                logger.debug(f"Original text: {line}")
-                logger.debug(f"Text encoding: {line.encode('utf-8')}")
-                line = line.encode('utf-8').decode('utf-8')
-                # Calcular posición x para alinear a la derecha
-                # Calcular tamaño del texto
+            for line in user_lines:
+                line = line.upper()
                 left, top, right, bottom = font_bold.getbbox(line)
                 text_width = right - left
-                text_height += bottom - top
-                pos_x_user = stamp_x - text_width - 5 # 5 ajuste para centrar alineado a la derecha
-                if text_width >(high_res_width/2):
-                    logger.debug(f"Text too long, splitting: {line}")
-                    words = line.split()
-                    len_words = len(words)
-                    if len_words > 2:
-                        left, top, right, bottom = font_bold.getbbox(words[0] + " " + words[1])
-                        text_width = right - left
-                        pos_x_user = stamp_x - text_width - 5
-                        draw.text((pos_x_user, pos_y_user), words[0] + " " + words[1], font= font_bold, fill='black', align='right')
-                        pos_y_user += font_bold.getbbox(line)[3] + 1 * scale_factor 
-                        left, top, right, bottom = font_bold.getbbox(" ".join(words[2:]))
-                        text_width = right - left
-                        pos_x_user = stamp_x - text_width - 5
-                        draw.text((pos_x_user, pos_y_user)," ".join(words[2:]) , font= font_bold, fill='black', align='right')
-                    else:
-                        draw.text((pos_x_user, pos_y_user), words[0] , font= font_bold, fill='black', align='right')
-                        pos_y_user += font_bold.getbbox(line)[3] + 1 * scale_factor 
-                        draw.text((pos_x_user, pos_y_user), words[1] , font= font_bold, fill='black', align='right')
-                else:
-                    draw.text((pos_x_user, pos_y_user), line, font=font_bold, fill='black', align='right')
                 
-                #draw.text((x , pos_y_user), line, font=font_bold, fill='black', align='right')
-                pos_y_user += font_bold.getbbox(line)[3] + 1 * scale_factor
-
-            logger.debug(f"Drew {len(nombres)} lines of text USUARIO")
+                # Check if text is too long and needs to be split
+                if text_width > (user_section_width * 0.9):
+                    words = line.split()
+                    if len(words) > 2:
+                        # First part
+                        first_part = words[0] + " " + words[1]
+                        left, top, right, bottom = font_bold.getbbox(first_part)
+                        text_width = right - left
+                        text_x = user_section_right_edge - text_width - 10  # Align to the right with 10px margin
+                        draw.text((text_x, current_y), first_part, font=font_bold, fill='black')
+                        current_y += bottom - top + (1 * scale_factor)
+                        
+                        # Second part
+                        second_part = " ".join(words[2:])
+                        left, top, right, bottom = font_bold.getbbox(second_part)
+                        text_width = right - left
+                        text_x = user_section_right_edge - text_width - 10  # Align to the right with 10px margin
+                        draw.text((text_x, current_y), second_part, font=font_bold, fill='black')
+                    else:
+                        # Split into two lines if there are only two words
+                        left, top, right, bottom = font_bold.getbbox(words[0])
+                        text_width = right - left
+                        text_x = user_section_right_edge - text_width - 10  # Align to the right with 10px margin
+                        draw.text((text_x, current_y), words[0], font=font_bold, fill='black')
+                        current_y += bottom - top + (1 * scale_factor)
+                        
+                        left, top, right, bottom = font_bold.getbbox(words[1])
+                        text_width = right - left
+                        text_x = user_section_right_edge - text_width - 10  # Align to the right with 10px margin
+                        draw.text((text_x, current_y), words[1], font=font_bold, fill='black')
+                else:
+                    # Right-align the text in the user section
+                    text_x = user_section_right_edge - text_width - 10  # Align to the right with 10px margin
+                    draw.text((text_x, current_y), line, font=font_bold, fill='black')
+                
+                current_y += bottom - top + (1 * scale_factor)
+            logger.debug(f"Drew {len(user_lines)} lines of USER text")
         except Exception as e:
-            logger.error(f"Error drawing text: {str(e)}", exc_info=True)
-            raise ImageCreationError(f"Error drawing text: {str(e)}")
+            logger.error(f"Error drawing USER text: {str(e)}", exc_info=True)
+            raise ImageCreationError(f"Error drawing USER text: {str(e)}")
         
-        # Paste stamp image
-        logger.debug("Pasting stamp image")
+        # Paste stamp image (logo in the middle)
+        logger.debug("Pasting stamp image in the center")
         try:
             img.paste(stamp, (int(stamp_x), int(stamp_y)), stamp if stamp.mode == 'RGBA' else None)
             logger.debug("Stamp pasted successfully")
@@ -311,22 +341,66 @@ def create_signature_image(text: str, encoded_image: str, path: str, width: int 
             logger.error(f"Error pasting stamp image: {str(e)}", exc_info=True)
             raise ImageCreationError(f"Error pasting stamp image: {str(e)}")
         
+        # Draw INFO text block (right side)
+        logger.debug("Drawing INFO text block")
+        current_y = info_start_y
+        try:
+            for line in info_lines:
+                line = line.upper()
+                left, top, right, bottom = font_regular.getbbox(line)
+                text_width = right - left
+                
+                # Check if text is too long and needs to be split
+                if text_width > (info_section_width * 0.9):
+                    words = line.split()
+                    if len(words) > 2:
+                        # First part
+                        first_part = words[0] + " " + words[1]
+                        left, top, right, bottom = font_regular.getbbox(first_part)
+                        text_width = right - left
+                        # Alinear a la izquierda desde el inicio de la sección de info
+                        text_x = info_section_start_x + 10  # Añadir pequeño margen
+                        draw.text((text_x, current_y), first_part, font=font_regular, fill='black')
+                        current_y += bottom - top + 3
+                        
+                        # Second part
+                        second_part = " ".join(words[2:])
+                        left, top, right, bottom = font_regular.getbbox(second_part)
+                        text_width = right - left
+                        # Alinear a la izquierda desde el inicio de la sección de info
+                        text_x = info_section_start_x + 10  # Añadir pequeño margen
+                        draw.text((text_x, current_y), second_part, font=font_regular, fill='black')
+                    else:
+                        # Split into two lines if there are only two words
+                        left, top, right, bottom = font_regular.getbbox(words[0])
+                        text_width = right - left
+                        # Alinear a la izquierda desde el inicio de la sección de info
+                        text_x = info_section_start_x + 10  # Añadir pequeño margen
+                        draw.text((text_x, current_y), words[0], font=font_regular, fill='black')
+                        current_y += bottom - top + 3
+                        
+                        left, top, right, bottom = font_regular.getbbox(words[1])
+                        text_width = right - left
+                        # Alinear a la izquierda desde el inicio de la sección de info
+                        text_x = info_section_start_x + 10  # Añadir pequeño margen
+                        draw.text((text_x, current_y), words[1], font=font_regular, fill='black')
+                else:
+                    # Alinear a la izquierda desde el inicio de la sección de info en lugar de centrar
+                    text_x = info_section_start_x + 10  # Añadir pequeño margen
+                    draw.text((text_x, current_y), line, font=font_regular, fill='black')
+                
+                current_y += bottom - top + 3
+            logger.debug(f"Drew {len(info_lines)} lines of INFO text")
+        except Exception as e:
+            logger.error(f"Error drawing INFO text: {str(e)}", exc_info=True)
+            raise ImageCreationError(f"Error drawing INFO text: {str(e)}")
+        
         # Save and encode high resolution image
         logger.debug("Saving and encoding final image")
         try:
             buffer = io.BytesIO()
             img.save(buffer, format="PNG", optimize=True, dpi=(200, 200))
             high_res_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
-            
-            """# Scale down the image
-            img_scaled = img.resize((width, height), Image.LANCZOS)
-            logger.debug(f"Image scaled down to {width}x{height}")
-            try:
-                with open("signature_image.png", "wb") as f:
-                    f.write(base64.b64decode(high_res_base64))
-                logger.info("High-resolution image saved to the root of the project as 'signature_image.png'")
-            except Exception as e:
-               raise ImageCreationError(f"<img src='data:image/png;base64,{high_res_base64}' />") """
             
             logger.info("Signature image created successfully")
 
@@ -345,7 +419,7 @@ def create_signature_image(text: str, encoded_image: str, path: str, width: int 
     except Exception as e:
         logger.error(f"Unexpected error during signature image creation: {str(e)}", exc_info=True)
         raise ImageProcessingError(f"Unexpected error during signature image creation: {str(e)}")
-    
+
 
 def create_signature_image_system(text: str, encoded_image: str, path: str, width: int = 270, height: int = 66, scale_factor: int = 3,usuario: str = '') -> dict:
     """
