@@ -23,18 +23,13 @@ logger = logging.getLogger(__name__)
 # Define font paths
 FONT_PATHS = [
     "/app/assets/fonts/PTSerif-Regular.ttf",  # Main container path 0
-    "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf",  # Better Unicode support 1
-    "/usr/share/fonts/truetype/noto/NotoSerif-Regular.ttf",  # Full Unicode support 2
-    "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",  # Common Linux fallback 3
-    "/usr/share/fonts/TTF/DejaVuSerif.ttf",  # Alternative Linux path 4
-    "C:\\Windows\\Fonts\\times.ttf" , # Windows fallback 5
-    "/app/assets/fonts/RobotoCondensed-Regular.ttf",  # Regulara path 6
-    "/app/assets/fonts/RobotoCondensed-Bold.ttf",  # bold font path 7
-    "/app/assets/fonts/RobotoCondensed-Italic.ttf",  # italic font path 8
-    
+    "/app/assets/fonts/RobotoCondensed-Regular.ttf",  # Regular font path 1
+    "/app/assets/fonts/RobotoCondensed-Bold.ttf",  # bold font path 2
+    "/app/assets/fonts/RobotoCondensed-Italic.ttf",  # italic font path 3
+    "/app/assets/fonts/RobotoCondensed-BoldItalic.ttf"  # bold italic font path 4
 ]
 
-def get_available_font(size: int,style: int = -1) -> ImageFont.FreeTypeFont:
+def get_available_font(size: int, font_type: int = -1) -> ImageFont.FreeTypeFont:
     """
     Try to load a font from the available font paths.
     
@@ -49,7 +44,7 @@ def get_available_font(size: int,style: int = -1) -> ImageFont.FreeTypeFont:
         FontLoadError: If no suitable font can be loaded
     """
     errors = []
-    if style == -1:
+    if font_type == -1:
         for font_path in FONT_PATHS:
             try:
                 logger.debug(f"Attempting to load font from: {font_path}")
@@ -58,7 +53,7 @@ def get_available_font(size: int,style: int = -1) -> ImageFont.FreeTypeFont:
                 errors.append(f"Failed to load {font_path}: {str(e)}")
                 continue
     else:
-        return ImageFont.truetype(FONT_PATHS[style], size)
+        return ImageFont.truetype(FONT_PATHS[font_type], size)
 
     # If we get here, try to use default font
     try:
@@ -187,8 +182,8 @@ def create_signature_image(text: str, encoded_image: str, path: str, width: int 
         
         # Try to load suitable fonts
         logger.debug("Loading fonts")
-        font_regular = get_available_font(24, 6)  # Regular font for info text
-        font_bold = get_available_font(32, 7)     # Bold font for user name
+        font_regular = get_available_font(24, 1)  # Regular font for info text
+        font_bold = get_available_font(32, 2)     # Bold font for user name
         logger.debug("Fonts loaded successfully")
         
         # Decode and open the stamp image (logo)
@@ -451,8 +446,8 @@ def create_signature_image_system(text: str, encoded_image: str, path: str, widt
         
         # Try to load a suitable font
         logger.debug("Loading font")
-        font = get_available_font(24,6) # 6 font roboto 
-        font_bold = get_available_font(24,7) # 7 font roboto  BOLD
+        font = get_available_font(24,1) # 1 font roboto 
+        font_bold = get_available_font(24,2) # 2 font roboto  BOLD
         logger.debug("Font loaded successfully")
         
         # Decode and open the stamp image
@@ -596,14 +591,14 @@ def create_sello_image(text: str, encoded_image: str, path: str, width: int = 32
         high_res_width, high_res_height = width * scale_factor, height * scale_factor
         
         logger.debug(f"Creating new image with dimensions {high_res_width}x{high_res_height}")
-        img = Image.new('RGB', (int(high_res_width), int(high_res_height)),'#ffffff')
+        img = Image.new('RGB', (int(high_res_width), int(high_res_height)),'#ffff00')
         draw = ImageDraw.Draw(img)
         
         # Try to load a suitable font
         logger.debug("Loading font")
-        font = get_available_font(9 * scale_factor, 6) # 6 font roboto 
-        font_bold_name = get_available_font(12 * scale_factor, 7) # 7 font roboto  BOLD
-        font_italic_stamp = get_available_font(10 * scale_factor, 8) # 7 font roboto  italic
+        font = get_available_font(9 * scale_factor, 1) # 1 font roboto 
+        font_bold_name = get_available_font(12 * scale_factor, 2) # 2 font roboto  BOLD
+        font_italic_stamp = get_available_font(10 * scale_factor, 3) # 3 font roboto  italic
         logger.debug("Font loaded successfully")
         
         # Decode and open the stamp image
@@ -622,28 +617,6 @@ def create_sello_image(text: str, encoded_image: str, path: str, width: int = 32
         # Draw text USUARIO (centrado)
         logger.debug("Drawing text USUARIO")
         try:
-            """"
-            nombres_separado = usuario.split('\n')
-            nombres = []
-            for line in nombres_separado:
-                nombres.append(line.upper())
-            
-            # Combinar el nombre completo si hay múltiples líneas
-            nombre_completo = " ".join(nombres)
-            
-            # Calcular posición para centrar el texto
-            left, top, right, bottom = font_bold_name.getbbox(nombre_completo)
-            text_width = right - left
-            text_height = bottom - top
-            
-            # Centrar horizontalmente
-            pos_x_user = (high_res_width - text_width) // 2
-            
-            # Dibujar el nombre centrado
-            draw.text((pos_x_user, current_y), nombre_completo, font=font_bold_name, fill='black')
-            current_y += text_height + 5 * scale_factor
-            """
-
             nombres_lower = usuario.split('\n')
             nombres =  []
             nombre_completo = " ".join(nombres_lower)
@@ -653,7 +626,6 @@ def create_sello_image(text: str, encoded_image: str, path: str, width: int = 32
                     nombres.append(line.upper())
             else:
                 nombres = nombre_completo.upper()
-
 
             if isinstance(nombres, str):
                 nombres = [nombres]
@@ -666,7 +638,7 @@ def create_sello_image(text: str, encoded_image: str, path: str, width: int = 32
                 pos_x_user = (high_res_width - text_width) // 2
                 draw.text((pos_x_user , current_y), line, font=font_bold_name, fill='black')
                 current_y += text_height + 5 * scale_factor
-       
+
             logger.debug(f"Drew user name text centered")
         except Exception as e:
             logger.error(f"Error drawing text: {str(e)}", exc_info=True)
