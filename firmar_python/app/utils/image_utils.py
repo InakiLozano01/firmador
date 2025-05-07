@@ -517,7 +517,7 @@ def create_signature_image_system(text: str, encoded_image: str, path: str, widt
         try:
             lines = text.split('\n') # 1 sello 2 oficina 3 fecha
             for line in lines:
-               
+                
                 line = line.encode('utf-8').decode('utf-8')
                 draw.text((text_start_x, text_y), line, font=font, fill='black', align='left')
                 text_y += font.getbbox(line)[3] + 2 * scale_factor
@@ -542,7 +542,7 @@ def create_signature_image_system(text: str, encoded_image: str, path: str, widt
                     f.write(base64.b64decode(high_res_base64))
                 logger.info("High-resolution image saved to the root of the project as 'signature_image.png'")
             except Exception as e:
-               raise ImageCreationError(f"<img src='data:image/png;base64,{high_res_base64}' />") """   
+                raise ImageCreationError(f"<img src='data:image/png;base64,{high_res_base64}' />") """   
             
             logger.info("Signature image created successfully")
 
