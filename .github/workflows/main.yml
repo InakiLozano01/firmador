@@ -9,7 +9,7 @@ on:
 jobs:
   deploy_testing:
     if: github.ref == 'refs/heads/testing'
-    runs-on: [self-hosted,  Firmador-runner-master]
+    runs-on: [self-hosted,  firmador-runner-dev]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
