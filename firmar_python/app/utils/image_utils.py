@@ -182,7 +182,7 @@ def create_signature_image(text: str, encoded_image: str, path: str, width: int 
         high_res_width, high_res_height = width * scale_factor, height * scale_factor
         
         logger.debug(f"Creating new image with dimensions {high_res_width}x{high_res_height}")
-        img = Image.new('RGB', (int(high_res_width), int(high_res_height)), '#fAff22')
+        img = Image.new('RGB', (int(high_res_width), int(high_res_height)), '#ffffff')
         draw = ImageDraw.Draw(img)
         
         # Try to load suitable fonts
@@ -606,6 +606,7 @@ def create_sello_image(text: str, encoded_image: str, path: str, width: int = 28
         logger.debug("Loading font")
         font = get_available_font(24,6) # 6 font roboto 
         font_bold = get_available_font(32,7) # 7 font roboto  BOLD
+        font_italic = get_available_font(24,8) # 7 font roboto  italic
         logger.debug("Font loaded successfully")
         
         # Decode and open the stamp image
@@ -618,53 +619,59 @@ def create_sello_image(text: str, encoded_image: str, path: str, width: int = 28
             logger.error(f"Error decoding stamp image: {str(e)}", exc_info=True)
             raise StampDecodingError(f"Error decoding stamp image: {str(e)}")
 
-        stamp_x = 5 #margen de 10
-        stamp_y = 5 #margen de 10
-        text_start_x = stamp_x
-        
-        pos_y_user = stamp_y #margen de 10
+        # Posición vertical inicial
+        current_y = 5  # margen superior
 
-        # Draw text USUARIO
+        # Draw text USUARIO (centrado)
         logger.debug("Drawing text USUARIO")
         try:
             nombres_separado = usuario.split('\n')
-            nombres =  []
+            nombres = []
             for line in nombres_separado:
                 nombres.append(line.upper())
            
-                # Calcular posición x para alinear a la derecha
-                # Calcular tamaño del texto
-            left, top, right, bottom = font_bold.getbbox(nombres[0]+" "+nombres[1])
+            # Combinar el nombre completo si hay múltiples líneas
+            nombre_completo = " ".join(nombres)
+            
+            # Calcular posición para centrar el texto
+            left, top, right, bottom = font_bold.getbbox(nombre_completo)
             text_width = right - left
             text_height = bottom - top
-            pos_x_user = stamp_x  # 5 ajuste para centrar alineado a la derecha
-
-            draw.text((pos_x_user, pos_y_user), nombres[0]+" "+nombres[1], font=font_bold, fill='black', align='right')
-            pos_y_user += font_bold.getbbox(nombres[0]+" "+nombres[1])[3] + 1 * scale_factor
+            
+            # Centrar horizontalmente
+            pos_x_user = (high_res_width - text_width) // 2
+            
+            # Dibujar el nombre centrado
+            draw.text((pos_x_user, current_y), nombre_completo, font=font_bold, fill='black')
+            current_y += text_height + 2 * scale_factor
        
-
-            logger.debug(f"Drew {len(nombres)} lines of text USUARIO")
+            logger.debug(f"Drew user name text centered")
         except Exception as e:
             logger.error(f"Error drawing text: {str(e)}", exc_info=True)
             raise ImageCreationError(f"Error drawing text: {str(e)}")
-
     
-        text_y = pos_y_user
-        # Draw text
-        logger.debug("Drawing text")
+        # Draw additional text (centrado)
+        logger.debug("Drawing additional text")
         try:
-            lines = text.split('\n') # 1 sello 2 oficina 3 fecha
-            for line in lines:
+            lines = text.split('\n')  # 1 sello 2 oficina 3 fecha
+            for i, line in enumerate(lines):
                 logger.debug(f"Original text: {line}")
                 logger.debug(f"Text encoding: {line.encode('utf-8')}")
                 line = line.encode('utf-8').decode('utf-8').upper()
-                left, top, right, bottom = font_bold.getbbox(line)
+                
+                # Choose font based on line number
+                current_font = font_italic if i == 0 else font
+                
+                # Calcular posición para centrar cada línea
+                left, top, right, bottom = current_font.getbbox(line)
                 text_width = right - left
-                draw.text((text_start_x, text_y), line, font=font, fill='black', align='left')
-
-               # draw.text((text_start_x, text_y), line, font=font, fill='black', align='left')
-
-                text_y += font.getbbox(line)[3] + 3 
+                text_height = bottom - top
+                
+                # Centrar horizontalmente
+                text_x = (high_res_width - text_width) // 2
+                
+                draw.text((text_x, current_y), line, font=current_font, fill='black')
+                current_y += text_height + 3
 
             logger.debug(f"Drew {len(lines)} lines of text")
         except Exception as e:
