@@ -35,8 +35,8 @@ class ToolsController:
             str: Base64 encoded image
         """
         try:
-            #from app.utils.image_utils import create_sello_image as create_img
-            from app.utils.image_utils import create_signature_image as create_img
+            from app.utils.image_utils import create_sello_image as create_img
+            #from app.utils.image_utils import create_signature_image as create_img
             
             # Construir el texto para la firma (lado derecho de la imagen)
             text = f"{area}\n{department}\n{datetime}"
@@ -51,9 +51,6 @@ class ToolsController:
                 text=text,
                 encoded_image=stamp_path,  # La imagen se cargará desde stamp_path
                 path='show',
-                width=280,
-                height=40,
-                scale_factor=3,
                 usuario=username
             )
             
