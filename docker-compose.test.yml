@@ -1,7 +1,7 @@
 services:
 
   java-webapp:
-    container_name: firmador-java-refactor
+    container_name: firmador-java
     restart: always
     build:
       context: ./dssapp
@@ -12,7 +12,7 @@ services:
       - TZ=Etc/GMT+3
     networks:
       - firmador_signnet
-  
+
   flask-app:
     container_name: firmador-python-test
     restart: always

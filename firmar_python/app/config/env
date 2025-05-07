@@ -6,3 +6,5 @@ DB_PORT= your_db_port
 PRIVATE_KEY_PASSWORD= your_private_key_password
 PRIVATE_KEY_PATH= your_private_key_path
 CERTIFICATE_PATH= your_certificate_path
+
+LOGO_YUNGA_FILE= your_img_path

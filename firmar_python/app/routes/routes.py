@@ -332,6 +332,54 @@ def register_routes(app):
         Test route.
         """
         return jsonify({"status": "success", "message": "Test route"}), 200
+    
+    @app.route('/create_signature_image', methods=['POST'])
+    def create_signature():
+        """
+        Route for creating a signature image from user info.
+        """
+        try:
+            data = request.get_json()
+            username = data.get('username')
+            area = data.get('area') 
+            department = data.get('department')
+            datetime = data.get('datetime')
+
+            if not all([username, area, department, datetime]):
+                return jsonify({
+                    "status": False,
+                    "message": "Missing required fields",
+                    "errors": [{
+                        "message": "All fields (username, area, department, datetime) are required"
+                    }]
+                }), 400
+
+            try:
+                return  tools_controller.create_signature_image(username, area, department, datetime)
+                """ return jsonify({
+                    "status": True,
+                    "message": "Signature image created successfully",
+                    "image": image_result
+                }), 200 """
+            except Exception as e:
+                logger.error(f"Error creating signature image: {str(e)}", exc_info=True)
+                return jsonify({
+                    "status": False,
+                    "message": f"Error creating signature image: {str(e)}",
+                    "errors": [{
+                        "message": str(e)
+                    }]
+                }), 500
+
+        except Exception as e:
+            logger.error(f"Error processing request data: {str(e)}", exc_info=True)
+            return jsonify({
+                "status": False,
+                "message": f"Error processing request data: {str(e)}",
+                "errors": [{
+                    "message": str(e)
+                }]
+            }), 400
 
 
 

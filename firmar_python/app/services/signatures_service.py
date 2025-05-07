@@ -15,7 +15,7 @@ from app.config.state import app_state
 from app.utils.certificates_utils import extract_certificate_info_name
 from app.services.dss.dss_pdf import get_data_to_sign_token, get_data_to_sign_certificate, sign_document_certificate, sign_document_token
 from app.services.local_certs import get_certificate_from_local, get_signature_value_own
-from app.utils.image_utils import create_signature_image
+from app.utils.image_utils import create_sello_image as create_signature_image,create_signature_image_system 
 from app.utils.db import get_number_and_date_then_close, unlock_pdf_and_close_task
 from app.utils.saving import save_signed_pdf
 from app.services.dss.dss_json import get_data_to_sign_tapir_jades, sign_document_tapir_jades
@@ -110,10 +110,7 @@ class SignaturesService:
             
             try:
                 logger.debug("Creating signature image")
-                custom_image = create_signature_image(
-                    f"{name}\n{app_state.datetimesigned}\n{stamp}\n{area}",
-                    app_state.encoded_image["data"],
-                    "token"
+                custom_image = create_signature_image(f"{stamp}\n{area}\n{app_state.datetimesigned}",app_state.encoded_image["data"],"cert",usuario=f"{name}"
                 )
                 # Extract base64 string from response
                 custom_image = custom_image["data"]
@@ -305,10 +302,7 @@ class SignaturesService:
                     dt = datetime.strptime(app_state.datetimesigned, "%Y-%m-%d %H:%M:%S")
                     app_state.datetimesigned = dt.strftime("%d/%m/%Y %H:%M:%S")
                 try:
-                    custom_image = create_signature_image(
-                        f"{name}\n{app_state.datetimesigned}\n{stamp}\n{area}",
-                        app_state.encoded_image["data"],
-                        "token"
+                    custom_image = create_signature_image(f"{stamp}\n{area}\n{app_state.datetimesigned}",app_state.encoded_image["data"],"token",usuario=f"{name}"
                     )
                     # Extract base64 string from response
                     custom_image = custom_image["data"]
@@ -572,7 +566,7 @@ class SignaturesService:
                 try:
                     # Extract base64 string from encoded_image dictionary
                     encoded_image_data = app_state.encoded_image.get("data") if isinstance(app_state.encoded_image, dict) else app_state.encoded_image
-                    custom_image = create_signature_image(f"{name}\n{datetimesigned}\n{stamp}\n{area}", encoded_image_data, "cert")
+                    custom_image = create_signature_image(f"{stamp}\n{area}\n{datetimesigned}", encoded_image_data, "cert",usuario=f"{name}")
                     # Extract base64 string from response
                     custom_image = custom_image["data"]
                 except Exception as e:
@@ -580,13 +574,14 @@ class SignaturesService:
             else:
                 try:
                     # Extract base64 string from encoded_image dictionary
-                    encoded_image_data = app_state.encoded_image.get("data") if isinstance(app_state.encoded_image, dict) else app_state.encoded_image
-                    custom_image = create_signature_image(f"Sistema Yunga TC Tucumán\n{app_state.datetimesigned}", encoded_image_data, "yunga")
+                    encoded_image_data = app_state.encoded_image_yunga.get("data") if isinstance(app_state.encoded_image_yunga, dict) else app_state.encoded_image_yunga
+                    custom_image = create_signature_image_system(f"TRIBUNAL DE CUENTAS TUCUMÁN\n{app_state.datetimesigned}", encoded_image_data, "yunga",usuario="SISTEMA YUNGA")
+
                     # Extract base64 string from response
                     custom_image = custom_image["data"]
                 except Exception as e:
                     raise Exception("Error al crear imagen de firma: " + str(e))
-                role = "Sistema YUNGA Tribunal de Cuentas Tucuman"
+                role = "SISTEMA YUNGA - Tribunal de Cuentas Tucumán"
 
             try:
                 certificates = get_certificate_from_local()

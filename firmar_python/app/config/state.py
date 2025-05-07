@@ -13,6 +13,7 @@ class AppState:
         self.datetimesigned = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         self.conn = None
         self.encoded_image = encode_image(settings.LOGO_PATH)
+        self.encoded_image_yunga = encode_image(settings.LOGO_YUNGA_PATH)
         self.isclosing = None
         # Initialize the document timestamps map
         self.doc_timestamps = {}
@@ -24,6 +25,7 @@ class AppState:
         self.datetimesigned = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         self.conn = None
         self.encoded_image = encode_image(settings.LOGO_PATH)
+        self.encoded_image_yunga = encode_image(settings.LOGO_YUNGA_PATH)
         self.isclosing = None
         # Clear document-specific data
         self.doc_timestamps = {}
