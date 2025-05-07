@@ -226,14 +226,11 @@ def create_signature_image(text: str, encoded_image: str, path: str, width: int 
             # Check if line needs to be split
             if (right - left) > (high_res_width / 3):
                 words = line.split()
-                if len(words) > 2:
-                    user_total_height += line_height + (1 * scale_factor)  # First part
-                    user_total_height += line_height + (1 * scale_factor)  # Second part
-                else:
-                    user_total_height += line_height + (1 * scale_factor)  # First part
-                    user_total_height += line_height + (1 * scale_factor)  # Second part
+                
+                user_total_height += line_height   # First part
+                user_total_height += line_height   # Second part
             else:
-                user_total_height += line_height + (1 * scale_factor)
+                user_total_height += line_height + 5
         
         # Process info text to calculate its height
         info_lines = text.split('\n')
@@ -247,13 +244,13 @@ def create_signature_image(text: str, encoded_image: str, path: str, width: int 
             if (right - left) > (high_res_width / 3):
                 words = line.split()
                 if len(words) > 2:
-                    info_total_height += line_height + 3  # First part
-                    info_total_height += line_height + 3  # Second part
+                    info_total_height += line_height + 5  # First part
+                    info_total_height += line_height + 5  # Second part
                 else:
-                    info_total_height += line_height + 3  # First part
-                    info_total_height += line_height + 3  # Second part
+                    info_total_height += line_height   # First part
+                    info_total_height += line_height   # Second part
             else:
-                info_total_height += line_height + 3
+                info_total_height += line_height + 5
         
         # Find the tallest element to use for vertical centering
         max_height = max(user_total_height, stamp_max_height, info_total_height)
@@ -265,7 +262,7 @@ def create_signature_image(text: str, encoded_image: str, path: str, width: int 
         info_start_y = center_y - (info_total_height / 2)
         
         # Calculate horizontal positions with logo section smaller than 1/3
-        logo_section_width = stamp_max_width + 20  # Logo width plus margin
+        logo_section_width = stamp_max_width   # Logo width plus margin
         remaining_width = high_res_width - logo_section_width
         
         # Divide the remaining space equally between user and info sections
@@ -299,7 +296,7 @@ def create_signature_image(text: str, encoded_image: str, path: str, width: int 
                         first_part = words[0] + " " + words[1]
                         left, top, right, bottom = font_bold.getbbox(first_part)
                         text_width = right - left
-                        text_x = user_section_right_edge - text_width - 10  # Align to the right with 10px margin
+                        text_x = user_section_right_edge - text_width - 5  # Align to the right with 10px margin
                         draw.text((text_x, current_y), first_part, font=font_bold, fill='black')
                         current_y += bottom - top + (1 * scale_factor)
                         
@@ -307,23 +304,23 @@ def create_signature_image(text: str, encoded_image: str, path: str, width: int 
                         second_part = " ".join(words[2:])
                         left, top, right, bottom = font_bold.getbbox(second_part)
                         text_width = right - left
-                        text_x = user_section_right_edge - text_width - 10  # Align to the right with 10px margin
+                        text_x = user_section_right_edge - text_width - 5  # Align to the right with 10px margin
                         draw.text((text_x, current_y), second_part, font=font_bold, fill='black')
                     else:
                         # Split into two lines if there are only two words
                         left, top, right, bottom = font_bold.getbbox(words[0])
                         text_width = right - left
-                        text_x = user_section_right_edge - text_width - 10  # Align to the right with 10px margin
+                        text_x = user_section_right_edge - text_width - 5  # Align to the right with 10px margin
                         draw.text((text_x, current_y), words[0], font=font_bold, fill='black')
                         current_y += bottom - top + (1 * scale_factor)
                         
                         left, top, right, bottom = font_bold.getbbox(words[1])
                         text_width = right - left
-                        text_x = user_section_right_edge - text_width - 10  # Align to the right with 10px margin
+                        text_x = user_section_right_edge - text_width - 5  # Align to the right with 10px margin
                         draw.text((text_x, current_y), words[1], font=font_bold, fill='black')
                 else:
                     # Right-align the text in the user section
-                    text_x = user_section_right_edge - text_width - 10  # Align to the right with 10px margin
+                    text_x = user_section_right_edge - text_width - 5  # Align to the right with 10px margin
                     draw.text((text_x, current_y), line, font=font_bold, fill='black')
                 
                 current_y += bottom - top + (1 * scale_factor)
@@ -359,37 +356,37 @@ def create_signature_image(text: str, encoded_image: str, path: str, width: int 
                         left, top, right, bottom = font_regular.getbbox(first_part)
                         text_width = right - left
                         # Alinear a la izquierda desde el inicio de la sección de info
-                        text_x = info_section_start_x + 10  # Añadir pequeño margen
+                        text_x = info_section_start_x + 5  # Añadir pequeño margen
                         draw.text((text_x, current_y), first_part, font=font_regular, fill='black')
-                        current_y += bottom - top + 3
+                        current_y += bottom - top + 6
                         
                         # Second part
                         second_part = " ".join(words[2:])
                         left, top, right, bottom = font_regular.getbbox(second_part)
                         text_width = right - left
                         # Alinear a la izquierda desde el inicio de la sección de info
-                        text_x = info_section_start_x + 10  # Añadir pequeño margen
+                        text_x = info_section_start_x + 5  # Añadir pequeño margen
                         draw.text((text_x, current_y), second_part, font=font_regular, fill='black')
                     else:
                         # Split into two lines if there are only two words
                         left, top, right, bottom = font_regular.getbbox(words[0])
                         text_width = right - left
                         # Alinear a la izquierda desde el inicio de la sección de info
-                        text_x = info_section_start_x + 10  # Añadir pequeño margen
+                        text_x = info_section_start_x + 5  # Añadir pequeño margen
                         draw.text((text_x, current_y), words[0], font=font_regular, fill='black')
-                        current_y += bottom - top + 3
+                        current_y += bottom - top + 6
                         
                         left, top, right, bottom = font_regular.getbbox(words[1])
                         text_width = right - left
                         # Alinear a la izquierda desde el inicio de la sección de info
-                        text_x = info_section_start_x + 10  # Añadir pequeño margen
+                        text_x = info_section_start_x + 5  # Añadir pequeño margen
                         draw.text((text_x, current_y), words[1], font=font_regular, fill='black')
                 else:
                     # Alinear a la izquierda desde el inicio de la sección de info en lugar de centrar
-                    text_x = info_section_start_x + 10  # Añadir pequeño margen
+                    text_x = info_section_start_x + 5  # Añadir pequeño margen
                     draw.text((text_x, current_y), line, font=font_regular, fill='black')
                 
-                current_y += bottom - top + 3
+                current_y += bottom - top + 6
             logger.debug(f"Drew {len(info_lines)} lines of INFO text")
         except Exception as e:
             logger.error(f"Error drawing INFO text: {str(e)}", exc_info=True)
