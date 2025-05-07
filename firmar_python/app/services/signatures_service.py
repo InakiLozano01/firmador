@@ -15,7 +15,7 @@ from app.config.state import app_state
 from app.utils.certificates_utils import extract_certificate_info_name
 from app.services.dss.dss_pdf import get_data_to_sign_token, get_data_to_sign_certificate, sign_document_certificate, sign_document_token
 from app.services.local_certs import get_certificate_from_local, get_signature_value_own
-from app.utils.image_utils import create_signature_image,create_signature_image_system
+from app.utils.image_utils import create_sello_image as create_signature_image,create_signature_image_system 
 from app.utils.db import get_number_and_date_then_close, unlock_pdf_and_close_task
 from app.utils.saving import save_signed_pdf
 from app.services.dss.dss_json import get_data_to_sign_tapir_jades, sign_document_tapir_jades

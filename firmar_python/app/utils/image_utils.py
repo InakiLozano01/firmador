@@ -568,7 +568,7 @@ def create_signature_image_system(text: str, encoded_image: str, path: str, widt
         raise ImageProcessingError(f"Unexpected error during signature image creation: {str(e)}")
 
 
-def create_sello_image(text: str, encoded_image: str, path: str, width: int = 280, height: int = 40, scale_factor: int = 3,usuario: str = '') -> dict:
+def create_sello_image(text: str, encoded_image: str, path: str, width: int = 320, height: int = 80, scale_factor: int = 4, usuario: str = '') -> dict:
     """
     Create a signature image with text and a stamp.
     
@@ -601,9 +601,9 @@ def create_sello_image(text: str, encoded_image: str, path: str, width: int = 28
         
         # Try to load a suitable font
         logger.debug("Loading font")
-        font = get_available_font(24,6) # 6 font roboto 
-        font_bold = get_available_font(32,7) # 7 font roboto  BOLD
-        font_italic = get_available_font(24,8) # 7 font roboto  italic
+        font = get_available_font(9 * scale_factor, 6) # 6 font roboto 
+        font_bold_name = get_available_font(12 * scale_factor, 7) # 7 font roboto  BOLD
+        font_italic_stamp = get_available_font(10 * scale_factor, 8) # 7 font roboto  italic
         logger.debug("Font loaded successfully")
         
         # Decode and open the stamp image
@@ -617,21 +617,22 @@ def create_sello_image(text: str, encoded_image: str, path: str, width: int = 28
             raise StampDecodingError(f"Error decoding stamp image: {str(e)}")
 
         # Posición vertical inicial
-        current_y = 5  # margen superior
+        current_y = 8 * scale_factor  # margen superior
 
         # Draw text USUARIO (centrado)
         logger.debug("Drawing text USUARIO")
         try:
+            """"
             nombres_separado = usuario.split('\n')
             nombres = []
             for line in nombres_separado:
                 nombres.append(line.upper())
-           
+            
             # Combinar el nombre completo si hay múltiples líneas
             nombre_completo = " ".join(nombres)
             
             # Calcular posición para centrar el texto
-            left, top, right, bottom = font_bold.getbbox(nombre_completo)
+            left, top, right, bottom = font_bold_name.getbbox(nombre_completo)
             text_width = right - left
             text_height = bottom - top
             
@@ -639,8 +640,32 @@ def create_sello_image(text: str, encoded_image: str, path: str, width: int = 28
             pos_x_user = (high_res_width - text_width) // 2
             
             # Dibujar el nombre centrado
-            draw.text((pos_x_user, current_y), nombre_completo, font=font_bold, fill='black')
-            current_y += text_height + 2 * scale_factor
+            draw.text((pos_x_user, current_y), nombre_completo, font=font_bold_name, fill='black')
+            current_y += text_height + 5 * scale_factor
+            """
+
+            nombres_lower = usuario.split('\n')
+            nombres =  []
+            nombre_completo = " ".join(nombres_lower)
+
+            if len(nombre_completo) > 36:
+                for line in nombres_lower:
+                    nombres.append(line.upper())
+            else:
+                nombres = nombre_completo.upper()
+
+
+            if isinstance(nombres, str):
+                nombres = [nombres]
+            
+            for line in nombres:
+                line = line.encode('utf-8').decode('utf-8')
+                left, top, right, bottom = font_bold_name.getbbox(line)
+                text_width = right - left
+                text_height = bottom - top
+                pos_x_user = (high_res_width - text_width) // 2
+                draw.text((pos_x_user , current_y), line, font=font_bold_name, fill='black')
+                current_y += text_height + 5 * scale_factor
        
             logger.debug(f"Drew user name text centered")
         except Exception as e:
@@ -657,7 +682,7 @@ def create_sello_image(text: str, encoded_image: str, path: str, width: int = 28
                 line = line.encode('utf-8').decode('utf-8').upper()
                 
                 # Choose font based on line number
-                current_font = font_italic if i == 0 else font
+                current_font = font_italic_stamp if i == 0 else font
                 
                 # Calcular posición para centrar cada línea
                 left, top, right, bottom = current_font.getbbox(line)
@@ -668,7 +693,7 @@ def create_sello_image(text: str, encoded_image: str, path: str, width: int = 28
                 text_x = (high_res_width - text_width) // 2
                 
                 draw.text((text_x, current_y), line, font=current_font, fill='black')
-                current_y += text_height + 3
+                current_y += text_height + 5 * scale_factor
 
             logger.debug(f"Drew {len(lines)} lines of text")
         except Exception as e:
