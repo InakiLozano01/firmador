@@ -131,10 +131,10 @@ def get_certificates_from_token(lib_path: str, pin: str) -> tuple[list[tuple[x50
             elif e_pkcs_session.rc == PyKCS11.CKR_PIN_LOCKED:
                 error_type = "PIN_LOCKED"
         if session and hasattr(session, 'is_valid') and not session.is_valid: 
-             try:
-                 session.closeSession() 
-             except PyKCS11.PyKCS11Error:
-                 print("Error al intentar cerrar sesión PKCS#11 ya inválida.")
+            try:
+                session.closeSession() 
+            except PyKCS11.PyKCS11Error:
+                print("Error al intentar cerrar sesión PKCS#11 ya inválida.")
         raise TokenLoginError(original_exception=e_pkcs_session, error_type=error_type) from e_pkcs_session
     except Exception as e_session: 
         if session and hasattr(session, 'is_valid') and not session.is_valid:
@@ -165,7 +165,7 @@ def get_certificates_from_token(lib_path: str, pin: str) -> tuple[list[tuple[x50
             except PyKCS11.PyKCS11Error as e_attr:
                 print(f"Error obteniendo atributos para un objeto de certificado en el token: {e_attr}")
             except ValueError as e_parse: 
-                 print(f"Error parseando un certificado DER desde el token: {e_parse}")
+                print(f"Error parseando un certificado DER desde el token: {e_parse}")
 
         if not cert_data_list:
             print("No se encontraron certificados en el token.")
@@ -178,7 +178,7 @@ def get_full_chain(cert: x509.Certificate, cert_der: bytes):
     """
     Construye la cadena de certificados completa.
     Devuelve una tupla (lista_de_cert_der, http_status_code) o 
-                 (respuesta_jsonify_de_error, http_status_code_de_error).
+    (respuesta_jsonify_de_error, http_status_code_de_error).
     """
     chain = [cert_der]
     current_cert = cert
