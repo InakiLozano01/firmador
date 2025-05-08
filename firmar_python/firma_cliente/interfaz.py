@@ -32,6 +32,30 @@ def select_token_slot(token_info, result, mode):
     token_window.resizable(False, False)
     token_window.grab_set()
 
+    # Set window icon
+    try:
+        if mode == 'python':
+            # Assuming interfaz.py is in firma_cliente, so ./images/ is firma_cliente/images/
+            icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "images", "app.ico")
+            if not os.path.exists(icon_path): # Fallback if not directly in images subdir of script
+                icon_path = "./images/app.ico" 
+        else:
+            # For EXE mode, __file__ is where the script is (possibly temp path)
+            # We assume 'images' folder is a subdirectory relative to the script/exe location
+            exe_dir = os.path.dirname(os.path.abspath(__file__))
+            icon_path = os.path.join(exe_dir, "images", "app.ico")
+            # If images are bundled directly at the root level with the exe (not in an 'images' subfolder)
+            if not os.path.exists(icon_path):
+                icon_path = os.path.join(exe_dir, "app.ico")
+
+
+        if os.path.exists(icon_path):
+            token_window.iconbitmap(icon_path)
+        else:
+            print(f"Icono 'app.ico' no encontrado en la ruta esperada: {icon_path}")
+    except Exception as e:
+        print(f"Error al establecer el icono de la ventana: {e}")
+
     # Ensure the window opens in the foreground and centered
     token_window.attributes('-topmost', True)
     token_window.update_idletasks()
@@ -49,10 +73,11 @@ def select_token_slot(token_info, result, mode):
     style = Style()
     style.configure("TButton", font=("Arial", 12), padding=10)
 
-    # Consolidated image path loading
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    icon_path = os.path.join(script_dir, "images", "icono_token.png")
-    icon = tk.PhotoImage(file=icon_path)
+    if mode == 'python':
+        icon = tk.PhotoImage(file="./images/icono_token.png")
+    else:
+        exe_dir = os.path.dirname(os.path.abspath(__file__))
+        icon = tk.PhotoImage(file=os.path.join(exe_dir, "images", "icono_token.png"))
 
     for i, info in enumerate(token_info):
         button = Button(frame, text=f"   Puerto USB numero: {i + 1}\n   Nombre del Token: {info['reader']}", style="TButton", image=icon, compound='left', cursor="hand2")
@@ -82,6 +107,22 @@ def select_library_file() -> str | None:
         # This is a bit of a heuristic; a more robust solution involves managing a single Tk root.
         if not tk._default_root: 
             root = tk.Tk()
+            # Set window icon for the temporary root
+            try:
+                # Try path relative to script first
+                script_dir = os.path.dirname(os.path.abspath(__file__))
+                icon_path_script_relative = os.path.join(script_dir, "images", "app.ico")
+                # Fallback to current working directory's images folder
+                icon_path_cwd_relative = os.path.join(".", "images", "app.ico")
+
+                if os.path.exists(icon_path_script_relative):
+                    root.iconbitmap(icon_path_script_relative)
+                elif os.path.exists(icon_path_cwd_relative):
+                    root.iconbitmap(icon_path_cwd_relative)
+                else:
+                    print(f"Icono 'app.ico' no encontrado en {icon_path_script_relative} ni {icon_path_cwd_relative}")
+            except Exception as e:
+                print(f"Error al establecer el icono de la ventana para select_library_file: {e}")
             root.withdraw() # Hide it
         
         file_path = filedialog.askopenfilename(
@@ -113,6 +154,26 @@ def get_pin_from_user(mode) -> str | None:
     try:
         pinwindow = tk.Tk()
         pinwindow.title("Introduzca su PIN")
+
+        # Set window icon
+        try:
+            if mode == 'python':
+                icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "images", "app.ico")
+                if not os.path.exists(icon_path): 
+                    icon_path = "./images/app.ico" 
+            else:
+                exe_dir = os.path.dirname(os.path.abspath(__file__))
+                icon_path = os.path.join(exe_dir, "images", "app.ico")
+                if not os.path.exists(icon_path):
+                     icon_path = os.path.join(exe_dir, "app.ico")
+            
+            if os.path.exists(icon_path):
+                pinwindow.iconbitmap(icon_path)
+            else:
+                print(f"Icono 'app.ico' no encontrado en la ruta esperada para get_pin_from_user: {icon_path}")
+        except Exception as e:
+            print(f"Error al establecer el icono de la ventana para get_pin_from_user: {e}")
+
         pinwindow.geometry("500x175") # Adjusted height slightly for better fit
         pinwindow.resizable(False, False)
         pinwindow.grab_set()
@@ -139,8 +200,11 @@ def get_pin_from_user(mode) -> str | None:
         style = Style()
         style.configure("TButton", font=("Arial", 12), padding=10)
 
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        base_path = os.path.join(script_dir, "images")
+        base_path = "./images/"
+        if mode != 'python':
+            base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "images")
+            # For PyInstaller, if images are bundled directly (not in an 'images' subdir of the temp folder)
+            # you might need: base_path = os.path.dirname(os.path.abspath(__file__))
 
         try:
             original_aceptar = Image.open(os.path.join(base_path, "aceptar.png"))
@@ -212,6 +276,26 @@ def select_certificate(certificates, result, mode):
         
     cert_window = tk.Toplevel(certs)
     cert_window.title("Ventana de selección de certificado")
+
+    # Set window icon
+    try:
+        if mode == 'python':
+            icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "images", "app.ico")
+            if not os.path.exists(icon_path):
+                icon_path = "./images/app.ico"
+        else:
+            exe_dir = os.path.dirname(os.path.abspath(__file__))
+            icon_path = os.path.join(exe_dir, "images", "app.ico")
+            if not os.path.exists(icon_path):
+                icon_path = os.path.join(exe_dir, "app.ico")
+        
+        if os.path.exists(icon_path):
+            cert_window.iconbitmap(icon_path)
+        else:
+            print(f"Icono 'app.ico' no encontrado en la ruta esperada para select_certificate: {icon_path}")
+    except Exception as e:
+        print(f"Error al establecer el icono de la ventana para select_certificate: {e}")
+
     cert_window.geometry(f"500x{total_height}")
     cert_window.resizable(False, False)
     cert_window.grab_set()
@@ -233,9 +317,11 @@ def select_certificate(certificates, result, mode):
     style = Style()
     style.configure("TButton", font=("Arial", 10), padding=10)
 
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    image_file_path = os.path.join(script_dir, "images", "certificado.png")
-    original_image = Image.open(image_file_path)
+    if mode == 'python':
+        original_image = Image.open("./images/certificado.png")
+    else:
+        exe_dir = os.path.dirname(os.path.abspath(__file__))
+        original_image = Image.open(os.path.join(exe_dir, "images", "certificado.png"))
     resized_image = original_image.resize((50, 50))  # Resize to 50x50 pixels
     iconcertificado = ImageTk.PhotoImage(resized_image)
 
@@ -270,6 +356,24 @@ def select_certificate(certificates, result, mode):
 
 def show_alert(message, callback=None):
     puerto_uso = tk.Tk()
+
+    # Set window icon
+    try:
+        # Try path relative to script first
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        icon_path_script_relative = os.path.join(script_dir, "images", "app.ico")
+        # Fallback to current working directory's images folder
+        icon_path_cwd_relative = os.path.join(".", "images", "app.ico")
+
+        if os.path.exists(icon_path_script_relative):
+            puerto_uso.iconbitmap(icon_path_script_relative)
+        elif os.path.exists(icon_path_cwd_relative):
+            puerto_uso.iconbitmap(icon_path_cwd_relative)
+        else:
+            print(f"Icono 'app.ico' no encontrado en {icon_path_script_relative} ni {icon_path_cwd_relative} para show_alert")
+    except Exception as e:
+        print(f"Error al establecer el icono de la ventana para show_alert: {e}")
+    
     puerto_uso.withdraw()
     messagebox.showwarning("Alerta", message)
     puerto_uso.destroy()

@@ -18,12 +18,15 @@ services:
     restart: always
     build:
       context: ./firmar_python/app
+      context: ./firmar_python/app
       dockerfile: Dockerfile
     ports:
       - "5000:5000"
     environment:
       - TZ=Etc/GMT+3
     volumes:
+      - ./firmar_python/app:/app
+      - ./firmar_python/app/assets:/app/assets
       - ./firmar_python/app:/app
       - ./firmar_python/app/assets:/app/assets
       - /qnap/indice_migracion:/app/expedientes
@@ -37,3 +40,4 @@ services:
 networks:
   firmador_signnet:
     driver: bridge
+
