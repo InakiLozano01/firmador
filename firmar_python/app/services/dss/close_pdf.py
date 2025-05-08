@@ -29,7 +29,7 @@ def close_pdf(pdf_to_close, json_field_values):
             'fileName': "documento.pdf",
             'fieldValues': json_field_values
         }
-        response = requests.post('http://192.168.41.190:5555/pdf/update', headers={'Content-Type': 'application/json'}, data=json.dumps(data))
+        response = requests.post('http://java-webapp:5555/pdf/update', headers={'Content-Type': 'application/json'}, data=json.dumps(data))
         response.raise_for_status()
         return base64.b64encode(response.content).decode("utf-8")
     except requests.exceptions.RequestException as e:
