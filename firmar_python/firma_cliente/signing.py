@@ -1,6 +1,7 @@
 import PyKCS11
 from base64 import b64encode, b64decode
 import binascii # For Base64 decoding errors
+from typing import Any # Import Any for more flexible type hinting if needed
 
 ##################################################
 ###         Custom Signing Exceptions          ###
@@ -34,10 +35,11 @@ class InvalidBase64DataError(SigningError):
 ###            Signing Functions               ###
 ##################################################
 
-def get_private_key_object(session: PyKCS11.Session) -> PyKCS11.ObjectHandle:
+def get_private_key_object(session: PyKCS11.Session) -> Any:
     """
     Recupera el primer objeto de clave privada de la sesión.
     Levanta KeyOrCertificateNotFoundError si no se encuentra, o PKCS11OperationError.
+    Retorna un handle de objeto PKCS#11.
     """
     try:
         # Busca objetos de clave privada
@@ -64,10 +66,11 @@ def correct_base64_padding(data: str) -> str:
         data += '=' * (4 - missing_padding)
     return data
 
-def sign_data_with_private_key(session: PyKCS11.Session, private_key_handle: PyKCS11.ObjectHandle, data_to_sign_base64: str) -> str:
+def sign_data_with_private_key(session: PyKCS11.Session, private_key_handle: Any, data_to_sign_base64: str) -> str:
     """
     Firma los datos proporcionados (en Base64) con la clave privada.
     Devuelve la firma en Base64 o levanta InvalidBase64DataError / PKCS11OperationError.
+    'private_key_handle' es un handle de objeto PKCS#11.
     """
     try:
         padded_data_base64 = correct_base64_padding(data_to_sign_base64)
