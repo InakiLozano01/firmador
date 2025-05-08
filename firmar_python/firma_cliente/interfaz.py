@@ -49,11 +49,10 @@ def select_token_slot(token_info, result, mode):
     style = Style()
     style.configure("TButton", font=("Arial", 12), padding=10)
 
-    if mode == 'python':
-        icon = tk.PhotoImage(file="./images/icono_token.png")
-    else:
-        exe_dir = os.path.dirname(os.path.abspath(__file__))
-        icon = tk.PhotoImage(file=os.path.join(exe_dir, "icono_token.png"))
+    # Consolidated image path loading
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    icon_path = os.path.join(script_dir, "images", "icono_token.png")
+    icon = tk.PhotoImage(file=icon_path)
 
     for i, info in enumerate(token_info):
         button = Button(frame, text=f"   Puerto USB numero: {i + 1}\n   Nombre del Token: {info['reader']}", style="TButton", image=icon, compound='left', cursor="hand2")
@@ -140,11 +139,8 @@ def get_pin_from_user(mode) -> str | None:
         style = Style()
         style.configure("TButton", font=("Arial", 12), padding=10)
 
-        base_path = "./images/"
-        if mode != 'python':
-            base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "images")
-            # For PyInstaller, if images are bundled directly (not in an 'images' subdir of the temp folder)
-            # you might need: base_path = os.path.dirname(os.path.abspath(__file__))
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        base_path = os.path.join(script_dir, "images")
 
         try:
             original_aceptar = Image.open(os.path.join(base_path, "aceptar.png"))
@@ -237,11 +233,9 @@ def select_certificate(certificates, result, mode):
     style = Style()
     style.configure("TButton", font=("Arial", 10), padding=10)
 
-    if mode == 'python':
-        original_image = Image.open("./images/certificado.png")
-    else:
-        exe_dir = os.path.dirname(os.path.abspath(__file__))
-        original_image = Image.open(os.path.join(exe_dir, "certificado.png"))
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    image_file_path = os.path.join(script_dir, "images", "certificado.png")
+    original_image = Image.open(image_file_path)
     resized_image = original_image.resize((50, 50))  # Resize to 50x50 pixels
     iconcertificado = ImageTk.PhotoImage(resized_image)
 
