@@ -86,6 +86,7 @@ class SignaturesService:
         logger.debug(f"Set app_state.isclosing to {app_state.isclosing} for document {id_doc}")
 
         if is_digital:
+            """
             try:
                 logger.debug("Extracting certificate info for digital signature")
                 cert_info = extract_certificate_info_name(certificates['certificate'])
@@ -98,6 +99,7 @@ class SignaturesService:
                 logger.error(f"Failed to extract certificate info: {str(e)}", exc_info=True)
                 error = {"idDocFailed": id_doc, "message": f"Error al extraer nombre del certificado: {str(e)}", "stack": str(e.__traceback__)}
                 return id_doc, error, data_to_sign
+            """
             try:
                 datetime.strptime(app_state.datetimesigned, "%d/%m/%Y %H:%M:%S")
             except ValueError:
@@ -284,6 +286,7 @@ class SignaturesService:
             logger.debug(f"Document properties - Is closing: {is_closing}, Is digital: {is_digital}")
 
             if is_digital:
+                """
                 try:
                     logger.debug("Extracting certificate info for digital signature")
                     cert_info = extract_certificate_info_name(certificates['certificate'])
@@ -296,6 +299,7 @@ class SignaturesService:
                     logger.error(f"Failed to extract certificate info: {str(e)}", exc_info=True)
                     error = {"idDocFailed": id_doc, "message": f"Error al extraer nombre del certificado: {str(e)}", "stack": str(e.__traceback__)}
                     raise Exception(f"Error al extraer nombre del certificado: {str(e)}")
+                """
                 try:
                     datetime.strptime(app_state.datetimesigned, "%d/%m/%Y %H:%M:%S")
                 except ValueError:
@@ -434,6 +438,7 @@ class SignaturesService:
             tramite = tramites[-1]
 
             if isdigital:
+                """
                 try:
                     cert_info = extract_certificate_info_name(certificates['certificate'])
                     if cert_info['status'] and 'data' in cert_info and 'common_name' in cert_info['data']:
@@ -448,7 +453,7 @@ class SignaturesService:
                     }
                     logger.error(f"Failed to extract certificate name: {str(e)}", exc_info=True)
                     return id_exp_signed, error, data_to_sign, index_signed
-                    
+                """
             role = name + ", " + stamp + ", " + area
 
             if isdigital:
@@ -510,6 +515,7 @@ class SignaturesService:
             signature = index_data['signature']
 
             if isdigital:
+                """
                 try:
                     cert_info = extract_certificate_info_name(certificates['certificate'])
                     if cert_info['status'] and 'data' in cert_info and 'common_name' in cert_info['data']:
@@ -519,7 +525,7 @@ class SignaturesService:
                 except Exception as e:
                     error = ({"idExpFailed": f"{index['numero']}/{index['anio']}/{index['codigo']}/{index['letra']}", "message": "Error al extraer nombre del certificado: " + str(e)})
                     raise Exception("Error al extraer nombre del certificado: " + str(e))
-
+                """
             role = name + ", " + stamp + ", " + area
 
             if isdigital:

@@ -1,7 +1,6 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox
 from tkinter.ttk import Button, Style
-from flask import jsonify
 import os
 from PIL import Image, ImageTk
 import time
@@ -15,8 +14,12 @@ def select_token_slot(token_info, result, mode):
         result.append(index)
         token_window.destroy()
 
-    mainwindow = tk.Tk()
-    mainwindow.withdraw()  # Hide the mainwindow window
+    try:
+        mainwindow = tk.Tk()
+        mainwindow.withdraw()
+    except Exception as e:
+        print(f"Error inesperado al crear la ventana principal: {str(e)}")
+        return
 
     windows_base_height = 100
     button_height = 75
@@ -66,91 +69,133 @@ def select_token_slot(token_info, result, mode):
     token_window.wait_window()
     mainwindow.destroy()
 
-def select_library_file():
-    time.sleep(1)
+def select_library_file() -> str | None:
+    """ 
+    Opens a dialog to select a DLL library file.
+    Returns the selected file path as a string, or None if cancelled or an error occurs.
+    """ 
+    # time.sleep(1) # Consider removing if not strictly necessary
+    # Create a root window temporarily if one doesn't exist, then withdraw
+    # This is often needed for filedialog to work correctly if no other Tk windows are active.
+    root = None
     try:
-        return filedialog.askopenfilename(initialdir="C:\\Windows\\System32\\", title="Seleccione la biblioteca DLL", filetypes=[("DLL files", "*.dll")]), 200
+        # Check if a default root window exists from a previous Tkinter call
+        # This is a bit of a heuristic; a more robust solution involves managing a single Tk root.
+        if not tk._default_root: 
+            root = tk.Tk()
+            root.withdraw() # Hide it
+        
+        file_path = filedialog.askopenfilename(
+            initialdir="C:\\Windows\\System32\\", 
+            title="Seleccione la biblioteca DLL del token", 
+            filetypes=[("DLL files", "*.dll")]
+        )
+        return file_path if file_path else None # Return None if dialog is cancelled (empty string)
     except Exception as e:
-        return jsonify({"status": False, "message": f"Error al seleccionar la biblioteca DLL: {str(e)}"}), 500
+        # Log the error, as this is unexpected for a file dialog operation itself
+        print(f"Error inesperado al seleccionar la biblioteca DLL: {str(e)}")
+        # Optionally, show a messagebox to the user from here, though main.py might also catch this.
+        # messagebox.showerror("Error de Archivo", f"No se pudo abrir el diálogo de selección de archivo: {str(e)}")
+        return None # Indicate failure
+    finally:
+        if root: # Destroy the temporary root if we created it
+            root.destroy()
 
-def get_pin_from_user(mode):
-    global getpin
-    getpin = None
-    time.sleep(1)
+def get_pin_from_user(mode) -> str | None:
+    """
+    Displays a dialog to get the user's PIN.
+    Returns the PIN string if entered, or None if cancelled or an error occurs during dialog setup.
+    """
+    global getpin # Still using global for simplicity within this function's Tkinter callbacks
+    getpin = None 
+    # time.sleep(1) # Consider removing
 
-    def aceptar():
-        global getpin
-        getpin = entry_pin.get()
-        pinwindow.destroy()
+    pinwindow = None # Initialize for potential error before assignment
+    try:
+        pinwindow = tk.Tk()
+        pinwindow.title("Introduzca su PIN")
+        pinwindow.geometry("500x175") # Adjusted height slightly for better fit
+        pinwindow.resizable(False, False)
+        pinwindow.grab_set()
 
-    def cancelar():
-        global getpin
-        getpin = None
-        pinwindow.destroy()
+        pinwindow.attributes('-topmost', True)
+        pinwindow.update_idletasks()
+        x = (pinwindow.winfo_screenwidth() - pinwindow.winfo_reqwidth()) // 2
+        y = (pinwindow.winfo_screenheight() - pinwindow.winfo_reqheight()) // 2
+        pinwindow.geometry(f"+{x}+{y}")
+        pinwindow.focus_force()
 
-    pinwindow = tk.Tk()
+        pin_frame = tk.Frame(pinwindow)
+        pin_frame.pack(pady=10)
 
-    pinwindow.title("Introduzca su pin")
-    pinwindow.geometry(f"500x165")
-    pinwindow.resizable(False, False)
-    pinwindow.grab_set()
+        label_pin = tk.Label(pin_frame, text="Introduzca su PIN: ", font=("Arial", 14, "bold"))
+        label_pin.pack(side="left", pady=10)
 
-    # Ensure the window opens in the foreground and centered
-    pinwindow.attributes('-topmost', True)
-    pinwindow.update_idletasks()
-    x = (pinwindow.winfo_screenwidth() - pinwindow.winfo_reqwidth()) // 2
-    y = (pinwindow.winfo_screenheight() - pinwindow.winfo_reqheight()) // 2
-    pinwindow.geometry(f"+{x}+{y}")
-    pinwindow.focus_force()
+        entry_pin = tk.Entry(pin_frame, show="*", width=20, font=("Arial", 14)) # Changed show to *
+        entry_pin.pack(side="left", pady=10)
+        entry_pin.focus_set()
 
+        button_frame = tk.Frame(pinwindow)
+        button_frame.pack(pady=10)
+        style = Style()
+        style.configure("TButton", font=("Arial", 12), padding=10)
 
-    pin_frame = tk.Frame(pinwindow)
-    pin_frame.pack(pady=10)
+        base_path = "./images/"
+        if mode != 'python':
+            base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "images")
+            # For PyInstaller, if images are bundled directly (not in an 'images' subdir of the temp folder)
+            # you might need: base_path = os.path.dirname(os.path.abspath(__file__))
 
-    # Crear un campo de entrada para el PIN
-    label_pin = tk.Label(pin_frame, text="Introduzca su PIN: ", font=("Arial", 14, "bold"))
-    label_pin.pack(side="left", pady=10)
+        try:
+            original_aceptar = Image.open(os.path.join(base_path, "aceptar.png"))
+            original_cancelar = Image.open(os.path.join(base_path, "cancelar.png"))
+        except FileNotFoundError as fnf_e:
+            print(f"Error: Icono no encontrado - {fnf_e}. Asegúrese que las imágenes estén en la carpeta correcta.")
+            # Fallback: proceed without icons or use placeholder text buttons
+            # For simplicity, we'll let it proceed, buttons will just lack icons.
+            iconaceptar = None
+            iconcancelar = None
+        else:
+            resized_aceptar = original_aceptar.resize((25, 25))
+            iconaceptar = ImageTk.PhotoImage(resized_aceptar)
+            resized_cancelar = original_cancelar.resize((25, 25))
+            iconcancelar = ImageTk.PhotoImage(resized_cancelar)
 
-    entry_pin = tk.Entry(pin_frame, show="o", width=20, font=("Arial", 14))
-    entry_pin.pack(side="left", pady=10)
-    entry_pin.focus_set()
+        def on_aceptar():
+            global getpin
+            getpin = entry_pin.get()
+            if pinwindow:
+                pinwindow.destroy()
 
-    button_frame = tk.Frame(pinwindow)
-    button_frame.pack(pady=10)
-    style = Style()
-    style.configure("TButton", font=("Arial", 12), padding=10)
+        def on_cancelar():
+            global getpin
+            getpin = None
+            if pinwindow:
+                pinwindow.destroy()
 
-    if mode == 'python':
-        original_aceptar = Image.open("./images/aceptar.png")
-        original_cancelar = Image.open("./images/cancelar.png")
-    else:
-        exe_dir = os.path.dirname(os.path.abspath(__file__))
-        original_aceptar = Image.open(os.path.join(exe_dir, "aceptar.png"))
-        original_cancelar = Image.open(os.path.join(exe_dir, "cancelar.png"))
-    
-    resized_aceptar = original_aceptar.resize((25, 25))  # Resize to 50x50 pixels
-    iconaceptar = ImageTk.PhotoImage(resized_aceptar)
-    resized_cancelar = original_cancelar.resize((25, 25))  # Resize to 50x50 pixels
-    iconcancelar = ImageTk.PhotoImage(resized_cancelar)
+        btn_aceptar = Button(button_frame, text="Aceptar", style="TButton", image=iconaceptar, compound='left', command=on_aceptar)
+        btn_aceptar.pack(side=tk.LEFT, padx=5)
 
+        btn_cancelar = Button(button_frame, text="Cancelar", style="TButton", image=iconcancelar, compound='left', command=on_cancelar)
+        btn_cancelar.pack(side=tk.LEFT, padx=5)
 
-    # Crear el botón de aceptar
-    btn_aceptar = Button(button_frame, text="Aceptar", style="TButton", image=iconaceptar, compound='left', command=aceptar)
-    btn_aceptar.pack(side=tk.LEFT, padx=5)
+        button_frame.pack(pady=10, anchor=tk.CENTER)
 
-    # Crear el botón de cancelar
-    btn_cancelar = Button(button_frame, text="Cancelar", style="TButton", image=iconcancelar, compound='left', command=cancelar)
-    btn_cancelar.pack(side=tk.LEFT, padx=5)
+        pinwindow.bind('<Return>', lambda event: on_aceptar())
+        pinwindow.bind('<Escape>', lambda event: on_cancelar())
+        pinwindow.protocol("WM_DELETE_WINDOW", on_cancelar) # Handle window close button
 
-    button_frame.pack(pady=10, anchor=tk.CENTER)
+        pinwindow.mainloop()
+        return getpin # Directly return the pin or None
 
-    pinwindow.bind('<Return>', lambda event: aceptar())
-    pinwindow.bind('<Escape>', lambda event: cancelar())
-
-    # Ejecutar el bucle principal de la ventana
-    pinwindow.mainloop()
-
-    return getpin, 200
+    except Exception as e:
+        print(f"Error fatal al crear la ventana de PIN: {str(e)}")
+        if pinwindow: # Attempt to destroy if it was partially created
+            try:
+                pinwindow.destroy()
+            except tk.TclError:
+                pass # Window might already be destroyed or in a bad state
+        return None # Indicates failure to even display dialog or cancellation
 
 def select_certificate(certificates, result, mode):
     def on_select(evt):
@@ -224,8 +269,10 @@ def select_certificate(certificates, result, mode):
         cert_window.wait_window()
         certs.destroy()
     
-    except:
-        certs.destroy()
+    except Exception as e: # Catch more specific Exception
+        print(f"Error en la ventana de selección de certificado: {str(e)}")
+        if 'certs' in locals() and certs.winfo_exists():
+            certs.destroy() # Ensure cleanup if certs window was created
 
 def show_alert(message, callback=None):
     puerto_uso = tk.Tk()
