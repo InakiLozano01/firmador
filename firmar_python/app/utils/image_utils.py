@@ -591,7 +591,7 @@ def create_sello_image(text: str, encoded_image: str, path: str, width: int = 32
         high_res_width, high_res_height = width * scale_factor, height * scale_factor
         
         logger.debug(f"Creating new image with dimensions {high_res_width}x{high_res_height}")
-        img = Image.new('RGB', (int(high_res_width), int(high_res_height)),'#ffff00')
+        img = Image.new('RGB', (int(high_res_width), int(high_res_height)),'#ffffff')
         draw = ImageDraw.Draw(img)
         
         # Try to load a suitable font
