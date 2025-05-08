@@ -125,7 +125,7 @@ def get_certificates_route(): # Renamed to avoid conflict with certificates.py m
         except CertTokenLoginError as e:
             print(f"CertTokenLoginError: {e.message}, Type: {e.error_type if hasattr(e, 'error_type') else 'N/A'}")
             if hasattr(e, 'error_type') and e.error_type == "BAD_PIN":
-                 return jsonify({"status": False, "message": "PIN incorrecto."}), 401
+                return jsonify({"status": False, "message": "PIN incorrecto."}), 401
             return jsonify({"status": False, "message": e.message, "error_type": e.error_type if hasattr(e, 'error_type') else None}), e.status_code
         except (PKCS11LoadError, CertTokenNotFoundError, CertificateError) as e:
             print(f"Certificate/Token Error in get_certificates_from_token: {e.message}")
@@ -160,7 +160,7 @@ def get_certificates_route(): # Renamed to avoid conflict with certificates.py m
             try:
                 match = re.search(r'SERIALNUMBER=(?:CUIL|CUIT) (\d+)', str(subject_name).upper())
                 if not match:
-                     match = re.search(r'CN=[^,]*?(?:CUIL|CUIT)[^0-9]*(\d+)', str(subject_name).upper())
+                    match = re.search(r'CN=[^,]*?(?:CUIL|CUIT)[^0-9]*(\d+)', str(subject_name).upper())
                 if not match:
                     match = re.search(r'(?:CUIL|CUIT)[^0-9]*(\d+)', str(subject_name).upper())
                 cuil_t = match.group(1) if match else '0'
@@ -221,7 +221,7 @@ def get_signatures_route():
             return jsonify({"status": False, "message": "Formato de datos para firmar incorrecto o lista vacía."}), 400
         
         if not global_lib_path or not global_pin:
-             return jsonify({"status": False, "message": "Configuración de token (PIN o librería) no establecida. Por favor, obtenga los certificados primero."}), 400
+            return jsonify({"status": False, "message": "Configuración de token (PIN o librería) no establecida. Por favor, obtenga los certificados primero."}), 400
 
         try:
             _certificates, session, _subject_name = get_certificates_from_token(global_lib_path, global_pin)
@@ -230,7 +230,7 @@ def get_signatures_route():
         except CertTokenLoginError as e:
             print(f"CertTokenLoginError in /rest/sign: {e.message}")
             if hasattr(e, 'error_type') and e.error_type == "BAD_PIN":
-                 return jsonify({"status": False, "message": "PIN incorrecto."}), 401
+                return jsonify({"status": False, "message": "PIN incorrecto."}), 401
             return jsonify({"status": False, "message": e.message, "error_type": e.error_type if hasattr(e, 'error_type') else None}), e.status_code
         except (PKCS11LoadError, CertTokenNotFoundError, CertificateError) as e:
             print(f"Certificate/Token Error in /rest/sign: {e.message}")
@@ -302,7 +302,7 @@ def run_tray_icon():
         exe_dir = os.path.dirname(current_file_path)
         image_path = os.path.join(exe_dir, 'images', icon_filename)
         if not os.path.exists(image_path):
-             image_path = os.path.join(exe_dir, icon_filename)
+            image_path = os.path.join(exe_dir, icon_filename)
     else:
         image_path = os.path.join(os.path.dirname(current_file_path), 'images', icon_filename)
 
