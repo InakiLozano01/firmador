@@ -1,7 +1,7 @@
 [Setup]
 AppName=Tuquito
 AppVersion=1.8
-DefaultDirName={pf}\Tuquito
+DefaultDirName={commonpf}\Tuquito
 DefaultGroupName=Tuquito
 OutputDir=.
 OutputBaseFilename=TuquitoInstaller
@@ -24,17 +24,17 @@ es.ButtonCancel=Cancelar
 es.ButtonFinish=Finalizar
 
 [Files]
-Source: ".\Tuquito-v1_8_console.exe"; DestDir: "{pf}\Tuquito"; Flags: ignoreversion
-Source: ".\Tuquito-v1_8.exe"; DestDir: "{pf}\Tuquito"; Flags: ignoreversion
-Source: "token_lib.json"; DestDir: "{pf}\Tuquito"; Flags: ignoreversion
+Source: "..\dist\Tuquito-v1_8_console.exe"; DestDir: "{commonpf}\Tuquito"; Flags: ignoreversion
+Source: "..\dist\Tuquito-v1_8.exe"; DestDir: "{commonpf}\Tuquito"; Flags: ignoreversion
+Source: "..\token_lib.json"; DestDir: "{commonpf}\Tuquito"; Flags: ignoreversion
 
 [Icons]
-Name: "{commonprograms}\Tuquito"; Filename: "{pf}\Tuquito\Tuquito-v1_8.exe"
-Name: "{commondesktop}\Tuquito"; Filename: "{pf}\Tuquito\Tuquito-v1_8.exe"
+Name: "{commonprograms}\Tuquito"; Filename: "{commonpf}\Tuquito\Tuquito-v1_8.exe"
+Name: "{commondesktop}\Tuquito"; Filename: "{commonpf}\Tuquito\Tuquito-v1_8.exe"
 
 [Registry]
 ; Add to Windows Startup for all users
-Root: HKLM; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Tuquito"; ValueData: "{pf}\Tuquito\Tuquito-v1_8.exe"; Flags: uninsdeletevalue
+Root: HKLM; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Tuquito"; ValueData: "{commonpf}\Tuquito\Tuquito-v1_8.exe"; Flags: uninsdeletevalue
 
 [Run]
-Filename: "{pf}\Tuquito\Tuquito-v1_8.exe"; Description: "Iniciar Tuquito"; Flags: nowait postinstall
+Filename: "{commonpf}\Tuquito\Tuquito-v1_8.exe"; Description: "Iniciar Tuquito"; Flags: nowait postinstall
