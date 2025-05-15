@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - testing
-      - master
+      - prod
 
 jobs:
   deploy_testing:
