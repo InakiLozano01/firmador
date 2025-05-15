@@ -17,16 +17,22 @@ jobs:
       - name: Auto Deploy en rama testing
         run: |
           cd /home/espaciodocker/f_test
+          git checkout -- .
+          git branch -D backup
+          git branch backup
           git pull origin testing
 
   deploy_master:
-    if: github.ref == 'refs/heads/master'
+    if: github.ref == 'refs/heads/prod'
     runs-on: [self-hosted,  Firmador-runner-master]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         
-      - name: Auto Deploy en rama master
+      - name: Auto Deploy en rama prod
         run: |
           cd /home/espaciodocker/firmador-documentos
-          git pull origin master
+          git checkout -- .
+          git branch -D backup
+          git branch backup
+          git pull origin prod
