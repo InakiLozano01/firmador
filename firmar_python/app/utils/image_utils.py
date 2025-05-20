@@ -563,7 +563,7 @@ def create_signature_image_system(text: str, encoded_image: str, path: str, widt
         raise ImageProcessingError(f"Unexpected error during signature image creation: {str(e)}")
 
 
-def create_sello_image(text: str, encoded_image: str, path: str, width: int = 320, height: int = 80, scale_factor: int = 4, usuario: str = '') -> dict:
+def create_sello_image(text: str, encoded_image: str, path: str, width: int = 320, height: int = 80, scale_factor: int = 4, usuario: str = '', label_signed_by: str = '',label_signed_at: str = '') -> dict:
     """
     Create a signature image with text and a stamp.
     
@@ -597,8 +597,10 @@ def create_sello_image(text: str, encoded_image: str, path: str, width: int = 32
         # Try to load a suitable font
         logger.debug("Loading font")
         font = get_available_font(9 * scale_factor, 1) # 1 font roboto 
-        font_bold_name = get_available_font(12 * scale_factor, 2) # 2 font roboto  BOLD
+        font_bold_name = get_available_font(14 * scale_factor, 2) # 2 font roboto  BOLD
         font_italic_stamp = get_available_font(10 * scale_factor, 3) # 3 font roboto  italic
+        font_label = get_available_font(8 * scale_factor, 1) # 0 font 
+        
         logger.debug("Font loaded successfully")
         
         # Decode and open the stamp image
@@ -612,7 +614,19 @@ def create_sello_image(text: str, encoded_image: str, path: str, width: int = 32
             raise StampDecodingError(f"Error decoding stamp image: {str(e)}")
 
         # Posición vertical inicial
-        current_y = 8 * scale_factor  # margen superior
+        current_y = 10 * scale_factor  # margen superior
+        
+        # Centrar horizontalmente si viene firmado por el usuario
+        if label_signed_by:
+            label_signed_by = label_signed_by.encode('utf-8').decode('utf-8').upper()
+            left, top, right, bottom = font_label.getbbox(label_signed_by)
+            text_width = right - left
+            text_height = bottom - top
+            text_x = (high_res_width - text_width) // 2
+            draw.text((text_x, 3), label_signed_by, font=font_label, fill='black') 
+        #Add a la fecha si viene el label_signed_at
+        if label_signed_at:
+            label_signed_at = label_signed_at.encode('utf-8').decode('utf-8').upper()
 
         # Draw text USUARIO (centrado)
         logger.debug("Drawing text USUARIO")
@@ -637,13 +651,19 @@ def create_sello_image(text: str, encoded_image: str, path: str, width: int = 32
                 text_height = bottom - top
                 pos_x_user = (high_res_width - text_width) // 2
                 draw.text((pos_x_user , current_y), line, font=font_bold_name, fill='black')
-                current_y += text_height + 5 * scale_factor
+                current_y += text_height + 4 * scale_factor
+            
+           
 
             logger.debug(f"Drew user name text centered")
         except Exception as e:
             logger.error(f"Error drawing text: {str(e)}", exc_info=True)
             raise ImageCreationError(f"Error drawing text: {str(e)}")
-    
+        
+        #----------------------------pequeño aumento de las Y
+        current_y += 2*scale_factor
+
+
         # Draw additional text (centrado)
         logger.debug("Drawing additional text")
         try:
@@ -656,11 +676,13 @@ def create_sello_image(text: str, encoded_image: str, path: str, width: int = 32
                 # Choose font based on line number
                 current_font = font_italic_stamp if i == 0 else font
                 
+                if i == len(lines) - 1 and label_signed_at:
+                    line = label_signed_at + " " + line
+
                 # Calcular posición para centrar cada línea
                 left, top, right, bottom = current_font.getbbox(line)
                 text_width = right - left
                 text_height = bottom - top
-                
                 # Centrar horizontalmente
                 text_x = (high_res_width - text_width) // 2
                 
@@ -671,6 +693,8 @@ def create_sello_image(text: str, encoded_image: str, path: str, width: int = 32
         except Exception as e:
             logger.error(f"Error drawing text: {str(e)}", exc_info=True)
             raise ImageCreationError(f"Error drawing text: {str(e)}")
+                
+     
 
         # Save and encode high resolution image
         logger.debug("Saving and encoding final image")

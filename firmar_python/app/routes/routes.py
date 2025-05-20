@@ -344,7 +344,9 @@ def register_routes(app):
             area = data.get('area') 
             department = data.get('department')
             datetime = data.get('datetime')
-
+            label_signed_by= data.get('label_signed_by')
+            label_signed_at= data.get('label_signed_at')
+            
             if not all([username, area, department, datetime]):
                 return jsonify({
                     "status": False,
@@ -355,7 +357,7 @@ def register_routes(app):
                 }), 400
 
             try:
-                return  tools_controller.create_signature_image(username, area, department, datetime)
+                return  tools_controller.create_signature_image(username, area, department, datetime,label_signed_by,label_signed_at)
                 """ return jsonify({
                     "status": True,
                     "message": "Signature image created successfully",
