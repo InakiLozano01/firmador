@@ -3,12 +3,22 @@
 ##################################################
 
 import json
+import sys
 from os import path
 from smartcard.System import readers
 from smartcard.Exceptions import NoCardException
 
 # Ruta al archivo JSON que guarda el mapeo de drivers de tokens
-TOKEN_LIB_FILE = "token_lib.json"
+if getattr(sys, 'frozen', False):
+    # Path to the directory containing the executable
+    # when running as a bundled app (e.g., PyInstaller)
+    BASE_DIR = path.dirname(sys.executable)
+else:
+    # Path to the directory containing this script
+    # when running as a normal .py script
+    BASE_DIR = path.dirname(path.abspath(__file__))
+
+TOKEN_LIB_FILE = path.join(BASE_DIR, "token_lib.json")
 
 ##################################################
 ###        Custom Token Exceptions             ###
