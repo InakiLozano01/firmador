@@ -2,7 +2,7 @@
 ###              Imports externos              ###
 ##################################################
 
-import json
+import sys, json
 import platform
 from cryptography.hazmat.primitives import hashes
 from uuid import uuid4
@@ -17,6 +17,7 @@ import psutil
 import re
 import PyKCS11
 import multiprocessing
+from ui_bridge import run_ui as _run_ui_bridge  # Subprocess-based UI bridge
 
 ##################################################
 ###              Imports propios               ###
@@ -322,50 +323,43 @@ def run_tray_icon():
     icon = pystray.Icon("tuquito_authenticator", image, tray_title, menu)
     icon.run(setup_tray)
 
-# Helper functions to run Tkinter windows in a dedicated subprocess (avoids Tcl errors in threads)
-
-def _ui_worker(func_name, queue, args):
-    """Worker that ejecuta la función gráfica solicitada y devuelve el resultado por Queue."""
-    from interfaz import (
-        select_token_slot, select_library_file,
-        get_pin_from_user, select_certificate
-    )
-    try:
-        if func_name == 'select_token_slot':
-            token_info_list, mode = args
-            result_container = []
-            select_token_slot(token_info_list, result_container, mode)
-            queue.put(result_container[0] if result_container else None)
-        elif func_name == 'select_certificate':
-            certificates, mode = args
-            result_container = []
-            select_certificate(certificates, result_container, mode)
-            queue.put(result_container[0] if result_container else None)
-        elif func_name == 'select_library_file':
-            queue.put(select_library_file())
-        elif func_name == 'get_pin_from_user':
-            (mode,) = args
-            queue.put(get_pin_from_user(mode))
-        else:
-            queue.put(None)
-    except Exception as e:
-        import traceback, sys
-        traceback.print_exc()
-        queue.put(None)
-
+# Wrapper that keeps the original signature (func_name, args_tuple)
+# so existing endpoint code does not need to change.
 
 def run_ui(func_name: str, args: tuple = ()):  # noqa: D401
-    """Ejecuta la función gráfica indicada en un proceso separado y devuelve su resultado."""
-    q = multiprocessing.Queue()
-    p = multiprocessing.Process(target=_ui_worker, args=(func_name, q, args))
-    p.start()
-    p.join()
-    try:
-        return q.get_nowait()
-    except Exception:
-        return None
+    """Delegate to ui_bridge.run_ui while accepting a *single* tuple like before."""
+
+    if args is None:
+        args = ()
+    if not isinstance(args, tuple):
+        # For safety convert single parameter to tuple
+        args = (args,)
+    return _run_ui_bridge(func_name, *args)
+
+# --- Sentinel for helper mode -------------------------------------------------
+# If the executable is invoked with the first argument '--ui-helper', run the
+# Tk helper dispatcher and exit.  This prevents a second Flask instance from
+# starting when the packaged EXE is reused to spawn the UI subprocesses.
+
+if len(sys.argv) >= 2 and sys.argv[1] == "--ui-helper":
+    # Remove sentinel so ui_helper sees the expected argv layout
+    helper_argv = ["ui_helper", *sys.argv[2:]]
+    sys.argv[:] = helper_argv
+    from ui_helper.__main__ import main as _ui_main  # pylint: disable=import-error
+
+    _ui_main()
+    sys.exit(0)
 
 if __name__ == "__main__":
+    # Ensure 'spawn' start method for multiprocessing, critical for GUI and avoiding re-runs.
+    # This should be called before any other multiprocessing objects (Queue, Process) are created.
+    # 'force=True' ensures it's set even if a context was implicitly started, though ideally, this is the first call.
+    try:
+        multiprocessing.set_start_method('spawn', force=True)
+    except RuntimeError as e:
+        print(f"Could not set multiprocessing start method to 'spawn': {e}. This might lead to issues if it was already set differently or used.")
+        # Depending on the strictness required, you might choose to exit or continue with caution.
+
     flask_thread = Thread(target=run_flask_app, daemon=True)
     flask_thread.start()
 
