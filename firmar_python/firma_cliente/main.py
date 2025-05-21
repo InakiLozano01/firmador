@@ -16,6 +16,7 @@ from PIL import Image
 import psutil
 import re
 import PyKCS11
+import multiprocessing
 
 ##################################################
 ###              Imports propios               ###
@@ -83,14 +84,12 @@ def get_certificates_route(): # Renamed to avoid conflict with certificates.py m
             print(f"SmartcardReaderError in list_tokens_internal: {e.message}")
             return jsonify({"status": False, "message": e.message}), e.status_code
         
-        selected_slot_data = []
-        thread_slot = Thread(target=select_token_slot, args=(token_info_list, selected_slot_data, mode))
-        thread_slot.start()
-        thread_slot.join()
+        # -------------------- SELECCIÓN DE TOKEN --------------------
+        selected_slot_index = run_ui('select_token_slot', (token_info_list, mode))
 
-        if not selected_slot_data:
+        if selected_slot_index is None:
             return jsonify({"status": False, "message": "No se seleccionó ningún slot de token."}), 400
-        selected_slot_index = selected_slot_data[0]
+
         selected_token_info = token_info_list[selected_slot_index]
 
         try:
@@ -102,8 +101,8 @@ def get_certificates_route(): # Renamed to avoid conflict with certificates.py m
         if token_name in token_library_mapping:
             global_lib_path = token_library_mapping[token_name]
         else:
-            # select_library_file now returns a single value: path string or None
-            chosen_lib_path = select_library_file()
+            # select_library_file ahora se ejecuta en proceso separado
+            chosen_lib_path = run_ui('select_library_file')
             if not chosen_lib_path:
                 return jsonify({"status": False, "message": "No se seleccionó ninguna biblioteca de token o se canceló la selección."}), 400
             global_lib_path = chosen_lib_path
@@ -114,8 +113,8 @@ def get_certificates_route(): # Renamed to avoid conflict with certificates.py m
                 print(f"TokenMappingError in save_token_library_mapping: {e.message}")
                 return jsonify({"status": False, "message": e.message}), e.status_code
         
-        # get_pin_from_user now returns PIN string or None
-        pin_input = get_pin_from_user(mode) 
+        # get_pin_from_user ahora se ejecuta en proceso separado
+        pin_input = run_ui('get_pin_from_user', (mode,))
         if not pin_input: # Handles both cancellation and dialog setup errors from get_pin_from_user
             return jsonify({"status": False, "message": "Entrada de PIN cancelada o fallida."}), 400
         global_pin = pin_input
@@ -134,15 +133,11 @@ def get_certificates_route(): # Renamed to avoid conflict with certificates.py m
         if not certificates:
             return jsonify({"status": False, "message": "No se encontraron certificados en el token."}), 404
 
-        selected_cert_data = []
-        thread_cert = Thread(target=select_certificate, args=(certificates, selected_cert_data, mode))
-        thread_cert.start()
-        thread_cert.join()
+        selected_index = run_ui('select_certificate', (certificates, mode))
 
-        if not selected_cert_data:
+        if selected_index is None:
             return jsonify({"status": False, "message": "No se seleccionó ningún certificado."}), 400
         
-        selected_index = selected_cert_data[0]
         user_selected_cert, user_selected_cert_der = certificates[selected_index]
 
         try:
@@ -316,6 +311,49 @@ def run_tray_icon():
     tray_title = f"Tuquito Autenticador (Puerto: {flask_port})"
     icon = pystray.Icon("tuquito_authenticator", image, tray_title, menu)
     icon.run(setup_tray)
+
+# Helper functions to run Tkinter windows in a dedicated subprocess (avoids Tcl errors in threads)
+
+def _ui_worker(func_name, queue, args):
+    """Worker that ejecuta la función gráfica solicitada y devuelve el resultado por Queue."""
+    from interfaz import (
+        select_token_slot, select_library_file,
+        get_pin_from_user, select_certificate
+    )
+    try:
+        if func_name == 'select_token_slot':
+            token_info_list, mode = args
+            result_container = []
+            select_token_slot(token_info_list, result_container, mode)
+            queue.put(result_container[0] if result_container else None)
+        elif func_name == 'select_certificate':
+            certificates, mode = args
+            result_container = []
+            select_certificate(certificates, result_container, mode)
+            queue.put(result_container[0] if result_container else None)
+        elif func_name == 'select_library_file':
+            queue.put(select_library_file())
+        elif func_name == 'get_pin_from_user':
+            (mode,) = args
+            queue.put(get_pin_from_user(mode))
+        else:
+            queue.put(None)
+    except Exception as e:
+        import traceback, sys
+        traceback.print_exc()
+        queue.put(None)
+
+
+def run_ui(func_name: str, args: tuple = ()):  # noqa: D401
+    """Ejecuta la función gráfica indicada en un proceso separado y devuelve su resultado."""
+    q = multiprocessing.Queue()
+    p = multiprocessing.Process(target=_ui_worker, args=(func_name, q, args))
+    p.start()
+    p.join()
+    try:
+        return q.get_nowait()
+    except Exception:
+        return None
 
 if __name__ == "__main__":
     flask_thread = Thread(target=run_flask_app, daemon=True)
