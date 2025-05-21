@@ -4,6 +4,7 @@ from tkinter.ttk import Button, Style
 import os
 from PIL import Image, ImageTk
 import time
+import re
 
 def select_token_slot(token_info, result, mode):
     def on_select(evt):
@@ -73,11 +74,32 @@ def select_token_slot(token_info, result, mode):
     style = Style()
     style.configure("TButton", font=("Arial", 12), padding=10)
 
+    icon = None # Initialize icon
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    icon_file_name = "icono_token.png"
+    icon_file_path = ""
+
     if mode == 'python':
-        icon = tk.PhotoImage(file="./images/icono_token.png")
+        icon_file_path = os.path.join(script_dir, "images", icon_file_name)
+    else: # EXE mode
+        exe_dir = script_dir # In EXE mode, __file__ can be in a temp dir relative to bundled resources
+        # Try 'images' subdirectory first
+        potential_icon_path = os.path.join(exe_dir, "images", icon_file_name)
+        if os.path.exists(potential_icon_path):
+            icon_file_path = potential_icon_path
+        else:
+            # Fallback: assume icon is directly in the exe_dir (e.g. bundled at root if not in 'images')
+            icon_file_path = os.path.join(exe_dir, icon_file_name)
+    
+    if os.path.exists(icon_file_path):
+        try:
+            icon = tk.PhotoImage(file=icon_file_path)
+        except tk.TclError as e: # Catch Tkinter specific error for image loading
+            print(f"Error loading token icon '{icon_file_name}' from {icon_file_path}: {e}")
+            # icon remains None
     else:
-        exe_dir = os.path.dirname(os.path.abspath(__file__))
-        icon = tk.PhotoImage(file=os.path.join(exe_dir, "images", "icono_token.png"))
+        print(f"Warning: Token icon '{icon_file_name}' not found at expected path: {icon_file_path}")
+        # icon remains None
 
     for i, info in enumerate(token_info):
         button = Button(frame, text=f"   Puerto USB numero: {i + 1}\n   Nombre del Token: {info['reader']}", style="TButton", image=icon, compound='left', cursor="hand2")
@@ -200,26 +222,50 @@ def get_pin_from_user(mode) -> str | None:
         style = Style()
         style.configure("TButton", font=("Arial", 12), padding=10)
 
-        base_path = "./images/"
-        if mode != 'python':
-            base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "images")
-            # For PyInstaller, if images are bundled directly (not in an 'images' subdir of the temp folder)
-            # you might need: base_path = os.path.dirname(os.path.abspath(__file__))
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        base_path_for_images = ""
 
+        if mode == 'python':
+            base_path_for_images = os.path.join(script_dir, "images")
+        else: # EXE mode
+            exe_dir = script_dir # In EXE mode, __file__ can be in a temp dir
+            path_in_images_subdir = os.path.join(exe_dir, "images", "aceptar.png") # Check with a known image
+            path_in_exe_dir = os.path.join(exe_dir, "aceptar.png") # Check with a known image
+
+            if os.path.exists(path_in_images_subdir):
+                base_path_for_images = os.path.join(exe_dir, "images")
+            elif os.path.exists(path_in_exe_dir):
+                base_path_for_images = exe_dir
+            else:
+                # Fallback: default to 'images' subdirectory path.
+                # Loading attempts below will then print warnings if files are not found.
+                base_path_for_images = os.path.join(exe_dir, "images")
+
+        iconaceptar = None
+        iconcancelar = None
+        
         try:
-            original_aceptar = Image.open(os.path.join(base_path, "aceptar.png"))
-            original_cancelar = Image.open(os.path.join(base_path, "cancelar.png"))
-        except FileNotFoundError as fnf_e:
-            print(f"Error: Icono no encontrado - {fnf_e}. Asegúrese que las imágenes estén en la carpeta correcta.")
-            # Fallback: proceed without icons or use placeholder text buttons
-            # For simplicity, we'll let it proceed, buttons will just lack icons.
-            iconaceptar = None
-            iconcancelar = None
-        else:
-            resized_aceptar = original_aceptar.resize((25, 25))
-            iconaceptar = ImageTk.PhotoImage(resized_aceptar)
-            resized_cancelar = original_cancelar.resize((25, 25))
-            iconcancelar = ImageTk.PhotoImage(resized_cancelar)
+            path_aceptar = os.path.join(base_path_for_images, "aceptar.png")
+            path_cancelar = os.path.join(base_path_for_images, "cancelar.png")
+
+            if os.path.exists(path_aceptar):
+                original_aceptar = Image.open(path_aceptar)
+                resized_aceptar = original_aceptar.resize((25, 25))
+                iconaceptar = ImageTk.PhotoImage(resized_aceptar)
+            else:
+                print(f"Warning: Icon 'aceptar.png' not found at {path_aceptar}.")
+
+            if os.path.exists(path_cancelar):
+                original_cancelar = Image.open(path_cancelar)
+                resized_cancelar = original_cancelar.resize((25, 25))
+                iconcancelar = ImageTk.PhotoImage(resized_cancelar)
+            else:
+                print(f"Warning: Icon 'cancelar.png' not found at {path_cancelar}.")
+        
+        except Exception as e:
+            print(f"Error loading or processing button icons: {e}. Ensure images are valid and in the correct location.")
+            # iconaceptar and iconcancelar will remain None, allowing buttons to be created without icons
+
 
         def on_aceptar():
             global getpin
@@ -317,25 +363,100 @@ def select_certificate(certificates, result, mode):
     style = Style()
     style.configure("TButton", font=("Arial", 10), padding=10)
 
+    iconcertificado = None # Initialize in case image loading fails
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    image_file_name = "certificado.png"
+    image_path = ""
+
     if mode == 'python':
-        original_image = Image.open("./images/certificado.png")
+        image_path = os.path.join(script_dir, "images", image_file_name)
+    else: # EXE mode
+        exe_dir = script_dir # In EXE mode, __file__ can be in a temp dir
+        path_in_images_subdir = os.path.join(exe_dir, "images", image_file_name)
+        path_in_exe_dir = os.path.join(exe_dir, image_file_name)
+
+        if os.path.exists(path_in_images_subdir):
+            image_path = path_in_images_subdir
+        elif os.path.exists(path_in_exe_dir):
+            image_path = path_in_exe_dir
+        else:
+            # Fallback: default to 'images' subdirectory path.
+            # Loading attempt below will print a warning if not found.
+            image_path = path_in_images_subdir
+            
+    if os.path.exists(image_path):
+        try:
+            original_image = Image.open(image_path)
+            resized_image = original_image.resize((50, 50))
+            iconcertificado = ImageTk.PhotoImage(resized_image)
+        except Exception as e:
+            print(f"Error loading or processing certificate icon '{image_file_name}' from {image_path}: {e}")
+            # iconcertificado remains None
     else:
-        exe_dir = os.path.dirname(os.path.abspath(__file__))
-        original_image = Image.open(os.path.join(exe_dir, "images", "certificado.png"))
-    resized_image = original_image.resize((50, 50))  # Resize to 50x50 pixels
-    iconcertificado = ImageTk.PhotoImage(resized_image)
+        print(f"Warning: Certificate icon '{image_file_name}' not found at {image_path} (tried primary and fallback locations).")
+        # iconcertificado remains None
 
     try:
-        for i, (cert, _) in enumerate(certificates):
+        for i, cert_subject_str in enumerate(certificates): # certificates is now a list of subject strings
+            # Parse CUIL and CN from the RFC 4514 subject string
+            # This is a simplified parsing. A more robust solution might involve a dedicated LDAP DN parser.
+            cuil = "N/A"
+            cn = "N/A"
+            cuil_extracted_from_cn = False # Initialize here
+            
+            # Attempt to extract CUIL (assuming it's in a serialNumber or a specific OID)
+            # Example OID for CUIL in Argentina: 2.5.4.5 (serialNumber)
+            # Or sometimes it might be part of CN or other attributes.
+            parts = cert_subject_str.split(',')
+            for part in parts:
+                if 'serialNumber=' in part and ('CUIL' in part.upper() or 'CUIT' in part.upper()):
+                    cuil = part.split('=')[-1]
+                    break # Found CUIL in serialNumber
+                elif 'CN=' in part:
+                    cn_part = part.split('=')[-1]
+                    # Check if CUIL is embedded in CN
+                    if 'CUIL' in cn_part.upper() or 'CUIT' in cn_part.upper():
+                        # Try to extract number following CUIL/CUIT
+                        match = re.search(r'(CUIL|CUIT)?[^0-9]*(\d+)', cn_part, re.IGNORECASE)
+                        if match and not cuil_extracted_from_cn: # Prioritize serialNumber if found
+                            cuil = match.group(2)
+                            cuil_extracted_from_cn = True # Mark that CUIL was found in CN
+                    if cn == "N/A": # Take the first CN found
+                        cn = cn_part
+            
+            # If CN was not explicitly found but CUIL was, CN might be the remaining part or a specific field
+            # For simplicity, if CN is still N/A, we might try to get the first CN attribute if present
+            if cn == "N/A":
+                 for part in parts:
+                    if 'CN=' in part:
+                        cn = part.split('=')[-1]
+                        break
+            
+            # Fallback if CUIL is still N/A but was found in CN and not set above
+            if cuil == "N/A" and cuil_extracted_from_cn:
+                 for part in parts:
+                    if 'CN=' in part:
+                        cn_part_val = part.split('=')[-1]
+                        if 'CUIL' in cn_part_val.upper() or 'CUIT' in cn_part_val.upper():
+                            match = re.search(r'(CUIL|CUIT)?[^0-9]*(\d+)', cn_part_val, re.IGNORECASE)
+                            if match:
+                                cuil = match.group(2)
+                                break
 
-            input_string = str(cert.subject)
-            start_cuil = input_string.find("CUIL")
-            start_cn = input_string.find("CN")
-            end_cuil = input_string.find(",", start_cuil)
-            end_cn = input_string.find(")", start_cn)
-            cuil = input_string[start_cuil:end_cuil]
-            cn = input_string[start_cn:end_cn]
-            resultado = f"{cuil} - {cn}"
+            # If CUIL is still N/A, try a more general regex search across the whole subject string
+            if cuil == "N/A":
+                match_cuil_general = re.search(r'(CUIL|CUIT)[^0-9]*(\d{11})', cert_subject_str, re.IGNORECASE)
+                if match_cuil_general:
+                    cuil = match_cuil_general.group(2)
+
+            # Clean up CN if it contains the CUIL already parsed
+            if cn != "N/A" and cuil != "N/A" and cuil in cn:
+                cn = cn.replace(cuil, '').replace('CUIL', '').replace('CUIT', '').strip(' -/')
+                cn = re.sub(r'\s{2,}', ' ', cn).strip() # Remove extra spaces
+
+            resultado = f"CUIL: {cuil} - CN: {cn}"
+            if len(resultado) > 60: # Truncate if too long for button
+                resultado = resultado[:57] + "..."
 
             button = Button(frame, text=f"{resultado}", style="TButton", image=iconcertificado, compound='left', cursor="hand2")
             button.grid(row=i, column=0, pady=10, padx=10, sticky='ew')

@@ -67,6 +67,8 @@ def get_certificates_route(): # Renamed to avoid conflict with certificates.py m
         current_file_path = os.path.abspath(__file__)
         mode = 'exe' if 'temp' in current_file_path.lower() else 'python'
 
+        print(f"Mode: {mode}")
+
         try:
             token_library_mapping = load_token_library_mapping()
         except TokenMappingError as e:
@@ -133,7 +135,15 @@ def get_certificates_route(): # Renamed to avoid conflict with certificates.py m
         if not certificates:
             return jsonify({"status": False, "message": "No se encontraron certificados en el token."}), 404
 
-        selected_index = run_ui('select_certificate', (certificates, mode))
+        # Prepare serializable certificate information for the UI
+        serializable_certs_info = []
+        for cert, _ in certificates:
+            # Using RFC 4514 string representation of the subject, which is picklable
+            # Alternatively, extract specific fields into a dictionary
+            subject_str = cert.subject.rfc4514_string()
+            serializable_certs_info.append(subject_str)
+
+        selected_index = run_ui('select_certificate', (serializable_certs_info, mode))
 
         if selected_index is None:
             return jsonify({"status": False, "message": "No se seleccionó ningún certificado."}), 400
