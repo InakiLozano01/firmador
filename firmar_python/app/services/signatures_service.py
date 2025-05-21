@@ -114,7 +114,7 @@ class SignaturesService:
                 logger.debug("Creating signature image")
                 custom_image = create_signature_image(f"{stamp}\n{area}\n{app_state.datetimesigned}",app_state.encoded_image["data"],"cert",
                 usuario=f"{name}",
-                label_signed_by= "Firmado electrónicamente por",
+                label_signed_by= "Firmado digitalmente por",
                 label_signed_at= "Firmado digitalmente el"
                 )
                 # Extract base64 string from response
@@ -311,8 +311,8 @@ class SignaturesService:
                 try:
                     custom_image = create_signature_image(f"{stamp}\n{area}\n{app_state.datetimesigned}",app_state.encoded_image["data"],"token",
                     usuario=f"{name}",
-                    label_signed_by= "Firmado electrónicamente por",
-                    label_signed_at= "Firmado electrónicamente el"
+                    label_signed_by= "Firmado digitalmente por",
+                    label_signed_at= "Firmado digitalmente el"
                     )
                     # Extract base64 string from response
                     custom_image = custom_image["data"]

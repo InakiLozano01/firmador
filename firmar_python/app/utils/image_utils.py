@@ -653,7 +653,6 @@ def create_sello_image(text: str, encoded_image: str, path: str, width: int = 32
                 draw.text((pos_x_user , current_y), line, font=font_bold_name, fill='black')
                 current_y += text_height + 4 * scale_factor
             
-           
 
             logger.debug(f"Drew user name text centered")
         except Exception as e:
@@ -694,7 +693,6 @@ def create_sello_image(text: str, encoded_image: str, path: str, width: int = 32
             logger.error(f"Error drawing text: {str(e)}", exc_info=True)
             raise ImageCreationError(f"Error drawing text: {str(e)}")
                 
-     
 
         # Save and encode high resolution image
         logger.debug("Saving and encoding final image")
