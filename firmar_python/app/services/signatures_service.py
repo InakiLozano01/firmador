@@ -12,7 +12,6 @@ import base64
 import hashlib
 import copy
 from app.config.state import app_state
-from app.utils.certificates_utils import extract_certificate_info_name
 from app.services.dss.dss_pdf import get_data_to_sign_token, get_data_to_sign_certificate, sign_document_certificate, sign_document_token
 from app.services.local_certs import get_certificate_from_local, get_signature_value_own
 from app.utils.image_utils import create_sello_image as create_signature_image,create_signature_image_system 
@@ -55,6 +54,7 @@ class SignaturesService:
         name = pdf['firma_nombre']
         stamp = pdf['firma_sello']
         area = pdf['firma_area']
+        cuil = pdf['firma_cuil']
         id_sello = pdf['id_sello']
         id_oficina = pdf['id_oficina']
         is_closing = pdf['firma_cierra']
@@ -86,20 +86,6 @@ class SignaturesService:
         logger.debug(f"Set app_state.isclosing to {app_state.isclosing} for document {id_doc}")
 
         if is_digital:
-            """
-            try:
-                logger.debug("Extracting certificate info for digital signature")
-                cert_info = extract_certificate_info_name(certificates['certificate'])
-                if cert_info['status'] and 'data' in cert_info and 'common_name' in cert_info['data']:
-                    name = cert_info['data']['common_name']
-                else:
-                    raise Exception("Invalid certificate info format")
-                logger.debug(f"Extracted name from certificate: {name}")
-            except Exception as e:
-                logger.error(f"Failed to extract certificate info: {str(e)}", exc_info=True)
-                error = {"idDocFailed": id_doc, "message": f"Error al extraer nombre del certificado: {str(e)}", "stack": str(e.__traceback__)}
-                return id_doc, error, data_to_sign
-            """
             try:
                 datetime.strptime(app_state.datetimesigned, "%d/%m/%Y %H:%M:%S")
             except ValueError:
@@ -112,7 +98,9 @@ class SignaturesService:
             
             try:
                 logger.debug("Creating signature image")
-                custom_image = create_signature_image(f"{stamp}\n{area}\n{app_state.datetimesigned}",app_state.encoded_image["data"],"cert",usuario=f"{name}"
+                custom_image = create_signature_image(f"{stamp}\n{area}\n{app_state.datetimesigned}",app_state.encoded_image["data"],"cert",
+                usuario=f"{name}",
+                label_signed_by= "Firmado digitalmente por"
                 )
                 # Extract base64 string from response
                 custom_image = custom_image["data"]
@@ -124,7 +112,7 @@ class SignaturesService:
                 error = ({"idDocFailed": id_doc, "message": f"Error al crear imagen de firma: {str(e)}"})
                 raise signature_exc.SignatureValidationError(f"Error al crear imagen de firma: {str(e)}")
             
-        role = name + ", " + stamp + ", " + area
+        role = name + (", CUIL " + cuil if cuil else "") + ", " + stamp + ", " + area
 
         logger.debug(f"Processing signature with parameters - Digital: {is_digital}, Closing: {is_closing}")
         match (is_digital, is_closing):
@@ -253,6 +241,7 @@ class SignaturesService:
             name = pdfs['firma_nombre']
             stamp = pdfs['firma_sello']
             area = pdfs['firma_area']
+            cuil = pdfs['firma_cuil']
             id_sello = pdfs['id_sello']
             id_oficina = pdfs['id_oficina']
             is_closing = pdfs['firma_cierra']
@@ -286,27 +275,15 @@ class SignaturesService:
             logger.debug(f"Document properties - Is closing: {is_closing}, Is digital: {is_digital}")
 
             if is_digital:
-                """
-                try:
-                    logger.debug("Extracting certificate info for digital signature")
-                    cert_info = extract_certificate_info_name(certificates['certificate'])
-                    if cert_info['status'] and 'data' in cert_info and 'common_name' in cert_info['data']:
-                        name = cert_info['data']['common_name']
-                    else:
-                        raise Exception("Invalid certificate info format")
-                    logger.debug(f"Extracted name from certificate: {name}")
-                except Exception as e:
-                    logger.error(f"Failed to extract certificate info: {str(e)}", exc_info=True)
-                    error = {"idDocFailed": id_doc, "message": f"Error al extraer nombre del certificado: {str(e)}", "stack": str(e.__traceback__)}
-                    raise Exception(f"Error al extraer nombre del certificado: {str(e)}")
-                """
                 try:
                     datetime.strptime(app_state.datetimesigned, "%d/%m/%Y %H:%M:%S")
                 except ValueError:
                     dt = datetime.strptime(app_state.datetimesigned, "%Y-%m-%d %H:%M:%S")
                     app_state.datetimesigned = dt.strftime("%d/%m/%Y %H:%M:%S")
                 try:
-                    custom_image = create_signature_image(f"{stamp}\n{area}\n{app_state.datetimesigned}",app_state.encoded_image["data"],"token",usuario=f"{name}"
+                    custom_image = create_signature_image(f"{stamp}\n{area}\n{app_state.datetimesigned}",app_state.encoded_image["data"],"token",
+                    usuario=f"{name}",
+                    label_signed_by= "Firmado digitalmente por"
                     )
                     # Extract base64 string from response
                     custom_image = custom_image["data"]
@@ -314,7 +291,7 @@ class SignaturesService:
                     logger.error(f"Failed to create signature image: {str(e)}", exc_info=True)
                     error = {"idDocFailed": id_doc, "message": f"Error al crear imagen de firma: {str(e)}", "stack": str(e.__traceback__)}
                     raise Exception(f"Error al crear imagen de firma: {str(e)}")
-            role = name + ", " + stamp + ", " + area
+            role = name + (", CUIL " + cuil if cuil else "") + ", " + stamp + ", " + area
 
             match (is_digital, is_closing):
                 case (True, True):
@@ -437,23 +414,6 @@ class SignaturesService:
 
             tramite = tramites[-1]
 
-            if isdigital:
-                """
-                try:
-                    cert_info = extract_certificate_info_name(certificates['certificate'])
-                    if cert_info['status'] and 'data' in cert_info and 'common_name' in cert_info['data']:
-                        name = cert_info['data']['common_name']
-                    else:
-                        raise Exception("Invalid certificate info format")
-                except Exception as e:
-                    error = {
-                        "idExpFailed": f"{index['numero']}/{index['anio']}/{index['codigo']}/{index['letra']}", 
-                        "message": f"Error al extraer nombre del certificado: {str(e)}",
-                        "stack": str(e.__traceback__)
-                    }
-                    logger.error(f"Failed to extract certificate name: {str(e)}", exc_info=True)
-                    return id_exp_signed, error, data_to_sign, index_signed
-                """
             role = name + ", " + stamp + ", " + area
 
             if isdigital:
@@ -514,18 +474,6 @@ class SignaturesService:
             tramite = tramites[-1]
             signature = index_data['signature']
 
-            if isdigital:
-                """
-                try:
-                    cert_info = extract_certificate_info_name(certificates['certificate'])
-                    if cert_info['status'] and 'data' in cert_info and 'common_name' in cert_info['data']:
-                        name = cert_info['data']['common_name']
-                    else:
-                        raise Exception("Invalid certificate info format")
-                except Exception as e:
-                    error = ({"idExpFailed": f"{index['numero']}/{index['anio']}/{index['codigo']}/{index['letra']}", "message": "Error al extraer nombre del certificado: " + str(e)})
-                    raise Exception("Error al extraer nombre del certificado: " + str(e))
-                """
             role = name + ", " + stamp + ", " + area
 
             if isdigital:
@@ -572,7 +520,10 @@ class SignaturesService:
                 try:
                     # Extract base64 string from encoded_image dictionary
                     encoded_image_data = app_state.encoded_image.get("data") if isinstance(app_state.encoded_image, dict) else app_state.encoded_image
-                    custom_image = create_signature_image(f"{stamp}\n{area}\n{datetimesigned}", encoded_image_data, "cert",usuario=f"{name}")
+                    custom_image = create_signature_image(f"{stamp}\n{area}\n{datetimesigned}", encoded_image_data, "cert",
+                    usuario=f"{name}",
+                    label_signed_by= "Firmado electrónicamente por"
+                    )
                     # Extract base64 string from response
                     custom_image = custom_image["data"]
                 except Exception as e:
@@ -582,7 +533,6 @@ class SignaturesService:
                     # Extract base64 string from encoded_image dictionary
                     encoded_image_data = app_state.encoded_image_yunga.get("data") if isinstance(app_state.encoded_image_yunga, dict) else app_state.encoded_image_yunga
                     custom_image = create_signature_image_system(f"TRIBUNAL DE CUENTAS TUCUMÁN\n{app_state.datetimesigned}", encoded_image_data, "yunga",usuario="SISTEMA YUNGA")
-
                     # Extract base64 string from response
                     custom_image = custom_image["data"]
                 except Exception as e:

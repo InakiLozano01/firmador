@@ -6,7 +6,6 @@ firmar_python/app/config/.env
 firmar_python/firma_cliente/dssapp/.idea
 firmar_python/firma_cliente/dssapp/dss-demo-webapp/target
 firmar_python/firma_cliente/__pycache__
-firmar_python/firma_cliente/*.spec
 firmar_python/firma_cliente/dist
 firmar_python/firma_cliente/build
 firmar_python/firma_cliente/token_lib.json
@@ -16,3 +15,4 @@ actions-runner
 .venv
 .cursorrules
 __pycache__/
+*.exe
