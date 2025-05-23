@@ -15,5 +15,4 @@ actions-runner
 .venv
 .cursorrules
 __pycache__/
-firma_cliente/instalador/*.exe
-instalador/*.exe
+*.exe

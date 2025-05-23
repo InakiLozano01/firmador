@@ -1,3 +1,4 @@
+@echo off
 echo Instalando dependencias...
 
 echo.
@@ -10,7 +11,7 @@ pyinstaller Tuquito_console.spec
 
 echo.
 echo Copiando archivos al instalador...
-copy /Y "dist\*.exe" "..\instalador\"
+copy /Y "dist\*.exe" "instalador\"
 
 echo.
 echo Generando el instalador con Inno Setup...
