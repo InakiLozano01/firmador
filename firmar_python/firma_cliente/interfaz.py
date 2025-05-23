@@ -215,7 +215,7 @@ def get_pin_from_user(mode) -> str | None:
 
         entry_pin = tk.Entry(pin_frame, show="*", width=20, font=("Arial", 14)) # Changed show to *
         entry_pin.pack(side="left", pady=10)
-        entry_pin.focus_set()
+        # entry_pin.focus_set()  # Commented out - will set focus later
 
         button_frame = tk.Frame(pinwindow)
         button_frame.pack(pady=10)
@@ -290,6 +290,14 @@ def get_pin_from_user(mode) -> str | None:
         pinwindow.bind('<Return>', lambda event: on_aceptar())
         pinwindow.bind('<Escape>', lambda event: on_cancelar())
         pinwindow.protocol("WM_DELETE_WINDOW", on_cancelar) # Handle window close button
+
+        # Ensure the window is fully displayed before setting focus
+        def set_focus_to_entry():
+            entry_pin.focus_force()
+            entry_pin.icursor(0)  # Set cursor at the beginning of the entry
+
+        # Set focus after the window is completely rendered
+        pinwindow.after(100, set_focus_to_entry)
 
         pinwindow.mainloop()
         return getpin # Directly return the pin or None

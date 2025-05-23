@@ -21,7 +21,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='Tuquito-v2_0_console',
+    name='Tuquito-v2_1_console',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
