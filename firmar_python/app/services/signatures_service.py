@@ -587,7 +587,7 @@ class SignaturesService:
                     custom_image = custom_image["data"]
                 except Exception as e:
                     raise Exception("Error al crear imagen de firma: " + str(e))
-                role = "SISTEMA YUNGA - Tribunal de Cuentas Tucumán"
+                role = "TAPIR - Gestor de documentos y expedientes digitales"
 
             try:
                 certificates = get_certificate_from_local()
