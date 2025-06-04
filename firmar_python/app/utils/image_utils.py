@@ -337,52 +337,84 @@ def create_signature_image(text: str, encoded_image: str, path: str, width: int 
         logger.debug("Drawing INFO text block")
         current_y = info_start_y
         try:
-            for line in info_lines:
-                line = line.upper()
-                left, top, right, bottom = font_regular.getbbox(line)
-                text_width = right - left
+            lines = text.split('\n')  # Expected: sello, oficina, fecha
+            
+            sello_text_orig = lines[0] if len(lines) > 0 else ""
+            oficina_text_orig = lines[1] if len(lines) > 1 else ""
+            fecha_text_orig = lines[2] if len(lines) > 2 else ""
+
+            sello_str_upper = sello_text_orig.encode('utf-8').decode('utf-8').upper()
+            oficina_str_upper = oficina_text_orig.encode('utf-8').decode('utf-8').upper()
+            fecha_str_upper = fecha_text_orig.encode('utf-8').decode('utf-8').upper()
+            
+            if label_signed_at:
+                processed_label_signed_at = label_signed_at.encode('utf-8').decode('utf-8').upper()
+                fecha_str_upper = processed_label_signed_at + " " + fecha_str_upper
+            
+            sello_font_style = font_regular
+            oficina_font_style = font_regular
+            fecha_font_style = font_regular
+            separator_str = " - "
+
+            # Calculate dimensions for sello
+            s_left, s_top, s_right, s_bottom = sello_font_style.getbbox(sello_str_upper)
+            sello_w = s_right - s_left
+            sello_h = s_bottom - s_top
+
+            # Calculate dimensions for separator
+            sep_left, sep_top, sep_right, sep_bottom = oficina_font_style.getbbox(separator_str)
+            separator_w = sep_right - sep_left
+            
+            # Calculate dimensions for oficina
+            o_left, o_top, o_right, o_bottom = oficina_font_style.getbbox(oficina_str_upper)
+            oficina_w = o_right - o_left
+            oficina_h = o_bottom - o_top
+            
+            total_combined_sello_oficina_width = 0
+            if sello_str_upper and oficina_str_upper:
+                total_combined_sello_oficina_width = sello_w + separator_w + oficina_w
+            elif sello_str_upper:
+                total_combined_sello_oficina_width = sello_w
+            elif oficina_str_upper: # Should not happen if sello is primary
+                total_combined_sello_oficina_width = oficina_w
+
+
+            if sello_str_upper and oficina_str_upper and total_combined_sello_oficina_width <= high_res_width:
+                # Draw "sello - oficina" on one line
+                combined_line_h = max(sello_h, oficina_h) 
                 
-                # Check if text is too long and needs to be split
-                if text_width > (info_section_width * 0.9):
-                    words = line.split()
-                    if len(words) > 2:
-                        # First part
-                        first_part = words[0] + " " + words[1]
-                        left, top, right, bottom = font_regular.getbbox(first_part)
-                        text_width = right - left
-                        # Alinear a la izquierda desde el inicio de la sección de info
-                        text_x = info_section_start_x + 5  # Añadir pequeño margen
-                        draw.text((text_x, current_y), first_part, font=font_regular, fill='black')
-                        current_y += bottom - top + 6
-                        
-                        # Second part
-                        second_part = " ".join(words[2:])
-                        left, top, right, bottom = font_regular.getbbox(second_part)
-                        text_width = right - left
-                        # Alinear a la izquierda desde el inicio de la sección de info
-                        text_x = info_section_start_x + 5  # Añadir pequeño margen
-                        draw.text((text_x, current_y), second_part, font=font_regular, fill='black')
-                    else:
-                        # Split into two lines if there are only two words
-                        left, top, right, bottom = font_regular.getbbox(words[0])
-                        text_width = right - left
-                        # Alinear a la izquierda desde el inicio de la sección de info
-                        text_x = info_section_start_x + 5  # Añadir pequeño margen
-                        draw.text((text_x, current_y), words[0], font=font_regular, fill='black')
-                        current_y += bottom - top + 6
-                        
-                        left, top, right, bottom = font_regular.getbbox(words[1])
-                        text_width = right - left
-                        # Alinear a la izquierda desde el inicio de la sección de info
-                        text_x = info_section_start_x + 5  # Añadir pequeño margen
-                        draw.text((text_x, current_y), words[1], font=font_regular, fill='black')
-                else:
-                    # Alinear a la izquierda desde el inicio de la sección de info en lugar de centrar
-                    text_x = info_section_start_x + 5  # Añadir pequeño margen
-                    draw.text((text_x, current_y), line, font=font_regular, fill='black')
+                current_x_combined_start = (high_res_width - total_combined_sello_oficina_width) // 2
                 
-                current_y += bottom - top + 6
-            logger.debug(f"Drew {len(info_lines)} lines of INFO text")
+                draw.text((current_x_combined_start, current_y), sello_str_upper, font=sello_font_style, fill='black')
+                current_x_combined_start += sello_w
+                draw.text((current_x_combined_start, current_y), separator_str, font=oficina_font_style, fill='black')
+                current_x_combined_start += separator_w
+                draw.text((current_x_combined_start, current_y), oficina_str_upper, font=oficina_font_style, fill='black')
+                
+                current_y += combined_line_h + 5 * scale_factor
+            else:
+                # Draw sello on its own line (if it exists)
+                if sello_str_upper:
+                    sello_x_centered = (high_res_width - sello_w) // 2
+                    draw.text((sello_x_centered, current_y), sello_str_upper, font=sello_font_style, fill='black')
+                    current_y += sello_h + 5 * scale_factor
+                
+                # Draw oficina on its own line (if it exists)
+                if oficina_str_upper:
+                    oficina_x_centered = (high_res_width - oficina_w) // 2
+                    draw.text((oficina_x_centered, current_y), oficina_str_upper, font=oficina_font_style, fill='black')
+                    current_y += oficina_h + 5 * scale_factor
+            
+            # Draw fecha line (if it exists)
+            if fecha_str_upper:
+                f_left, f_top, f_right, f_bottom = fecha_font_style.getbbox(fecha_str_upper)
+                fecha_w = f_right - f_left
+                fecha_h = f_bottom - f_top
+                fecha_x_centered = (high_res_width - fecha_w) // 2
+                draw.text((fecha_x_centered, current_y), fecha_str_upper, font=fecha_font_style, fill='black')
+                current_y += fecha_h + 5 * scale_factor
+
+            logger.debug(f"Drew sello, oficina, fecha text sections.")
         except Exception as e:
             logger.error(f"Error drawing INFO text: {str(e)}", exc_info=True)
             raise ImageCreationError(f"Error drawing INFO text: {str(e)}")
@@ -563,7 +595,7 @@ def create_signature_image_system(text: str, encoded_image: str, path: str, widt
         raise ImageProcessingError(f"Unexpected error during signature image creation: {str(e)}")
 
 
-def create_sello_image(text: str, encoded_image: str, path: str, width: int = 320, height: int = 80, scale_factor: int = 4, usuario: str = '') -> dict:
+def create_sello_image(text: str, encoded_image: str, path: str, width: int = 320, height: int = 80, scale_factor: int = 4, usuario: str = '', label_signed_by: str = '',label_signed_at: str = '') -> dict:
     """
     Create a signature image with text and a stamp.
     
@@ -597,8 +629,10 @@ def create_sello_image(text: str, encoded_image: str, path: str, width: int = 32
         # Try to load a suitable font
         logger.debug("Loading font")
         font = get_available_font(9 * scale_factor, 1) # 1 font roboto 
-        font_bold_name = get_available_font(12 * scale_factor, 2) # 2 font roboto  BOLD
-        font_italic_stamp = get_available_font(10 * scale_factor, 3) # 3 font roboto  italic
+        font_bold_name = get_available_font(16 * scale_factor, 2) # 2 font roboto  BOLD
+        font_italic_stamp = get_available_font(9 * scale_factor, 3) # 3 font roboto  italic
+        font_label = get_available_font(8 * scale_factor, 1) # 0 font 
+        
         logger.debug("Font loaded successfully")
         
         # Decode and open the stamp image
@@ -612,7 +646,19 @@ def create_sello_image(text: str, encoded_image: str, path: str, width: int = 32
             raise StampDecodingError(f"Error decoding stamp image: {str(e)}")
 
         # Posición vertical inicial
-        current_y = 8 * scale_factor  # margen superior
+        current_y = 10 * scale_factor  # margen superior
+        
+        # Centrar horizontalmente si viene firmado por el usuario
+        if label_signed_by:
+            label_signed_by = label_signed_by.encode('utf-8').decode('utf-8').upper()
+            left, top, right, bottom = font_label.getbbox(label_signed_by)
+            text_width = right - left
+            text_height = bottom - top
+            text_x = (high_res_width - text_width) // 2
+            draw.text((text_x, 3), label_signed_by, font=font_label, fill='black') 
+        #Add a la fecha si viene el label_signed_at
+        if label_signed_at:
+            label_signed_at = label_signed_at.encode('utf-8').decode('utf-8').upper()
 
         # Draw text USUARIO (centrado)
         logger.debug("Drawing text USUARIO")
@@ -637,40 +683,103 @@ def create_sello_image(text: str, encoded_image: str, path: str, width: int = 32
                 text_height = bottom - top
                 pos_x_user = (high_res_width - text_width) // 2
                 draw.text((pos_x_user , current_y), line, font=font_bold_name, fill='black')
-                current_y += text_height + 5 * scale_factor
+                current_y += text_height + 4 * scale_factor
+            
 
             logger.debug(f"Drew user name text centered")
         except Exception as e:
             logger.error(f"Error drawing text: {str(e)}", exc_info=True)
             raise ImageCreationError(f"Error drawing text: {str(e)}")
-    
+        
+        #----------------------------pequeño aumento de las Y
+        current_y += 2*scale_factor
+
+
         # Draw additional text (centrado)
         logger.debug("Drawing additional text")
         try:
-            lines = text.split('\n')  # 1 sello 2 oficina 3 fecha
-            for i, line in enumerate(lines):
-                logger.debug(f"Original text: {line}")
-                logger.debug(f"Text encoding: {line.encode('utf-8')}")
-                line = line.encode('utf-8').decode('utf-8').upper()
-                
-                # Choose font based on line number
-                current_font = font_italic_stamp if i == 0 else font
-                
-                # Calcular posición para centrar cada línea
-                left, top, right, bottom = current_font.getbbox(line)
-                text_width = right - left
-                text_height = bottom - top
-                
-                # Centrar horizontalmente
-                text_x = (high_res_width - text_width) // 2
-                
-                draw.text((text_x, current_y), line, font=current_font, fill='black')
-                current_y += text_height + 5 * scale_factor
+            lines = text.split('\n')  # Expected: sello, oficina, fecha
+            
+            sello_text_orig = lines[0] if len(lines) > 0 else ""
+            oficina_text_orig = lines[1] if len(lines) > 1 else ""
+            fecha_text_orig = lines[2] if len(lines) > 2 else ""
 
-            logger.debug(f"Drew {len(lines)} lines of text")
+            sello_str_upper = sello_text_orig.encode('utf-8').decode('utf-8').upper()
+            oficina_str_upper = oficina_text_orig.encode('utf-8').decode('utf-8').upper()
+            fecha_str_upper = fecha_text_orig.encode('utf-8').decode('utf-8').upper()
+            
+            if label_signed_at:
+                processed_label_signed_at = label_signed_at.encode('utf-8').decode('utf-8').upper()
+                fecha_str_upper = processed_label_signed_at + " " + fecha_str_upper
+            
+            sello_font_style = font_italic_stamp
+            oficina_font_style = font # Used for oficina and separator
+            fecha_font_style = font
+            separator_str = " - "
+
+            # Calculate dimensions for sello
+            s_left, s_top, s_right, s_bottom = sello_font_style.getbbox(sello_str_upper)
+            sello_w = s_right - s_left
+            sello_h = s_bottom - s_top
+
+            # Calculate dimensions for separator
+            sep_left, sep_top, sep_right, sep_bottom = oficina_font_style.getbbox(separator_str)
+            separator_w = sep_right - sep_left
+            
+            # Calculate dimensions for oficina
+            o_left, o_top, o_right, o_bottom = oficina_font_style.getbbox(oficina_str_upper)
+            oficina_w = o_right - o_left
+            oficina_h = o_bottom - o_top
+            
+            total_combined_sello_oficina_width = 0
+            if sello_str_upper and oficina_str_upper:
+                total_combined_sello_oficina_width = sello_w + separator_w + oficina_w
+            elif sello_str_upper:
+                total_combined_sello_oficina_width = sello_w
+            elif oficina_str_upper: # Should not happen if sello is primary
+                total_combined_sello_oficina_width = oficina_w
+
+
+            if sello_str_upper and oficina_str_upper and total_combined_sello_oficina_width <= high_res_width:
+                # Draw "sello - oficina" on one line
+                combined_line_h = max(sello_h, oficina_h) 
+                
+                current_x_combined_start = (high_res_width - total_combined_sello_oficina_width) // 2
+                
+                draw.text((current_x_combined_start, current_y), sello_str_upper, font=sello_font_style, fill='black')
+                current_x_combined_start += sello_w
+                draw.text((current_x_combined_start, current_y), separator_str, font=oficina_font_style, fill='black')
+                current_x_combined_start += separator_w
+                draw.text((current_x_combined_start, current_y), oficina_str_upper, font=oficina_font_style, fill='black')
+                
+                current_y += combined_line_h + 5 * scale_factor
+            else:
+                # Draw sello on its own line (if it exists)
+                if sello_str_upper:
+                    sello_x_centered = (high_res_width - sello_w) // 2
+                    draw.text((sello_x_centered, current_y), sello_str_upper, font=sello_font_style, fill='black')
+                    current_y += sello_h + 5 * scale_factor
+                
+                # Draw oficina on its own line (if it exists)
+                if oficina_str_upper:
+                    oficina_x_centered = (high_res_width - oficina_w) // 2
+                    draw.text((oficina_x_centered, current_y), oficina_str_upper, font=oficina_font_style, fill='black')
+                    current_y += oficina_h + 5 * scale_factor
+            
+            # Draw fecha line (if it exists)
+            if fecha_str_upper:
+                f_left, f_top, f_right, f_bottom = fecha_font_style.getbbox(fecha_str_upper)
+                fecha_w = f_right - f_left
+                fecha_h = f_bottom - f_top
+                fecha_x_centered = (high_res_width - fecha_w) // 2
+                draw.text((fecha_x_centered, current_y), fecha_str_upper, font=fecha_font_style, fill='black')
+                current_y += fecha_h + 5 * scale_factor
+
+            logger.debug(f"Drew sello, oficina, fecha text sections.")
         except Exception as e:
             logger.error(f"Error drawing text: {str(e)}", exc_info=True)
             raise ImageCreationError(f"Error drawing text: {str(e)}")
+                
 
         # Save and encode high resolution image
         logger.debug("Saving and encoding final image")

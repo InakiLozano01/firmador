@@ -2,7 +2,7 @@
 ###              Imports externos              ###
 ##################################################
 
-import json
+import sys, json
 import platform
 from cryptography.hazmat.primitives import hashes
 from uuid import uuid4
@@ -16,6 +16,8 @@ from PIL import Image
 import psutil
 import re
 import PyKCS11
+import multiprocessing
+from ui_bridge import run_ui as _run_ui_bridge  # Subprocess-based UI bridge
 
 ##################################################
 ###              Imports propios               ###
@@ -66,6 +68,8 @@ def get_certificates_route(): # Renamed to avoid conflict with certificates.py m
         current_file_path = os.path.abspath(__file__)
         mode = 'exe' if 'temp' in current_file_path.lower() else 'python'
 
+        print(f"Mode: {mode}")
+
         try:
             token_library_mapping = load_token_library_mapping()
         except TokenMappingError as e:
@@ -83,14 +87,12 @@ def get_certificates_route(): # Renamed to avoid conflict with certificates.py m
             print(f"SmartcardReaderError in list_tokens_internal: {e.message}")
             return jsonify({"status": False, "message": e.message}), e.status_code
         
-        selected_slot_data = []
-        thread_slot = Thread(target=select_token_slot, args=(token_info_list, selected_slot_data, mode))
-        thread_slot.start()
-        thread_slot.join()
+        # -------------------- SELECCIÓN DE TOKEN --------------------
+        selected_slot_index = run_ui('select_token_slot', (token_info_list, mode))
 
-        if not selected_slot_data:
+        if selected_slot_index is None:
             return jsonify({"status": False, "message": "No se seleccionó ningún slot de token."}), 400
-        selected_slot_index = selected_slot_data[0]
+
         selected_token_info = token_info_list[selected_slot_index]
 
         try:
@@ -102,8 +104,8 @@ def get_certificates_route(): # Renamed to avoid conflict with certificates.py m
         if token_name in token_library_mapping:
             global_lib_path = token_library_mapping[token_name]
         else:
-            # select_library_file now returns a single value: path string or None
-            chosen_lib_path = select_library_file()
+            # select_library_file ahora se ejecuta en proceso separado
+            chosen_lib_path = run_ui('select_library_file')
             if not chosen_lib_path:
                 return jsonify({"status": False, "message": "No se seleccionó ninguna biblioteca de token o se canceló la selección."}), 400
             global_lib_path = chosen_lib_path
@@ -114,8 +116,8 @@ def get_certificates_route(): # Renamed to avoid conflict with certificates.py m
                 print(f"TokenMappingError in save_token_library_mapping: {e.message}")
                 return jsonify({"status": False, "message": e.message}), e.status_code
         
-        # get_pin_from_user now returns PIN string or None
-        pin_input = get_pin_from_user(mode) 
+        # get_pin_from_user ahora se ejecuta en proceso separado
+        pin_input = run_ui('get_pin_from_user', (mode,))
         if not pin_input: # Handles both cancellation and dialog setup errors from get_pin_from_user
             return jsonify({"status": False, "message": "Entrada de PIN cancelada o fallida."}), 400
         global_pin = pin_input
@@ -134,15 +136,19 @@ def get_certificates_route(): # Renamed to avoid conflict with certificates.py m
         if not certificates:
             return jsonify({"status": False, "message": "No se encontraron certificados en el token."}), 404
 
-        selected_cert_data = []
-        thread_cert = Thread(target=select_certificate, args=(certificates, selected_cert_data, mode))
-        thread_cert.start()
-        thread_cert.join()
+        # Prepare serializable certificate information for the UI
+        serializable_certs_info = []
+        for cert, _ in certificates:
+            # Using RFC 4514 string representation of the subject, which is picklable
+            # Alternatively, extract specific fields into a dictionary
+            subject_str = cert.subject.rfc4514_string()
+            serializable_certs_info.append(subject_str)
 
-        if not selected_cert_data:
+        selected_index = run_ui('select_certificate', (serializable_certs_info, mode))
+
+        if selected_index is None:
             return jsonify({"status": False, "message": "No se seleccionó ningún certificado."}), 400
         
-        selected_index = selected_cert_data[0]
         user_selected_cert, user_selected_cert_der = certificates[selected_index]
 
         try:
@@ -317,7 +323,43 @@ def run_tray_icon():
     icon = pystray.Icon("tuquito_authenticator", image, tray_title, menu)
     icon.run(setup_tray)
 
+# Wrapper that keeps the original signature (func_name, args_tuple)
+# so existing endpoint code does not need to change.
+
+def run_ui(func_name: str, args: tuple = ()):  # noqa: D401
+    """Delegate to ui_bridge.run_ui while accepting a *single* tuple like before."""
+
+    if args is None:
+        args = ()
+    if not isinstance(args, tuple):
+        # For safety convert single parameter to tuple
+        args = (args,)
+    return _run_ui_bridge(func_name, *args)
+
+# --- Sentinel for helper mode -------------------------------------------------
+# If the executable is invoked with the first argument '--ui-helper', run the
+# Tk helper dispatcher and exit.  This prevents a second Flask instance from
+# starting when the packaged EXE is reused to spawn the UI subprocesses.
+
+if len(sys.argv) >= 2 and sys.argv[1] == "--ui-helper":
+    # Remove sentinel so ui_helper sees the expected argv layout
+    helper_argv = ["ui_helper", *sys.argv[2:]]
+    sys.argv[:] = helper_argv
+    from ui_helper.__main__ import main as _ui_main  # pylint: disable=import-error
+
+    _ui_main()
+    sys.exit(0)
+
 if __name__ == "__main__":
+    # Ensure 'spawn' start method for multiprocessing, critical for GUI and avoiding re-runs.
+    # This should be called before any other multiprocessing objects (Queue, Process) are created.
+    # 'force=True' ensures it's set even if a context was implicitly started, though ideally, this is the first call.
+    try:
+        multiprocessing.set_start_method('spawn', force=True)
+    except RuntimeError as e:
+        print(f"Could not set multiprocessing start method to 'spawn': {e}. This might lead to issues if it was already set differently or used.")
+        # Depending on the strictness required, you might choose to exit or continue with caution.
+
     flask_thread = Thread(target=run_flask_app, daemon=True)
     flask_thread.start()
 
