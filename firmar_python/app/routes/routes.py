@@ -331,7 +331,8 @@ def register_routes(app):
         """
         Test route.
         """
-        return jsonify({"status": "success", "message": "Test route"}), 200
+        logger.info("Endpoint funciona. Servidor de firma Python funciona. Esta todo perfectito.")
+        return jsonify({"status": "success", "message": "Esta todo perfectito."}), 200
     
     @app.route('/create_signature_image', methods=['POST'])
     def create_signature():
