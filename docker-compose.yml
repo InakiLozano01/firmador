@@ -1,5 +1,4 @@
 services:
-
   java-webapp:
     container_name: firmador-java
     restart: always
@@ -18,7 +17,6 @@ services:
     restart: always
     build:
       context: ./firmar_python/app
-      context: ./firmar_python/app
       dockerfile: Dockerfile
     ports:
       - "5000:5000"
@@ -27,11 +25,9 @@ services:
     volumes:
       - ./firmar_python/app:/app
       - ./firmar_python/app/assets:/app/assets
-      - ./firmar_python/app:/app
-      - ./firmar_python/app/assets:/app/assets
       - /qnap/indice_migracion:/app/expedientes
-      - /qnap/documentos_firmados:/var/documentos_firmados
-      - ../../documentos:/var/documentos
+      # - /qnap/documentos_firmados:/var/documentos_firmados
+      # - ../../documentos:/var/documentos
     depends_on:
       - java-webapp
     networks:
