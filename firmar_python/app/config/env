@@ -1,10 +1,10 @@
-DB_NAME= your_db_name
-DB_USER= your_db_user
-DB_PASSWORD= your_db_password
-DB_HOST= your_db_host
-DB_PORT= your_db_port
-PRIVATE_KEY_PASSWORD= your_private_key_password
-PRIVATE_KEY_PATH= your_private_key_path
-CERTIFICATE_PATH= your_certificate_path
+DB_NAME= 'Nombre de la base de datos del tapir (verificar docker-compose de tapir)'
+DB_USER= 'Nombre de usuario de la base de datos (verificar docker-compose de tapir)'
+DB_PASSWORD= 'Password de la base de datos(verificar docker-compose de tapir)'
+DB_HOST= 'Host o IP de la base de datos del tapir'
+DB_PORT= 'Puerto de la base de datos del tapir (verificar docker-compose de tapir)'
+PRIVATE_KEY_PASSWORD= 'Clave privada del certificado de firma'
+PRIVATE_KEY_PATH= 'Ruta del archivo de la clave privada del certificado de firma'
+CERTIFICATE_PATH= 'Ruta del archivo del certificado de firma'
 
-LOGO_YUNGA_FILE= your_img_path
+LOGO_YUNGA_FILE= 'Ruta del archivo del logo de yunga'
