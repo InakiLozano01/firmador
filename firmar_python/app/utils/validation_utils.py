@@ -221,6 +221,19 @@ def validation_analyze(report: Dict[str, Any]) -> List[Dict[str, Any]]:
             except (ValueError, KeyError):
                 claimed_signing_time = datetime.max
 
+            match ((is_structurally_valid and 
+                         basic_sig.get('SignatureIntact', False) is True and 
+                         basic_sig.get('SignatureValid', False) is True and
+                         claimed_signing_time < datetime.now()), certs_valid):
+                case (True, True):
+                    message = "Firma válida y certificado válido"
+                case (True, False):
+                    message = "Firma válida y certificado inválido"
+                case (False, True):
+                    message = "Firma inválida y certificado válido"
+                case (False, False):
+                    message = "Firma inválida y certificado inválido"
+
             basic_sig = signature.get('BasicSignature', {})
             signature_obj = {
                 "valid": (is_structurally_valid and 
@@ -235,7 +248,12 @@ def validation_analyze(report: Dict[str, Any]) -> List[Dict[str, Any]]:
                     else f"{parse_datetime(signature['ClaimedSigningTime'])} INVALIDA"
                 ),
                 "signer_role": None,  # Initialize as None
-                "cert_data": {}  # Initialize empty cert_data
+                "cert_data": {},  # Initialize empty cert_data,
+                "conclusion": (is_structurally_valid and 
+                         basic_sig.get('SignatureIntact', False) is True and 
+                         basic_sig.get('SignatureValid', False) is True and
+                         claimed_signing_time < datetime.now()) and certs_valid,
+                "conclusion_message": message
             }
 
             # Safely add signer role if available
