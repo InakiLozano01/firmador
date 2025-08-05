@@ -221,6 +221,8 @@ def validation_analyze(report: Dict[str, Any]) -> List[Dict[str, Any]]:
             except (ValueError, KeyError):
                 claimed_signing_time = datetime.max
 
+            basic_sig = signature.get('BasicSignature', {})
+            
             match ((is_structurally_valid and 
                          basic_sig.get('SignatureIntact', False) is True and 
                          basic_sig.get('SignatureValid', False) is True and
@@ -234,7 +236,6 @@ def validation_analyze(report: Dict[str, Any]) -> List[Dict[str, Any]]:
                 case (False, False):
                     message = "Firma inválida y certificado inválido"
 
-            basic_sig = signature.get('BasicSignature', {})
             signature_obj = {
                 "valid": (is_structurally_valid and 
                          basic_sig.get('SignatureIntact', False) is True and 
