@@ -128,6 +128,7 @@ class SignaturesService:
         id_user = pdf['id_usuario']
         filepath = pdf['path_file']
         es_caratula = pdf.get('es_caratula', False)
+        is_project = pdf.get('is_project', False)
 
         logger.debug(f"Processing PDF with ID: {id_doc}")
         logger.debug(f"Signature parameters - Field: {field_id}, Name: {name}, Area: {area}")
@@ -216,7 +217,10 @@ class SignaturesService:
                 if not es_caratula:
                     try:
                         logger.debug("Getting number and date for non-cover PDF")
-                        lastpdf = get_number_and_date_then_close(signed_pdf_base64, id_doc)
+                        if not is_project:
+                            lastpdf = get_number_and_date_then_close(signed_pdf_base64, id_doc)
+                        else:
+                            lastpdf = get_number_and_date_then_close_project(signed_pdf_base64, id_doc)
                         logger.debug("Successfully obtained number and date")
                     except Exception as e:
                         logger.error(f"Failed to close PDF: {str(e)}", exc_info=True)
@@ -270,7 +274,10 @@ class SignaturesService:
                     'id_oficina': id_oficina,
                     'tipo_firma': tipo_firma
                 }
-                unlock_pdf_and_close_task(unlock_params)
+                if not is_project:
+                    unlock_pdf_and_close_task(unlock_params)
+                else:
+                    unlock_pdf_and_close_task_project(unlock_params)
                 logger.debug("Successfully unlocked PDF and closed task")
             except Exception as e:
                 logger.error(f"Failed to unlock PDF and close task: {str(e)}", exc_info=True)
@@ -315,6 +322,7 @@ class SignaturesService:
             signature_value = pdfs['signatureValue']
             id_user = pdfs['id_usuario']
             filepath = pdfs['path_file']
+            is_project = pdfs['is_project'] if 'is_project' in pdfs else False
             
             # Use the enhanced app_state method to get the document-specific timestamp
             document_timestamp = app_state.get_document_timestamp(id_doc)
@@ -369,7 +377,10 @@ class SignaturesService:
                         error = {"idDocFailed": id_doc, "message": f"Error al firmar documento: {str(e)}", "stack": str(e.__traceback__)}
                         raise Exception(f"Error al firmar documento: {str(e)}")
                     try:
-                        lastpdf = get_number_and_date_then_close(signed_pdf_response['bytes'], id_doc)
+                        if not is_project:
+                            lastpdf = get_number_and_date_then_close(signed_pdf_response['bytes'], id_doc)
+                        else:
+                            lastpdf = get_number_and_date_then_close_project(signed_pdf_response['bytes'], id_doc)
                     except Exception as e:
                         logger.error(f"Failed to close PDF: {str(e)}", exc_info=True)
                         error = {"idDocFailed": id_doc, "message": f"Error al cerrar PDF: {str(e)}", "stack": str(e.__traceback__)}
@@ -411,7 +422,10 @@ class SignaturesService:
                     'id_oficina': id_oficina,
                     'tipo_firma': tipo_firma
                 }
-                unlock_pdf_and_close_task(unlock_params)
+                if not is_project:
+                    unlock_pdf_and_close_task(unlock_params)
+                else:
+                    unlock_pdf_and_close_task_project(unlock_params)
             except Exception as e:
                 logger.error(f"Failed to unlock PDF and close task: {str(e)}", exc_info=True)
                 error = {"idDocFailed": id_doc, "message": f"Error al desbloquear PDF: {str(e)}", "stack": str(e.__traceback__)}
