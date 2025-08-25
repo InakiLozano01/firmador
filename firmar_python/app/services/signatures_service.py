@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime
+from datetime import timezone
 import time as tiempo
 import json
 import base64
@@ -11,11 +12,13 @@ from datetime import datetime
 import base64
 import hashlib
 import copy
+from cryptography import x509
+from cryptography.hazmat.backends import default_backend
 from app.config.state import app_state
 from app.services.dss.dss_pdf import get_data_to_sign_token, get_data_to_sign_certificate, sign_document_certificate, sign_document_token
 from app.services.local_certs import get_certificate_from_local, get_signature_value_own
-from app.utils.image_utils import create_sello_image as create_signature_image,create_signature_image_system 
-from app.utils.db import get_number_and_date_then_close, unlock_pdf_and_close_task
+from app.utils.image_utils import create_sello_image as create_signature_image,create_signature_image_system
+from app.utils.db import get_number_and_date_then_close, unlock_pdf_and_close_task, get_number_and_date_then_close_project, unlock_pdf_and_close_task_project
 from app.utils.saving import save_signed_pdf
 from app.services.dss.dss_json import get_data_to_sign_tapir_jades, sign_document_tapir_jades
 from app.exceptions import signature_exc
@@ -23,6 +26,61 @@ from app.services.dss.close_pdf import close_pdf
 # Configure logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
+
+def validate_certificate_expiration(certificates):
+    """
+    Validate that the signing certificate has not expired.
+
+    Args:
+        certificates (dict): Certificate data containing 'certificate' and 'certificateChain'
+
+    Returns:
+        tuple: (is_valid, error_message)
+            is_valid (bool): True if certificate is valid, False if expired
+            error_message (str): Error message if certificate is expired, None otherwise
+    """
+    if not certificates or not isinstance(certificates, dict):
+        logger.debug("No certificates provided for validation")
+        return True, None  # No certificates means no validation needed
+
+    if 'certificate' not in certificates:
+        logger.debug("No signing certificate found in certificates")
+        return True, None  # No certificate means no validation needed
+
+    try:
+        # Decode the base64 certificate (DER expected)
+        cert_bytes = base64.b64decode(certificates['certificate'])
+
+        # Parse the certificate
+        cert = x509.load_der_x509_certificate(cert_bytes, default_backend())
+
+        # Prefer timezone-aware property when available to avoid deprecation warnings
+        try:
+            not_after = cert.not_valid_after_utc  # cryptography >= 41
+        except AttributeError:
+            not_after = cert.not_valid_after
+            # If naive, assume UTC
+            if not_after.tzinfo is None:
+                not_after = not_after.replace(tzinfo=timezone.utc)
+
+        # Current time in UTC
+        current_time = datetime.now(timezone.utc)
+
+        logger.debug(f"Certificate notAfter: {not_after}, Current time: {current_time}")
+
+        # Check if certificate has expired (must be strictly greater than now)
+        if not_after <= current_time:
+            error_message = f"Certificate has expired. Expiration date: {not_after.strftime('%d/%m/%Y %H:%M:%S')}"
+            logger.error(f"Certificate validation failed: {error_message}")
+            return False, error_message
+
+        logger.debug("Certificate validation successful - certificate is not expired")
+        return True, None
+
+    except Exception as e:
+        error_message = f"Error validating certificate: {str(e)}"
+        logger.error(f"Certificate validation error: {error_message}", exc_info=True)
+        return False, error_message
 
 # Create console handler with detailed formatting
 console_handler = logging.StreamHandler()
@@ -150,6 +208,20 @@ class SignaturesService:
         logger.debug(f"Set app_state.datetimesigned to {app_state.datetimesigned} for document {id_doc}")
         logger.debug(f"Set app_state.isclosing to {app_state.isclosing} for document {id_doc}")
 
+        try:
+            # Validate certificate expiration if certificates are provided
+            if certificates:
+                logger.debug("Validating certificate expiration")
+                is_valid, cert_error = validate_certificate_expiration(certificates)
+                if not is_valid:
+                    logger.error(f"Certificate validation failed for document {id_doc}: {cert_error}")
+                    error = ({"idDocFailed": id_doc, "message": f"Error de validación de certificado: {cert_error}"})
+                    raise signature_exc.SignatureValidationError(f"Error de validación de certificado: {cert_error}")
+        except Exception as e:
+            logger.error(f"Error validating certificate expiration: {str(e)}", exc_info=True)
+            error = ({"idDocFailed": id_doc, "message": f"Error al validar certificado: {str(e)}"})
+            raise signature_exc.SignatureValidationError(f"Error al validar certificado: {str(e)}")
+
         if is_digital:
             try:
                 datetime.strptime(app_state.datetimesigned, "%d/%m/%Y %H:%M:%S")
@@ -163,7 +235,9 @@ class SignaturesService:
             
             try:
                 logger.debug("Creating signature image")
-                custom_image = create_signature_image(f"{stamp}\n{area}\n{app_state.datetimesigned}",app_state.encoded_image["data"],"cert",
+                # For projects, exclude area from signature image
+                signature_text = f"{stamp}\n{app_state.datetimesigned}" if is_project else f"{stamp}\n{area}\n{app_state.datetimesigned}"
+                custom_image = create_signature_image(signature_text, app_state.encoded_image["data"], "cert",
                 usuario=f"{name}",
                 label_signed_by= "Firmado digitalmente por"
                 )
@@ -272,7 +346,8 @@ class SignaturesService:
                     'is_closed': is_closed,
                     'id_sello': id_sello,
                     'id_oficina': id_oficina,
-                    'tipo_firma': tipo_firma
+                    'tipo_firma': tipo_firma,
+                    'is_signed': 1  # Explicitly set is_signed to 1 for successful signatures
                 }
                 if not is_project:
                     unlock_pdf_and_close_task(unlock_params)
@@ -306,6 +381,16 @@ class SignaturesService:
         error = None
         
         try:
+            # Validate certificate expiration first if certificates provided
+            id_doc_preview = pdfs.get('id_doc') if isinstance(pdfs, dict) else None
+            if certificates:
+                logger.debug("Validating certificate expiration before finalization")
+                is_valid, cert_error = validate_certificate_expiration(certificates)
+                if not is_valid:
+                    logger.error(f"Certificate validation failed for document {id_doc_preview}: {cert_error}")
+                    error = {"idDocFailed": id_doc_preview, "message": f"Error de validación de certificado: {cert_error}"}
+                    raise signature_exc.SignatureValidationError(f"Error de validación de certificado: {cert_error}")
+
             # Extract and log key parameters
             pdf_b64 = pdfs['pdf']
             field_id = pdfs['firma_lugar']
@@ -353,7 +438,9 @@ class SignaturesService:
                     dt = datetime.strptime(app_state.datetimesigned, "%Y-%m-%d %H:%M:%S")
                     app_state.datetimesigned = dt.strftime("%d/%m/%Y %H:%M:%S")
                 try:
-                    custom_image = create_signature_image(f"{stamp}\n{area}\n{app_state.datetimesigned}",app_state.encoded_image["data"],"token",
+                    # For projects, exclude area from signature image
+                    signature_text = f"{stamp}\n{app_state.datetimesigned}" if is_project else f"{stamp}\n{area}\n{app_state.datetimesigned}"
+                    custom_image = create_signature_image(signature_text, app_state.encoded_image["data"], "token",
                     usuario=f"{name}",
                     label_signed_by= "Firmado digitalmente por"
                     )
@@ -420,7 +507,8 @@ class SignaturesService:
                     'is_closed': is_closed,
                     'id_sello': id_sello,
                     'id_oficina': id_oficina,
-                    'tipo_firma': tipo_firma
+                    'tipo_firma': tipo_firma,
+                    'is_signed': 1  # Explicitly set is_signed to 1 for successful signatures
                 }
                 if not is_project:
                     unlock_pdf_and_close_task(unlock_params)

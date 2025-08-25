@@ -106,7 +106,7 @@ class SignaturesController:
                     "message": str(e)
                 })
                 success = False
-                message = "Error al procesar algunos documentos"
+                message = "Error al procesar algunos documentos: " + str(errors_stack)
                 if app_state.conn and app_state.conn.closed == 0:
                     logger.debug("Rolling back database connection")
                     app_state.conn.rollback()

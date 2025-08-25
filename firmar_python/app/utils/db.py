@@ -150,7 +150,7 @@ def unlock_pdf_and_close_task(params: dict):
             - id_sello (int): Seal ID
             - id_oficina (int): Office ID
             - tipo_firma (int): Type of signature
-            - is_signed (int, optional): Flag indicating if the document is signed. Defaults to 1
+            - is_signed (int): Flag indicating if the document is signed (1 for signed, 0 for unsigned)
 
     Raises:
         DatabaseConnectionError: If connection to database fails
@@ -160,14 +160,12 @@ def unlock_pdf_and_close_task(params: dict):
     logger.info(f"Starting unlock and close task for document {params.get('id_doc')}")
     
     # Validate required parameters
-    required_params = {'id_doc', 'id_user', 'hash_doc', 'is_closed', 'id_sello', 'id_oficina', 'tipo_firma'}
+    required_params = {'id_doc', 'id_user', 'hash_doc', 'is_closed', 'id_sello', 'id_oficina', 'tipo_firma', 'is_signed'}
     missing_params = required_params - set(params.keys())
     if missing_params:
         logger.error(f"Missing required parameters: {missing_params}")
         raise ValueError(f"Missing required parameters: {', '.join(missing_params)}")
 
-    # Set default value for is_signed if not provided
-    params.setdefault('is_signed', 1)
     logger.debug(f"Processing parameters: {params}")
 
     global conn
@@ -241,7 +239,7 @@ def unlock_pdf_and_close_task_project(params: dict):
             - id_sello (int): Seal ID
             - id_oficina (int): Office ID
             - tipo_firma (int): Type of signature
-            - is_signed (int, optional): Flag indicating if the document is signed. Defaults to 1
+            - is_signed (int): Flag indicating if the document is signed (1 for signed, 0 for unsigned)
 
     Raises:
         DatabaseConnectionError: If connection to database fails
@@ -251,12 +249,12 @@ def unlock_pdf_and_close_task_project(params: dict):
     logger.info(f"Starting unlock and close task for document {params.get('id_doc')}")
     
     # Validate required parameters
-    required_params = {'id_doc', 'id_user', 'hash_doc', 'is_closed', 'id_sello', 'id_oficina', 'tipo_firma'}
+    required_params = {'id_doc', 'id_user', 'hash_doc', 'is_closed', 'id_sello', 'id_oficina', 'tipo_firma', 'is_signed'}
     missing_params = required_params - set(params.keys())
     if missing_params:
         logger.error(f"Missing required parameters: {missing_params}")
         raise ValueError(f"Missing required parameters: {', '.join(missing_params)}")
-        
+
     global conn
     dbname = os.getenv('DB_NAME')
     user = os.getenv('DB_USER')
