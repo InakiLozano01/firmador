@@ -1,0 +1,11 @@
+{
+    "pdfs": [
+        "pdf": "base64",
+        "firma_lugar": "htc_001"
+        "id_doc": id,
+        "fields_to_fill": {
+            "nombre_campo1": valorcampo1,
+            "nombre_campo2": valorcampo2
+        }
+    ]
+}
