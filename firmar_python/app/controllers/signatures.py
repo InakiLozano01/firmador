@@ -11,6 +11,57 @@ class SignaturesController:
         self.service = SignaturesService()
         logger.debug("SignaturesController initialized")
 
+    def signature_pdf_loro(self, pdfs):
+        logger.info("Starting PDF signature initialization for loro")
+        logger.debug(f"Processing {len(pdfs)} PDFs")
+        id_docs_signeds = []
+        errors_stack = []
+        signed_pdfs = []
+        success = True
+        message = "Firma iniciada correctamente"
+        
+        for i, pdf in enumerate(pdfs):
+            logger.debug(f"Processing PDF {i+1}/{len(pdfs)}")
+            try:
+                id_doc_signed, error_stack, signed_pdf_base64 = self.service.signature_pdf_loro(pdf)
+                if error_stack is None:
+                    if id_doc_signed:
+                        id_docs_signeds.append(id_doc_signed)
+                    if signed_pdf_base64:
+                        signed_pdfs.append(signed_pdf_base64)
+                    logger.debug(f"Successfully initialized signature for PDF {i+1}")
+                else:
+                    errors_stack.append(error_stack)
+                    success = False
+                    message = "Error al procesar algunos documentos"
+                    logger.warning(f"Failed to initialize signature for PDF {i+1}: {error_stack}")
+            except Exception as e:
+                logger.error(f"Exception during PDF {i+1} signature initialization: {str(e)}", exc_info=True)
+                errors_stack.append({
+                    "idDocFailed": pdf.get('id_doc'),
+                    "message": str(e)
+                })
+                success = False
+                message = "Error al procesar algunos documentos"
+                if app_state.conn and app_state.conn.closed == 0:
+                    logger.debug("Rolling back database connection")
+                    app_state.conn.rollback()
+                    app_state.conn.close()
+        
+        if app_state.conn and app_state.conn.closed == 0:
+            logger.debug("Committing and closing database connection")
+            app_state.conn.commit()
+            app_state.conn.close()
+        
+        id_docs_signeds.sort()
+        docs_not_signed = []
+        for error in errors_stack:
+            if error.get('idDocFailed'):
+                docs_not_signed.append(error['idDocFailed'])
+        
+        logger.info(f"PDF signature initialization completed. Successful: {len(id_docs_signeds)}, Failed: {len(docs_not_signed)}")
+        return id_docs_signeds, docs_not_signed, signed_pdfs, errors_stack, success, message
+    
     def init_signature_pdf(self, pdfs, certificates):
         logger.info("Starting PDF signature initialization")
         logger.debug(f"Processing {len(pdfs)} PDFs")
@@ -55,7 +106,7 @@ class SignaturesController:
                     "message": str(e)
                 })
                 success = False
-                message = "Error al procesar algunos documentos"
+                message = "Error al procesar algunos documentos: " + str(errors_stack)
                 if app_state.conn and app_state.conn.closed == 0:
                     logger.debug("Rolling back database connection")
                     app_state.conn.rollback()
