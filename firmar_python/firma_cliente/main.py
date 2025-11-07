@@ -72,12 +72,14 @@ def get_certificates_route(): # Renamed to avoid conflict with certificates.py m
 
         try:
             token_library_mapping = load_token_library_mapping()
+            print(f"Token library mapping: {token_library_mapping}")
         except TokenMappingError as e:
             print(f"TokenMappingError in load_token_library_mapping: {e.message}")
             return jsonify({"status": False, "message": e.message}), e.status_code
 
         try:
             token_info_list = list_tokens_internal()
+            print(f"Token info list: {token_info_list}")
             if not token_info_list:
                 return jsonify({"status": False, "message": "No se encontraron tokens o tarjetas en los lectores."}), 404
         except NoSmartcardFoundError as e:
@@ -89,11 +91,13 @@ def get_certificates_route(): # Renamed to avoid conflict with certificates.py m
         
         # -------------------- SELECCIÓN DE TOKEN --------------------
         selected_slot_index = run_ui('select_token_slot', (token_info_list, mode))
+        print(f"Selected slot index: {selected_slot_index}")
 
         if selected_slot_index is None:
             return jsonify({"status": False, "message": "No se seleccionó ningún slot de token."}), 400
 
         selected_token_info = token_info_list[selected_slot_index]
+        print(f"Selected token info: {selected_token_info}")
 
         try:
             _token_unique_id, token_name = get_token_unique_id_internal(selected_token_info)

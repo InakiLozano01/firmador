@@ -18,10 +18,8 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
-    name='Tuquito-v2_1',
+    name='Tuquito-v2_2',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -35,4 +33,16 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=['./images/app.ico'],
+    exclude_binaries=True,
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name='Tuquito-v2_2',
 )

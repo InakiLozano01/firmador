@@ -93,7 +93,8 @@ def list_tokens_internal() -> list:
     # This function now calls the refactored list_smartcard_readers_internal
     # which will raise SmartcardReaderError if it fails. That error will propagate
     # unless caught here. For now, let it propagate to be handled by the route.
-    reader_list = list_smartcard_readers_internal() 
+    reader_list = list_smartcard_readers_internal()
+    print(f"Reader list: {reader_list}")
     
     if not reader_list: # Handle case where no readers are returned
         # This might not be an error per se, but an empty list of tokens.
