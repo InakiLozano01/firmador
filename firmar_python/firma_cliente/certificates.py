@@ -71,32 +71,54 @@ class TokenLoginError(CertificateError):
 def get_issuer_cert(cert: x509.Certificate) -> x509.Certificate:
     """
     Obtiene el certificado emisor de un certificado dado utilizando la extensión AIA.
+    Intenta todas las URLs de CA_ISSUERS disponibles como fallback.
     Devuelve un objeto x509.Certificate o levanta una CertificateError.
     """
     try:
         aia_ext = cert.extensions.get_extension_for_oid(ExtensionOID.AUTHORITY_INFORMATION_ACCESS)
         aia = aia_ext.value 
+        
+        # Recopilar todas las URLs de CA_ISSUERS
+        issuer_urls = []
         for access_description in aia:
             if access_description.access_method == AuthorityInformationAccessOID.CA_ISSUERS:
-                issuer_url = access_description.access_location.value
-                print(f"Obteniendo certificado del emisor desde: {issuer_url}")
+                issuer_urls.append(access_description.access_location.value)
+        
+        if not issuer_urls:
+            raise AIAExtensionNotFoundError("Descriptor CA_ISSUERS no encontrado en la extensión AIA.")
+        
+        # Intentar cada URL como fallback
+        last_error = None
+        for issuer_url in issuer_urls:
+            print(f"Obteniendo certificado del emisor desde: {issuer_url}")
+            try:
+                response = get(issuer_url, timeout=10) 
+                response.raise_for_status() 
+                
                 try:
-                    response = get(issuer_url, timeout=10) 
-                    response.raise_for_status() 
-                    
+                    return x509.load_der_x509_certificate(response.content)
+                except ValueError: 
+                    print("Error al parsear formato DER, intentando PEM...")
                     try:
-                        return x509.load_der_x509_certificate(response.content)
-                    except ValueError: 
-                        print("Error al parsear formato DER, intentando PEM...")
-                        try:
-                            return x509.load_pem_x509_certificate(response.content)
-                        except ValueError as e_pem:
-                            raise CertificateParsingError(f"No se pudo parsear el certificado desde {issuer_url} como DER ni PEM.", e_pem) from e_pem
-                except requests_exceptions.RequestException as e_req:
-                    raise IssuerCertificateFetchError(f"Error de red al obtener certificado desde {issuer_url}.", e_req) from e_req
-        raise AIAExtensionNotFoundError("Descriptor CA_ISSUERS no encontrado en la extensión AIA.")
+                        return x509.load_pem_x509_certificate(response.content)
+                    except ValueError as e_pem:
+                        last_error = CertificateParsingError(f"No se pudo parsear el certificado desde {issuer_url} como DER ni PEM.", e_pem)
+                        print(f"Error parseando desde {issuer_url}: {str(e_pem)}")
+                        continue  # Intentar siguiente URL
+            except requests_exceptions.RequestException as e_req:
+                last_error = IssuerCertificateFetchError(f"Error de red al obtener certificado desde {issuer_url}.", e_req)
+                print(f"Error de red desde {issuer_url}: {str(e_req)}")
+                continue  # Intentar siguiente URL
+        
+        # Si llegamos aquí, todas las URLs fallaron
+        if last_error:
+            raise last_error
+        raise IssuerCertificateFetchError("No se pudo obtener el certificado del emisor desde ninguna URL disponible.")
+        
     except x509.ExtensionNotFound: 
         raise AIAExtensionNotFoundError("Extensión AIA no encontrada en el certificado.")
+    except CertificateError:
+        raise  # Re-raise our custom errors as-is
     except Exception as e: 
         raise IssuerCertificateFetchError(f"Error inesperado al procesar AIA para obtener el emisor: {str(e)}", e) from e
 
