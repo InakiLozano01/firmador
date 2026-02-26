@@ -1,17 +1,14 @@
 import logging
+import json
+import base64
+import hashlib
+import io
+import multiprocessing
+import time as tiempo
+import copy
 from datetime import datetime
 from datetime import timezone
-import time as tiempo
-import json
-import base64
-import hashlib
-import multiprocessing
-import io
-import json
-from datetime import datetime
-import base64
-import hashlib
-import copy
+
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from app.config.state import app_state
@@ -23,6 +20,11 @@ from app.utils.saving import save_signed_pdf
 from app.services.dss.dss_json import get_data_to_sign_tapir_jades, sign_document_tapir_jades
 from app.exceptions import signature_exc
 from app.services.dss.close_pdf import close_pdf
+from app.services.signing_context_store import (
+    signing_context_store,
+    SigningContextConflictError,
+    SigningContextUnavailableError,
+)
 # Configure logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -93,7 +95,18 @@ class SignaturesService:
     def __init__(self):
         cpu_count = multiprocessing.cpu_count()
         self.max_workers = cpu_count * 2/3  # Adjust based on testing
+        self.signing_context_store = signing_context_store
         logger.debug(f"SignaturesService initialized with {self.max_workers} workers")
+
+    @staticmethod
+    def generate_batch_id(pdfs):
+        doc_ids = [str(pdf.get("id_doc")) for pdf in pdfs if pdf.get("id_doc")]
+        first_user = "unknown"
+        for pdf in pdfs:
+            if pdf.get("id_usuario") is not None:
+                first_user = str(pdf.get("id_usuario"))
+                break
+        return signing_context_store.generate_batch_id(doc_ids, first_user)
 
     def signature_pdf_loro(self, pdf):
         logger.info("Starting PDF signature initialization for loro")
@@ -161,7 +174,7 @@ class SignaturesService:
 
         return id_doc, error, signed_pdf_base64
         
-    def init_signature_pdf(self, pdf, certificates):
+    def init_signature_pdf(self, pdf, certificates, batch_id=None):
         logger.info("Starting PDF signature initialization")
         logger.debug(f"Input PDF data: {json.dumps(pdf, indent=2)}")
         logger.debug(f"Certificates data: {json.dumps(certificates, indent=2)}")
@@ -192,21 +205,8 @@ class SignaturesService:
         logger.debug(f"Signature parameters - Field: {field_id}, Name: {name}, Area: {area}")
         logger.debug(f"Document properties - Is closing: {is_closing}, Is digital: {is_digital}, Is cover: {es_caratula}")
 
-        # Use the enhanced app_state methods to generate and store a timestamp for this document
-        document_timestamp = app_state.set_document_timestamp(id_doc)
-        
-        # Still set app_state.current_time for backward compatibility
-        app_state.current_time = document_timestamp
-        app_state.datetimesigned = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-        app_state.isclosing = is_closing
-        
-        # Store document-specific data using the new method
-        app_state.set_document_data(id_doc, 'datetimesigned', app_state.datetimesigned)
-        app_state.set_document_data(id_doc, 'isclosing', is_closing)
-        
-        logger.debug(f"Set app_state.current_time to {app_state.current_time} for document {id_doc}")
-        logger.debug(f"Set app_state.datetimesigned to {app_state.datetimesigned} for document {id_doc}")
-        logger.debug(f"Set app_state.isclosing to {app_state.isclosing} for document {id_doc}")
+        document_timestamp = int(tiempo.time() * 1000)
+        document_datetimesigned = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
 
         try:
             # Validate certificate expiration if certificates are provided
@@ -224,13 +224,64 @@ class SignaturesService:
 
         if is_digital:
             try:
+                current_batch_id = batch_id or self.generate_batch_id([pdf])
+                context, context_result = self.signing_context_store.create_or_get_init_context(
+                    batch_id=current_batch_id,
+                    id_doc=str(id_doc),
+                    id_user=str(id_user),
+                    field_id=str(field_id),
+                    is_closing=bool(is_closing),
+                    is_digital=bool(is_digital),
+                    pdf_b64=pdf_b64,
+                )
+                document_timestamp = int(context["timestamp_ms"])
+                document_datetimesigned = context["datetimesigned"]
+                logger.info(
+                    "signing_context_init "
+                    f"context_source=redis context_result={context_result} "
+                    f"id_doc={id_doc} batch_id={context.get('batch_id')} "
+                    f"timestamp_init={document_timestamp}"
+                )
+            except SigningContextConflictError as conflict_exc:
+                error = {
+                    "idDocFailed": id_doc,
+                    "message": "Error de contexto pendiente: existe una firma en curso para este documento.",
+                    "details": str(conflict_exc),
+                }
+                logger.warning(
+                    "signing_context_init "
+                    f"context_source=redis context_result=conflict id_doc={id_doc} "
+                    f"batch_id={batch_id} error={conflict_exc}"
+                )
+                return id_doc, error, data_to_sign
+            except SigningContextUnavailableError as unavailable_exc:
+                error = {
+                    "idDocFailed": id_doc,
+                    "message": f"Error de infraestructura al guardar contexto de firma: {unavailable_exc}",
+                }
+                logger.error(
+                    "signing_context_init "
+                    f"context_source=redis context_result=error id_doc={id_doc} "
+                    f"batch_id={batch_id} error={unavailable_exc}"
+                )
+                return id_doc, error, data_to_sign
+
+        # Keep compatibility with methods that still use app_state values directly.
+        app_state.current_time = document_timestamp
+        app_state.datetimesigned = document_datetimesigned
+        app_state.isclosing = is_closing
+
+        logger.debug(f"Set app_state.current_time to {app_state.current_time} for document {id_doc}")
+        logger.debug(f"Set app_state.datetimesigned to {app_state.datetimesigned} for document {id_doc}")
+        logger.debug(f"Set app_state.isclosing to {app_state.isclosing} for document {id_doc}")
+
+        if is_digital:
+            try:
                 datetime.strptime(app_state.datetimesigned, "%d/%m/%Y %H:%M:%S")
             except ValueError:
                 logger.debug("Converting datetime format")
                 dt = datetime.strptime(app_state.datetimesigned, "%Y-%m-%d %H:%M:%S")
                 app_state.datetimesigned = dt.strftime("%d/%m/%Y %H:%M:%S")
-                # Update the document-specific data too
-                app_state.set_document_data(id_doc, 'datetimesigned', app_state.datetimesigned)
                 logger.debug(f"Converted datetime: {app_state.datetimesigned}")
             
             try:
@@ -379,6 +430,10 @@ class SignaturesService:
         
         # Initialize return variables
         error = None
+        id_doc = pdfs.get('id_doc', 'unknown') if isinstance(pdfs, dict) else 'unknown'
+        old_current_time = app_state.current_time
+        old_datetimesigned = app_state.datetimesigned
+        old_isclosing = app_state.isclosing
         
         try:
             # Validate certificate expiration first if certificates provided
@@ -408,21 +463,80 @@ class SignaturesService:
             id_user = pdfs['id_usuario']
             filepath = pdfs['path_file']
             is_project = pdfs['is_project'] if 'is_project' in pdfs else False
-            
-            # Use the enhanced app_state method to get the document-specific timestamp
-            document_timestamp = app_state.get_document_timestamp(id_doc)
-            logger.debug(f"Retrieved document-specific timestamp {document_timestamp} for document {id_doc}")
-            
-            # Get document-specific data
-            doc_datetimesigned = app_state.get_document_data(id_doc, 'datetimesigned', app_state.datetimesigned)
-            doc_isclosing = app_state.get_document_data(id_doc, 'isclosing', is_closing)
-            
+
+            if is_digital:
+                try:
+                    context = self.signing_context_store.get_context_for_end(str(id_doc))
+                except SigningContextUnavailableError as unavailable_exc:
+                    error = {
+                        "idDocFailed": id_doc,
+                        "message": f"Error de infraestructura al leer contexto de firma: {unavailable_exc}"
+                    }
+                    logger.error(
+                        "signing_context_end "
+                        f"context_source=redis context_result=error id_doc={id_doc} "
+                        f"error={unavailable_exc}"
+                    )
+                    return id_doc, error
+
+                if not context:
+                    error = {
+                        "idDocFailed": id_doc,
+                        "message": "No se encontró contexto de firma pendiente para el documento (expirado o inexistente)."
+                    }
+                    logger.warning(
+                        "signing_context_end "
+                        f"context_source=redis context_result=miss id_doc={id_doc}"
+                    )
+                    return id_doc, error
+
+                expected_pdf_sha256 = self.signing_context_store.build_pdf_sha256(pdf_b64)
+                expected_fingerprint = self.signing_context_store.build_request_fingerprint(
+                    id_doc=str(id_doc),
+                    id_user=str(id_user),
+                    field_id=str(field_id),
+                    is_closing=bool(is_closing),
+                    is_digital=bool(is_digital),
+                    pdf_sha256=expected_pdf_sha256,
+                )
+
+                mismatch_reasons = []
+                if str(context.get("id_user")) != str(id_user):
+                    mismatch_reasons.append("id_user")
+                if str(context.get("field_id")) != str(field_id):
+                    mismatch_reasons.append("field_id")
+                if str(context.get("pdf_sha256")) != expected_pdf_sha256:
+                    mismatch_reasons.append("pdf_sha256")
+                if str(context.get("request_fingerprint")) != expected_fingerprint:
+                    mismatch_reasons.append("request_fingerprint")
+
+                if mismatch_reasons:
+                    error = {
+                        "idDocFailed": id_doc,
+                        "message": f"Contexto de firma inválido para el documento. Campos inconsistentes: {', '.join(mismatch_reasons)}."
+                    }
+                    logger.warning(
+                        "signing_context_end "
+                        f"context_source=redis context_result=mismatch id_doc={id_doc} "
+                        f"batch_id={context.get('batch_id')} mismatch={mismatch_reasons}"
+                    )
+                    return id_doc, error
+
+                document_timestamp = int(context["timestamp_ms"])
+                doc_datetimesigned = context["datetimesigned"]
+                doc_isclosing = context.get("isclosing", is_closing)
+                logger.info(
+                    "signing_context_end "
+                    f"context_source=redis context_result=hit id_doc={id_doc} "
+                    f"batch_id={context.get('batch_id')} timestamp_end={document_timestamp}"
+                )
+            else:
+                document_timestamp = int(tiempo.time() * 1000)
+                doc_datetimesigned = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+                doc_isclosing = is_closing
+
             # Temporarily set app_state values to this document's values for compatibility
             # with existing code that uses app_state directly
-            old_current_time = app_state.current_time
-            old_datetimesigned = app_state.datetimesigned
-            old_isclosing = app_state.isclosing
-            
             app_state.current_time = document_timestamp
             app_state.datetimesigned = doc_datetimesigned
             app_state.isclosing = doc_isclosing
@@ -522,21 +636,24 @@ class SignaturesService:
                 logger.debug(f"Saving signed PDF to filepath: {filepath}")
                 save_signed_pdf(finalpdf, filepath)
                 logger.debug("Successfully saved signed PDF")
-                
-                # Clean up the timestamp entry for this document after successful processing
-                app_state.remove_document_timestamp(id_doc)
-                if id_doc in app_state.doc_data:
-                    app_state.doc_data.pop(id_doc, None)
-                
             except Exception as e:
                 logger.error(f"Failed to save signed PDF: {str(e)}", exc_info=True)
                 error = {"idDocFailed": id_doc, "message": f"Error al guardar PDF firmado: {str(e)}", "stack": str(e.__traceback__)}
                 raise Exception(f"Error al guardar PDF firmado: {str(e)}")
-            
-            # Restore previous app_state values
-            app_state.current_time = old_current_time
-            app_state.datetimesigned = old_datetimesigned
-            app_state.isclosing = old_isclosing
+
+            if is_digital:
+                try:
+                    self.signing_context_store.delete_context(str(id_doc))
+                    logger.info(
+                        "signing_context_end "
+                        f"context_source=redis context_result=deleted id_doc={id_doc}"
+                    )
+                except SigningContextUnavailableError as delete_exc:
+                    logger.warning(
+                        "signing_context_end "
+                        f"context_source=redis context_result=delete_error id_doc={id_doc} "
+                        f"error={delete_exc}"
+                    )
             
             logger.info(f"PDF signature finalization completed for document ID: {id_doc}")
             return id_doc, error
@@ -545,6 +662,11 @@ class SignaturesService:
             if error is None:
                 error = {"idDocFailed": id_doc, "message": f"Error al finalizar firma: {str(e)}", "stack": str(e.__traceback__)}
             return id_doc, error
+        finally:
+            # Restore previous app_state values even when any doc fails.
+            app_state.current_time = old_current_time
+            app_state.datetimesigned = old_datetimesigned
+            app_state.isclosing = old_isclosing
     
     def init_sign_jades(self, index_data, certificates, data_signature):
         """
