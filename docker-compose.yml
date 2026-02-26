@@ -25,9 +25,9 @@ services:
     volumes:
       - ./firmar_python/app:/app
       - ./firmar_python/app/assets:/app/assets
-      - /documentos_tapir/indice_migracion:/app/expedientes
-      - /documentos_tapir/documentos_firmados:/var/documentos_firmados
-      - ../tapir/documentos_temp:/var/documentos
+      - /qnap/indice_migracion:/app/expedientes
+      - /qnap/documentos_firmados:/var/documentos_firmados
+      - /home/espaciodocker/devenv/documentos:/var/documentos
 
     depends_on:
       - java-webapp

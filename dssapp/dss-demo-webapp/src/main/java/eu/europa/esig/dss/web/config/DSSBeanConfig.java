@@ -317,7 +317,9 @@ public class DSSBeanConfig {
 
 		// Default configs
 		certificateVerifier.setAlertOnMissingRevocationData(new ExceptionOnStatusAlert());
-		certificateVerifier.setCheckRevocationForUntrustedChains(false);
+		// Enable revocation checking for untrusted chains (e.g., Argentina certificates)
+		// This allows DSS to check CRL/OCSP even if the certificate chain is not in EU Trusted Lists
+		certificateVerifier.setCheckRevocationForUntrustedChains(true);
 
 		return certificateVerifier;
 	}

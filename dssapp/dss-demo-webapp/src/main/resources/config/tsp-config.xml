@@ -2,6 +2,19 @@
 	   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 	   xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-4.3.xsd">
 
+	<!-- External TSA Service (Microsoft TSA) -->
+	<!-- To use a different TSA, change the tspServer property -->
+	<!-- Alternatives: 
+	     - http://ts.quovadisglobal.com/eu (QuoVadis Europa)
+	     - http://ts.quovadisglobal.com/ch (QuoVadis Suiza)
+	     - https://freetsa.org/tsr (FreeTSA)
+	-->
+	<bean id="tspSource" class="eu.europa.esig.dss.service.tsp.OnlineTSPSource">
+		<property name="tspServer" value="https://timestamp.acs.microsoft.com/" />
+	</bean>
+
+	<!-- Fallback: Self-signed TSA (commented out, uncomment if needed) -->
+	<!--
 	<bean id="tspSource" class="eu.europa.esig.dss.spi.x509.tsp.KeyEntityTSPSource">
 		<constructor-arg name="ksFile" type="java.io.File" value="classpath:self_signed_tsa.p12" />
 		<constructor-arg name="ksType" value="PKCS12" />
@@ -10,5 +23,6 @@
 		<constructor-arg name="keyEntryPassword" value="whrmbQRp2nZHx7T5" />
 		<property name="tsaPolicy" value="1.2.3.4" />
 	</bean>
+	-->
 
 </beans>

@@ -39,15 +39,39 @@ def log_image_details(logger, prefix: str, image_data: str, extra_info: dict = N
         logger.error(f"Error logging image details: {str(e)}")
 
 def _handle_error_response(response):
-    """Helper function to handle error responses consistently"""
-    if hasattr(response, 'json'):
+    """Helper function to handle error responses consistently from requests.Response or Flask Response."""
+    error_message = "Unknown error from DSS API"
+    
+    # Handle requests.Response objects
+    if hasattr(response, 'json') and callable(response.json):
         try:
             error_data = response.json()
-            error_message = error_data.get('message', 'Unknown error')
+            error_message = error_data.get('message', error_data.get('error', str(error_data)))
+        except (ValueError, AttributeError):
+            # If JSON parsing fails, try to get text
+            try:
+                error_message = response.text
+            except AttributeError:
+                error_message = str(response)
+    # Handle Flask Response objects (from jsonify)
+    elif hasattr(response, 'get_json') and callable(response.get_json):
+        try:
+            error_data = response.get_json()
+            if error_data:
+                error_message = error_data.get('message', error_data.get('error', str(error_data)))
+            else:
+                error_message = response.get_data(as_text=True)
         except Exception:
-            error_message = str(response)
+            try:
+                error_message = response.get_data(as_text=True)
+            except Exception:
+                error_message = str(response)
+    # Handle dict objects (already parsed)
+    elif isinstance(response, dict):
+        error_message = response.get('message', response.get('error', str(response)))
     else:
         error_message = str(response)
+    
     return error_message
 
 def get_data_to_sign_certificate(pdf, certificates, current_time, field_id, stamp, encoded_image):

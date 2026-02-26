@@ -5,6 +5,31 @@ import io
 from PyPDF2 import PdfReader
 from flask import jsonify
 
+def _extract_error_message(response):
+    """Helper function to extract error message from DSS API response."""
+    try:
+        response_data = response.json()
+        return response_data.get('message', response_data.get('error', 'Unknown error from DSS API'))
+    except (ValueError, AttributeError):
+        return response.text if hasattr(response, 'text') else 'Unknown error from DSS API'
+
+def _handle_dss_response(response, operation_name="DSS API"):
+    """Helper function to handle DSS API responses consistently."""
+    if response.status_code == 200:
+        response_data = response.json()
+        if "bytes" in response_data:
+            return response_data, 200
+        else:
+            # Extract error message from DSS response if available
+            error_message = _extract_error_message(response)
+            logging.error(f"{operation_name} error (status {response.status_code}): {error_message}")
+            return jsonify({"status": False, "message": error_message}), response.status_code
+    else:
+        # Extract error message from DSS response if available
+        error_message = _extract_error_message(response)
+        logging.error(f"{operation_name} error (status {response.status_code}): {error_message}")
+        return jsonify({"status": False, "message": error_message}), response.status_code
+
 def get_data_to_sign_own(pdf, certificates, current_time, field_id, stamp, encoded_image):
     try:
         body = {
@@ -17,7 +42,7 @@ def get_data_to_sign_own(pdf, certificates, current_time, field_id, stamp, encod
                 ],
                 "detachedContents": None,
                 "asicContainerType": None,
-                "signatureLevel": "PAdES_BASELINE_B",
+                "signatureLevel": "PAdES_BASELINE_T",
                 "signaturePackaging": "ENVELOPED",
                 "embedXML": False,
                 "manifestSignature": False,
@@ -100,19 +125,13 @@ def get_data_to_sign_own(pdf, certificates, current_time, field_id, stamp, encod
             }
         }
         response = requests.post('http://java-webapp:5555/services/rest/signature/one-document/getDataToSign', json=body)
-        if response.status_code == 200:
-            if "bytes" in response.json():
-                return response.json(), 200
-            else:
-                return jsonify({"status": False, "message": "Failed to sign document with DSS API."}), 500
-        else:
-            return jsonify({"status": False, "message": "Failed to sign document with DSS API."}), 500
+        return _handle_dss_response(response, "get_data_to_sign_own")
     except requests.RequestException as e:
-        logging.error(f"Error in sign_document_tapir: {str(e)}")
-        return jsonify({"status": False, "message": "Failed to sign document with DSS API."}), 500
+        logging.error(f"Error in get_data_to_sign_own: {str(e)}")
+        return jsonify({"status": False, "message": f"Failed to connect to DSS API: {str(e)}"}), 500
     except Exception as e:
-        logging.error(f"Error in sign_document_tapir: {str(e)}")
-        return jsonify({"status": False, "message": "Failed to sign document with DSS API."}), 500
+        logging.error(f"Unexpected error in get_data_to_sign_own: {str(e)}")
+        return jsonify({"status": False, "message": f"Failed to get data to sign with DSS API: {str(e)}"}), 500
 
 def sign_document_own(pdf, signature_value, certificates, current_time, field_id, stamp, encoded_image):
     try:
@@ -126,7 +145,7 @@ def sign_document_own(pdf, signature_value, certificates, current_time, field_id
                 ],
                 "detachedContents": None,
                 "asicContainerType": None,
-                "signatureLevel": "PAdES_BASELINE_B",
+                "signatureLevel": "PAdES_BASELINE_T",
                 "signaturePackaging": "ENVELOPED",
                 "signatureAlgorithm": "RSA_SHA256",
                 "digestAlgorithm": "SHA256",
@@ -209,19 +228,13 @@ def sign_document_own(pdf, signature_value, certificates, current_time, field_id
             }
         }
         response = requests.post('http://java-webapp:5555/services/rest/signature/one-document/signDocument', json=body)
-        if response.status_code == 200:
-            if "bytes" in response.json():
-                return response.json(), 200
-            else:
-                return jsonify({"status": False, "message": "Failed to sign document with DSS API."}), 500
-        else:
-            return jsonify({"status": False, "message": "Failed to sign document with DSS API."}), 500
+        return _handle_dss_response(response, "sign_document_own")
     except requests.RequestException as e:
-        logging.error(f"Error in sign_document_tapir: {str(e)}")
-        return jsonify({"status": False, "message": "Failed to sign document with DSS API."}), 500
+        logging.error(f"Error in sign_document_own: {str(e)}")
+        return jsonify({"status": False, "message": f"Failed to connect to DSS API: {str(e)}"}), 500
     except Exception as e:
-        logging.error(f"Error in sign_document_tapir: {str(e)}")
-        return jsonify({"status": False, "message": "Failed to sign document with DSS API."}), 500
+        logging.error(f"Unexpected error in sign_document_own: {str(e)}")
+        return jsonify({"status": False, "message": f"Failed to sign document with DSS API: {str(e)}"}), 500
 
 def get_data_to_sign_tapir(pdf, certificates, current_time, field_id, stamp, encoded_image):
     try:
@@ -235,7 +248,7 @@ def get_data_to_sign_tapir(pdf, certificates, current_time, field_id, stamp, enc
                 ],
                 "detachedContents": None,
                 "asicContainerType": None,
-                "signatureLevel": "PAdES_BASELINE_B",
+                "signatureLevel": "PAdES_BASELINE_T",
                 "signaturePackaging": "ENVELOPED",
                 "embedXML": False,
                 "manifestSignature": False,
@@ -318,19 +331,13 @@ def get_data_to_sign_tapir(pdf, certificates, current_time, field_id, stamp, enc
             }
         }
         response = requests.post('http://java-webapp:5555/services/rest/signature/one-document/getDataToSign', json=body)
-        if response.status_code == 200:
-            if "bytes" in response.json():
-                return response.json(), 200
-            else:
-                return jsonify({"status": False, "message": "Failed to sign document with DSS API."}), 500
-        else:
-            return jsonify({"status": False, "message": "Failed to sign document with DSS API."}), 500
+        return _handle_dss_response(response, "get_data_to_sign_tapir")
     except requests.RequestException as e:
-        logging.error(f"Error in sign_document_tapir: {str(e)}")
-        return jsonify({"status": False, "message": "Failed to sign document with DSS API."}), 500
+        logging.error(f"Error in get_data_to_sign_tapir: {str(e)}")
+        return jsonify({"status": False, "message": f"Failed to connect to DSS API: {str(e)}"}), 500
     except Exception as e:
-        logging.error(f"Error in sign_document_tapir: {str(e)}")
-        return jsonify({"status": False, "message": "Failed to sign document with DSS API."}), 500
+        logging.error(f"Unexpected error in get_data_to_sign_tapir: {str(e)}")
+        return jsonify({"status": False, "message": f"Failed to get data to sign with DSS API: {str(e)}"}), 500
 
 def sign_document_tapir(pdf, signature_value, certificates, current_time, field_id, stamp, encoded_image):
     try:
@@ -344,7 +351,7 @@ def sign_document_tapir(pdf, signature_value, certificates, current_time, field_
                 ],
                 "detachedContents": None,
                 "asicContainerType": None,
-                "signatureLevel": "PAdES_BASELINE_B",
+                "signatureLevel": "PAdES_BASELINE_T",
                 "signaturePackaging": "ENVELOPED",
                 "signatureAlgorithm": "RSA_SHA256",
                 "digestAlgorithm": "SHA256",
@@ -427,19 +434,13 @@ def sign_document_tapir(pdf, signature_value, certificates, current_time, field_
             }
         }
         response = requests.post('http://java-webapp:5555/services/rest/signature/one-document/signDocument', json=body)
-        if response.status_code == 200:
-            if "bytes" in response.json():
-                return response.json(), 200
-            else:
-                return jsonify({"status": False, "message": "Failed to sign document with DSS API."}), 500
-        else:
-            return jsonify({"status": False, "message": "Failed to sign document with DSS API."}), 500
+        return _handle_dss_response(response, "sign_document_tapir")
     except requests.RequestException as e:
         logging.error(f"Error in sign_document_tapir: {str(e)}")
-        return jsonify({"status": False, "message": "Failed to sign document with DSS API."}), 500
+        return jsonify({"status": False, "message": f"Failed to connect to DSS API: {str(e)}"}), 500
     except Exception as e:
-        logging.error(f"Error in sign_document_tapir: {str(e)}")
-        return jsonify({"status": False, "message": "Failed to sign document with DSS API."}), 500
+        logging.error(f"Unexpected error in sign_document_tapir: {str(e)}")
+        return jsonify({"status": False, "message": f"Failed to sign document with DSS API: {str(e)}"}), 500
 
 def get_data_to_sign_tapir_jades(json, certificates, current_time, stamp):
     try:
@@ -512,19 +513,13 @@ def get_data_to_sign_tapir_jades(json, certificates, current_time, stamp):
             }
         }
         response = requests.post('http://java-webapp:5555/services/rest/signature/one-document/getDataToSign', json=body)
-        if response.status_code == 200:
-            if "bytes" in response.json():
-                return response.json(), 200
-            else:
-                return jsonify({"status": False, "message": "Failed to sign document with DSS API."}), 500
-        else:
-            return jsonify({"status": False, "message": "Failed to sign document with DSS API."}), 500
+        return _handle_dss_response(response, "get_data_to_sign_tapir_jades")
     except requests.RequestException as e:
-        logging.error(f"Error in sign_document_tapir: {str(e)}")
-        return jsonify({"status": False, "message": "Failed to sign document with DSS API."}), 500
+        logging.error(f"Error in get_data_to_sign_tapir_jades: {str(e)}")
+        return jsonify({"status": False, "message": f"Failed to connect to DSS API: {str(e)}"}), 500
     except Exception as e:
-        logging.error(f"Error in sign_document_tapir: {str(e)}")
-        return jsonify({"status": False, "message": "Failed to sign document with DSS API."}), 500
+        logging.error(f"Unexpected error in get_data_to_sign_tapir_jades: {str(e)}")
+        return jsonify({"status": False, "message": f"Failed to get data to sign with DSS API: {str(e)}"}), 500
 
 def sign_document_tapir_jades(json, signature_value, certificates, current_time, stamp):
     try:
@@ -601,16 +596,10 @@ def sign_document_tapir_jades(json, signature_value, certificates, current_time,
             }
         }
         response = requests.post('http://java-webapp:5555/services/rest/signature/one-document/signDocument', json=body)
-        if response.status_code == 200:
-            if "bytes" in response.json():
-                return response.json(), 200
-            else:
-                return jsonify({"status": False, "message": "Failed to sign document with DSS API."}), 500
-        else:
-            return jsonify({"status": False, "message": "Failed to sign document with DSS API."}), 500
+        return _handle_dss_response(response, "sign_document_tapir_jades")
     except requests.RequestException as e:
-        logging.error(f"Error in sign_document_tapir: {str(e)}")
-        return jsonify({"status": False, "message": "Failed to sign document with DSS API."}), 500
+        logging.error(f"Error in sign_document_tapir_jades: {str(e)}")
+        return jsonify({"status": False, "message": f"Failed to connect to DSS API: {str(e)}"}), 500
     except Exception as e:
-        logging.error(f"Error in sign_document_tapir: {str(e)}")
-        return jsonify({"status": False, "message": "Failed to sign document with DSS API."}), 500 
+        logging.error(f"Unexpected error in sign_document_tapir_jades: {str(e)}")
+        return jsonify({"status": False, "message": f"Failed to sign document with DSS API: {str(e)}"}), 500 
