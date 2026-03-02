@@ -71,23 +71,18 @@ class SignaturesController:
         datas_to_sign = []
         success = True
         message = "Firma iniciada correctamente"
-        
-        # Pre-initialize timestamps for all documents in this batch before processing any document
-        # This ensures that all documents have their timestamps set before any processing begins
-        for i, pdf in enumerate(pdfs):
-            try:
-                id_doc = pdf.get('id_doc')
-                if id_doc:
-                    # Generate and store a unique timestamp for this document
-                    timestamp = app_state.set_document_timestamp(id_doc)
-                    logger.debug(f"Pre-initialized timestamp {timestamp} for document {id_doc} ({i+1}/{len(pdfs)})")
-            except Exception as e:
-                logger.error(f"Error pre-initializing timestamp for document {i+1}: {str(e)}", exc_info=True)
+
+        batch_id = self.service.generate_batch_id(pdfs)
+        logger.debug(f"Generated signing batch_id {batch_id} for {len(pdfs)} PDFs")
         
         for i, pdf in enumerate(pdfs):
             logger.debug(f"Processing PDF {i+1}/{len(pdfs)}")
             try:
-                id_doc_signed, error_stack, data_to_sign = self.service.init_signature_pdf(pdf, certificates)
+                id_doc_signed, error_stack, data_to_sign = self.service.init_signature_pdf(
+                    pdf,
+                    certificates,
+                    batch_id=batch_id
+                )
                 if error_stack is None:
                     if id_doc_signed:
                         id_docs_signeds.append(id_doc_signed)
@@ -112,9 +107,6 @@ class SignaturesController:
                     app_state.conn.rollback()
                     app_state.conn.close()
         
-        # Log that timestamps are stored in app_state
-        logger.debug(f"Timestamps for {len(app_state.doc_timestamps)} documents stored in app_state.doc_timestamps")
-        
         if app_state.conn and app_state.conn.closed == 0:
             logger.debug("Committing and closing database connection")
             app_state.conn.commit()
@@ -135,16 +127,6 @@ class SignaturesController:
         
         id_docs_signeds = []
         errors_stack = []
-        
-        # Log available timestamps before processing
-        logger.debug(f"Using timestamps for {len(app_state.doc_timestamps)} documents from app_state.doc_timestamps")
-        
-        # Verify that all documents in the batch have timestamps
-        for i, pdf in enumerate(pdfs):
-            id_doc = pdf.get('id_doc')
-            if id_doc and id_doc not in app_state.doc_timestamps:
-                logger.warning(f"Document {id_doc} does not have a pre-initialized timestamp. Initializing now.")
-                app_state.set_document_timestamp(id_doc)
         
         for i, pdf in enumerate(pdfs):
             logger.debug(f"Processing PDF {i+1}/{len(pdfs)}")
@@ -171,14 +153,6 @@ class SignaturesController:
                 logger.debug("Committing and closing database connection")
                 app_state.conn.commit()
                 app_state.conn.close()
-        
-        # Check if any timestamps remain after processing
-        remaining_timestamps = len(app_state.doc_timestamps)
-        if remaining_timestamps > 0:
-            logger.warning(f"{remaining_timestamps} document timestamps were not properly cleaned up")
-            # Clear any remaining timestamps to avoid memory leaks
-            app_state.doc_timestamps.clear()
-            app_state.doc_data.clear()
         
         docs_not_signed = []
         for error in errors_stack:
@@ -269,4 +243,3 @@ class SignaturesController:
         
         logger.info(f"JADES signature finalization completed. Successful: {len(id_exps_signeds)}, Failed: {len(exps_not_signed)}")
         return id_exps_signeds, exps_not_signed, index_signeds, errors_stack
-

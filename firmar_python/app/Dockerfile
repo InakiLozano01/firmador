@@ -34,6 +34,9 @@ RUN pip install libarchive-c
 # Install reportlab
 RUN pip install reportlab
 
+# Install redis client
+RUN pip install redis
+
 # Automatically configure mod_wsgi
 #RUN mod_wsgi-express install-module | tee /etc/apache2/mods-available/wsgi.load
 #RUN a2enmod wsgi
