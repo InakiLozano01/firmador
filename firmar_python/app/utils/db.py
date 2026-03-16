@@ -14,11 +14,42 @@ import io
 # Configure logging
 logger = logging.getLogger(__name__)
 
+
+def _get_connection_params():
+    return {
+        'dbname': os.getenv('DB_NAME'),
+        'user': os.getenv('DB_USER'),
+        'password': os.getenv('DB_PASSWORD'),
+        'host': os.getenv('DB_HOST'),
+        'port': os.getenv('DB_PORT')
+    }
+
+
+def open_db_connection():
+    conn_params = _get_connection_params()
+    host = conn_params['host']
+    port = conn_params['port']
+    dbname = conn_params['dbname']
+
+    logger.debug(f"Attempting database connection to {host}:{port}/{dbname}")
+    try:
+        conn = psycopg2.connect(**conn_params)
+        logger.debug("Database connection established")
+    except Exception as e:
+        logger.error(f"Failed to connect to database: {str(e)}", exc_info=True)
+        raise DatabaseConnectionError(f"Error connecting to database: {str(e)}")
+
+    if not conn or conn.closed != 0:
+        logger.error("Database connection is not valid")
+        raise DatabaseConnectionError("Failed to establish database connection")
+
+    return conn
+
 ###################################################
 ###      Función para obtener el número de      ###
 ###         cierre y la fecha de cierre         ###
 ###################################################
-def get_number_and_date_then_close(pdf_to_close, id_doc):
+def get_number_and_date_then_close(pdf_to_close, id_doc, conn=None, commit=True):
     """
     Get the closing number and date, then close the PDF.
 
@@ -36,37 +67,13 @@ def get_number_and_date_then_close(pdf_to_close, id_doc):
         PDFClosingError: If there's an error closing the PDF
     """
     logger.info(f"Starting get number and date process for document {id_doc}")
-    global conn
-    
-    # Get database connection parameters
-    dbname = os.getenv('DB_NAME')
-    user = os.getenv('DB_USER')
-    password = os.getenv('DB_PASSWORD')
-    host = os.getenv('DB_HOST')
-    port = os.getenv('DB_PORT')
+    own_conn = conn is None
+    cursor = None
+    if own_conn:
+        conn = open_db_connection()
 
-    conn_params = {
-        'dbname': dbname,
-        'user': user,
-        'password': password,
-        'host': host,
-        'port': port
-    }
-
-    logger.debug(f"Attempting database connection to {host}:{port}/{dbname}")
     try:
-        conn = psycopg2.connect(**conn_params)
-        logger.debug("Database connection established")
-    except Exception as e:
-        logger.error(f"Failed to connect to database: {str(e)}", exc_info=True)
-        raise DatabaseConnectionError(f"Error connecting to database: {str(e)}")
-
-    if not conn or conn.closed != 0:
-        logger.error("Database connection is not valid")
-        raise DatabaseConnectionError("Failed to establish database connection")
-
-    cursor = conn.cursor()
-    try:
+        cursor = conn.cursor()
         logger.debug(f"Executing document protocolization for document {id_doc}")
         cursor.execute("SELECT f_documento_protocolizar(%s)", (id_doc,))
         datos = cursor.fetchone()
@@ -112,6 +119,8 @@ def get_number_and_date_then_close(pdf_to_close, id_doc):
             logger.debug(f"Passing field values to close_pdf: {final_json_field_values_string}")
             pdf = close_pdf(pdf_base64_string, final_json_field_values_string) # Pass JSON string
             logger.debug("PDF closed successfully")
+            if commit:
+                conn.commit()
             return pdf
         except Exception as e:
             logger.error(f"Failed to close PDF: {str(e)}", exc_info=True)
@@ -122,14 +131,16 @@ def get_number_and_date_then_close(pdf_to_close, id_doc):
         logger.error("Document processing error occurred", exc_info=True)
         conn.rollback()
         raise
+    except PDFClosingError:
+        raise
     except Exception as e:
         logger.error(f"Database transaction error: {str(e)}", exc_info=True)
         conn.rollback()
         raise DatabaseTransactionError(f"Transaction error: {str(e)}")
     finally:
-        conn.commit()
-        cursor.close()
-        if conn and not conn.closed:
+        if cursor:
+            cursor.close()
+        if own_conn and conn and not conn.closed:
             logger.debug("Closing database connection")
             conn.close()
 
@@ -137,7 +148,7 @@ def get_number_and_date_then_close(pdf_to_close, id_doc):
 ###    Funcion para desbloquear el documento    ###
 ###       cerrar la tarea y guardar hash        ###
 ###################################################
-def unlock_pdf_and_close_task(params: dict):
+def unlock_pdf_and_close_task(params: dict, conn=None, commit=True):
     """
     Unlock the PDF, close the task, and save the hash.
 
@@ -160,45 +171,22 @@ def unlock_pdf_and_close_task(params: dict):
     logger.info(f"Starting unlock and close task for document {params.get('id_doc')}")
     
     # Validate required parameters
-    required_params = {'id_doc', 'id_user', 'hash_doc', 'is_closed', 'id_sello', 'id_oficina', 'tipo_firma', 'is_signed'}
+    required_params = {'id_doc', 'id_user', 'hash_doc', 'is_closed', 'id_sello', 'id_oficina', 'tipo_firma'}
     missing_params = required_params - set(params.keys())
     if missing_params:
         logger.error(f"Missing required parameters: {missing_params}")
         raise ValueError(f"Missing required parameters: {', '.join(missing_params)}")
 
+    params.setdefault('is_signed', 1)
     logger.debug(f"Processing parameters: {params}")
 
-    global conn
-    dbname = os.getenv('DB_NAME')
-    user = os.getenv('DB_USER')
-    password = os.getenv('DB_PASSWORD')
-    host = os.getenv('DB_HOST')
-    port = os.getenv('DB_PORT')
-    conn_params = {
-        'dbname': dbname,
-        'user': user,
-        'password': password,
-        'host': host,
-        'port': port
-    }
+    own_conn = conn is None
+    cursor = None
+    if own_conn:
+        conn = open_db_connection()
 
-    logger.debug(f"Attempting database connection to {host}:{port}/{dbname}")
     try:
-        if not (conn and conn.closed == 0):
-            conn = psycopg2.connect(**conn_params)
         cursor = conn.cursor()
-        logger.debug("Database connection established")
-    except (psycopg2.InterfaceError, Exception) as e:
-        try:
-            logger.debug("Retrying database connection")
-            conn = psycopg2.connect(**conn_params)
-            cursor = conn.cursor()
-            logger.debug("Database connection established on retry")
-        except Exception as exc:
-            logger.error(f"Failed to connect to database: {str(exc)}", exc_info=True)
-            raise DatabaseConnectionError(f"Error connecting to database: {str(exc)}")
-
-    try:
         logger.debug("Executing finalization process")
         cursor.execute(
             "SELECT f_finalizar_proceso_firmado_v2 (%s, %s, %s, %s, %s, %s, %s, %s)", 
@@ -214,19 +202,21 @@ def unlock_pdf_and_close_task(params: dict):
             )
         )
         logger.debug("Finalization process completed successfully")
+        if commit:
+            conn.commit()
     except Exception as e:
         logger.error(f"Error in finalization process: {str(e)}", exc_info=True)
         conn.rollback()
         raise DatabaseTransactionError(f"Error in finalization process: {str(e)}")
     finally:
-        conn.commit()
-        cursor.close()
-        if conn and not conn.closed:
+        if cursor:
+            cursor.close()
+        if own_conn and conn and not conn.closed:
             logger.debug("Closing database connection")
             conn.close()
         logger.info("Unlock and close task completed")
 
-def unlock_pdf_and_close_task_project(params: dict):
+def unlock_pdf_and_close_task_project(params: dict, conn=None, commit=True):
     """
     Unlock the PDF, close the task, and save the hash.
 
@@ -249,43 +239,22 @@ def unlock_pdf_and_close_task_project(params: dict):
     logger.info(f"Starting unlock and close task for document {params.get('id_doc')}")
     
     # Validate required parameters
-    required_params = {'id_doc', 'id_user', 'hash_doc', 'is_closed', 'id_sello', 'id_oficina', 'tipo_firma', 'is_signed'}
+    required_params = {'id_doc', 'id_user', 'hash_doc', 'is_closed', 'id_sello', 'id_oficina', 'tipo_firma'}
     missing_params = required_params - set(params.keys())
     if missing_params:
         logger.error(f"Missing required parameters: {missing_params}")
         raise ValueError(f"Missing required parameters: {', '.join(missing_params)}")
 
-    global conn
-    dbname = os.getenv('DB_NAME')
-    user = os.getenv('DB_USER')
-    password = os.getenv('DB_PASSWORD')
-    host = os.getenv('DB_HOST')
-    port = os.getenv('DB_PORT')
-    conn_params = {
-        'dbname': dbname,
-        'user': user,
-        'password': password,
-        'host': host,
-        'port': port
-    }
+    params.setdefault('is_signed', 1)
+    logger.debug(f"Processing parameters: {params}")
 
-    logger.debug(f"Attempting database connection to {host}:{port}/{dbname}")
+    own_conn = conn is None
+    cursor = None
+    if own_conn:
+        conn = open_db_connection()
+
     try:
-        if not (conn and conn.closed == 0):
-            conn = psycopg2.connect(**conn_params)
         cursor = conn.cursor()
-        logger.debug("Database connection established")
-    except (psycopg2.InterfaceError, Exception) as e:
-        try:
-            logger.debug("Retrying database connection")
-            conn = psycopg2.connect(**conn_params)
-            cursor = conn.cursor()
-            logger.debug("Database connection established on retry")
-        except Exception as exc:
-            logger.error(f"Failed to connect to database: {str(exc)}", exc_info=True)
-            raise DatabaseConnectionError(f"Error connecting to database: {str(exc)}")
-
-    try:
         logger.debug("Executing finalization process")
         cursor.execute(
             "SELECT f_proyecto_finalizar_proceso_firmado_v2 (%s, %s, %s, %s, %s, %s, %s, %s)", 
@@ -301,19 +270,21 @@ def unlock_pdf_and_close_task_project(params: dict):
             )
         )
         logger.debug("Finalization process completed successfully")
+        if commit:
+            conn.commit()
     except Exception as e:
         logger.error(f"Error in finalization process: {str(e)}", exc_info=True)
         conn.rollback()
         raise DatabaseTransactionError(f"Error in finalization process: {str(e)}")
     finally:
-        conn.commit()
-        cursor.close()
-        if conn and not conn.closed:
+        if cursor:
+            cursor.close()
+        if own_conn and conn and not conn.closed:
             logger.debug("Closing database connection")
             conn.close()
         logger.info("Unlock and close task completed")
 
-def get_number_and_date_then_close_project(pdf_to_close, id_doc):
+def get_number_and_date_then_close_project(pdf_to_close, id_doc, conn=None, commit=True):
     """
     Get the closing number and date, then close the PDF.
 
@@ -331,37 +302,13 @@ def get_number_and_date_then_close_project(pdf_to_close, id_doc):
         PDFClosingError: If there's an error closing the PDF
     """
     logger.info(f"Starting get number and date process for document {id_doc}")
-    global conn
-    
-    # Get database connection parameters
-    dbname = os.getenv('DB_NAME')
-    user = os.getenv('DB_USER')
-    password = os.getenv('DB_PASSWORD')
-    host = os.getenv('DB_HOST')
-    port = os.getenv('DB_PORT')
+    own_conn = conn is None
+    cursor = None
+    if own_conn:
+        conn = open_db_connection()
 
-    conn_params = {
-        'dbname': dbname,
-        'user': user,
-        'password': password,
-        'host': host,
-        'port': port
-    }
-    
-    logger.debug(f"Attempting database connection to {host}:{port}/{dbname}")
     try:
-        conn = psycopg2.connect(**conn_params)
-        logger.debug("Database connection established")
-    except Exception as e:
-        logger.error(f"Failed to connect to database: {str(e)}", exc_info=True)
-        raise DatabaseConnectionError(f"Error connecting to database: {str(e)}")
-    
-    if not conn or conn.closed != 0:
-        logger.error("Database connection is not valid")
-        raise DatabaseConnectionError("Failed to establish database connection")
-    
-    cursor = conn.cursor()
-    try:
+        cursor = conn.cursor()
         logger.debug(f"Executing document protocolization for document {id_doc}")
         cursor.execute("SELECT f_proyecto_protocolizar(%s)", (id_doc,))
         datos = cursor.fetchone()
@@ -407,6 +354,8 @@ def get_number_and_date_then_close_project(pdf_to_close, id_doc):
             logger.debug(f"Passing field values to close_pdf: {final_json_field_values_string}")
             pdf = close_pdf(pdf_base64_string, final_json_field_values_string) # Pass JSON string
             logger.debug("PDF closed successfully")
+            if commit:
+                conn.commit()
             return pdf
         except Exception as e:
             logger.error(f"Failed to close PDF: {str(e)}", exc_info=True)
@@ -416,14 +365,16 @@ def get_number_and_date_then_close_project(pdf_to_close, id_doc):
         logger.error("Document processing error occurred", exc_info=True)
         conn.rollback()
         raise
+    except PDFClosingError:
+        raise
     except Exception as e:
         logger.error(f"Database transaction error: {str(e)}", exc_info=True)
         conn.rollback()
         raise DatabaseTransactionError(f"Transaction error: {str(e)}")
     finally:
-        conn.commit()
-        cursor.close()
-        if conn and not conn.closed:
+        if cursor:
+            cursor.close()
+        if own_conn and conn and not conn.closed:
             logger.debug("Closing database connection")
             conn.close()
-        logger.info("Get number and date process completed")    
+        logger.info("Get number and date process completed")
