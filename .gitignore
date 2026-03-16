@@ -16,3 +16,7 @@ actions-runner
 .venv
 .cursorrules
 __pycache__/
+/dashboard/node_modules/
+/dashboard/dist/
+/dashboard/build/
+/dashboard/.next

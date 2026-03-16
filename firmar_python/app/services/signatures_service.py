@@ -16,7 +16,7 @@ from app.utils.certificates_utils import extract_certificate_info_name
 from app.services.dss.dss_pdf import get_data_to_sign_token, get_data_to_sign_certificate, sign_document_certificate, sign_document_token
 from app.services.local_certs import get_certificate_from_local, get_signature_value_own
 from app.utils.image_utils import create_sello_image as create_signature_image,create_signature_image_system 
-from app.utils.db import get_number_and_date_then_close, unlock_pdf_and_close_task
+from app.utils.db import get_number_and_date_then_close, unlock_pdf_and_close_task, open_db_connection
 from app.utils.saving import save_signed_pdf
 from app.services.dss.dss_json import get_data_to_sign_tapir_jades, sign_document_tapir_jades
 from app.exceptions import signature_exc
@@ -39,6 +39,26 @@ class SignaturesService:
         cpu_count = multiprocessing.cpu_count()
         self.max_workers = cpu_count * 2/3  # Adjust based on testing
         logger.debug(f"SignaturesService initialized with {self.max_workers} workers")
+
+    @staticmethod
+    def _rollback_signature_transaction(conn, filepath=None):
+        if conn and conn.closed == 0:
+            try:
+                logger.debug("Rolling back signature transaction")
+                conn.rollback()
+            except Exception as e:
+                logger.error(f"Failed to rollback signature transaction: {str(e)}", exc_info=True)
+        if filepath:
+            logger.warning(f"Preserving saved PDF after transaction failure: {filepath}")
+
+    @staticmethod
+    def _close_signature_connection(conn):
+        if conn and conn.closed == 0:
+            try:
+                logger.debug("Closing signature transaction connection")
+                conn.close()
+            except Exception as e:
+                logger.error(f"Failed to close signature transaction connection: {str(e)}", exc_info=True)
 
     def init_signature_pdf(self, pdf, certificates):
         logger.info("Starting PDF signature initialization")
@@ -125,113 +145,138 @@ class SignaturesService:
                 raise signature_exc.SignatureValidationError(f"Error al crear imagen de firma: {str(e)}")
             
         role = name + ", " + stamp + ", " + area
-
-        logger.debug(f"Processing signature with parameters - Digital: {is_digital}, Closing: {is_closing}")
-        match (is_digital, is_closing):
-            case (True, True):
-                try:
-                    logger.debug(f"Getting data to sign for digital closing signature using timestamp {document_timestamp}")
-                    data_to_sign_response = get_data_to_sign_token(pdf_b64, certificates, document_timestamp, field_id, role, custom_image)
-                    data_to_sign = (data_to_sign_response["bytes"])
-                    logger.debug("Successfully obtained data to sign")
-                    # Log the data to sign
-                    logger.debug(f"Data to sign (first 100 chars): {data_to_sign[:100]}...")
-                except Exception as e:
-                    logger.error(f"Failed to get data to sign for digital closing signature: {str(e)}", exc_info=True)
-                    error = ({"idDocFailed": id_doc, "message": f"Error al obtener datos para firmar: {str(e)}"})
-                    raise signature_exc.SignatureValidationError(f"Error al obtener datos para firmar: {str(e)}")
-            case (True, False):
-                try:
-                    logger.debug(f"Getting data to sign for digital signature using timestamp {document_timestamp}")
-                    data_to_sign_response = get_data_to_sign_token(pdf_b64, certificates, document_timestamp, field_id, role, custom_image)
-                    data_to_sign = (data_to_sign_response["bytes"])
-                    logger.debug("Successfully obtained data to sign")
-                    # Log the data to sign
-                    logger.debug(f"Data to sign (first 100 chars): {data_to_sign[:100]}...")
-                except Exception as e:
-                    logger.error(f"Failed to get data to sign for digital signature: {str(e)}", exc_info=True)
-                    error = ({"idDocFailed": id_doc, "message": f"Error al obtener datos para firmar: {str(e)}"})
-                    raise signature_exc.SignatureValidationError(f"Error al obtener datos para firmar: {str(e)}")
-            case (False, True):
-                try:
-                    logger.debug("Processing non-digital closing signature")
-                    signed_pdf_base64 = self.sign_own_pdf(pdf_b64, False, field_id, stamp, area, name, app_state.datetimesigned, role)
-                    logger.debug("Successfully signed PDF")
-                except Exception as e:
-                    logger.error(f"Failed to sign PDF with non-digital closing signature: {str(e)}", exc_info=True)
-                    error = ({"idDocFailed": id_doc, "message": f"Error al firmar documento: {str(e)}"})
-                    raise signature_exc.SignatureValidationError(f"Error al firmar documento: {str(e)}")
-                if not es_caratula:
-                    try:
-                        logger.debug("Getting number and date for non-cover PDF")
-                        lastpdf = get_number_and_date_then_close(signed_pdf_base64, id_doc)
-                        logger.debug("Successfully obtained number and date")
-                    except Exception as e:
-                        logger.error(f"Failed to close PDF: {str(e)}", exc_info=True)
-                        error = ({"idDocFailed": id_doc, "message": f"Error al cerrar PDF: {str(e)}"})
-                        raise signature_exc.SignatureValidationError(f"Error al cerrar PDF: {str(e)}")
-                else:
-                    logger.debug("Skipping number and date for cover page")
-                    lastpdf = signed_pdf_base64
-                try:
-                    logger.debug("Signing PDF with closing signature")
-                    signed_pdf_base64_closed = self.sign_own_pdf(lastpdf, True, closing_place, stamp, area, name, app_state.datetimesigned, role)
-                    logger.debug("Successfully added closing signature")
-                except Exception as e:
-                    logger.error(f"Failed to add closing signature: {str(e)}", exc_info=True)
-                    error = ({"idDocFailed": id_doc, "message": f"Error al firmar documento: {str(e)}"})
-                    raise signature_exc.SignatureValidationError(f"Error al firmar documento: {str(e)}")
-                finalpdf = signed_pdf_base64_closed
-                is_closed = True
-                logger.debug("PDF closing process completed")
-
-            case (False, False):
-                try:
-                    logger.debug("Processing non-digital signature")
-                    signed_pdf_base64 = self.sign_own_pdf(pdf_b64, False, field_id, stamp, area, name, app_state.datetimesigned, role)
-                    logger.debug("Successfully signed PDF")
-                except Exception as e:
-                    logger.error(f"Failed to sign PDF with non-digital signature: {str(e)}", exc_info=True)
-                    error = ({"idDocFailed": id_doc, "message": f"Error al firmar documento: {str(e)}"})
-                    raise signature_exc.SignatureValidationError(f"Error al firmar documento: {str(e)}")
-                finalpdf = signed_pdf_base64
-                is_closed = False
-                logger.debug("Non-digital signature process completed")
-
-        tipo_firma = 2 if is_digital else 1
-        logger.debug(f"Signature type set to: {tipo_firma}")
+        transaction_conn = None
+        saved_filepath = None
 
         if not is_digital:
-            logger.debug("Processing hash for non-digital signature")
-            hash_object = hashlib.sha256(io.BytesIO(base64.b64decode(finalpdf)).getvalue())
-            hash_doc = hash_object.hexdigest()
-            logger.debug("Hash generated successfully")
+            try:
+                transaction_conn = open_db_connection()
+            except Exception as e:
+                logger.error(f"Failed to open transaction for document {id_doc}: {str(e)}", exc_info=True)
+                raise signature_exc.SignatureValidationError(f"Error de conexión a base de datos: {str(e)}")
 
-            try:
-                logger.debug("Unlocking PDF and closing task")
-                unlock_params = {
-                    'id_doc': id_doc,
-                    'id_user': id_user,
-                    'hash_doc': hash_doc,
-                    'is_closed': is_closed,
-                    'id_sello': id_sello,
-                    'id_oficina': id_oficina,
-                    'tipo_firma': tipo_firma
-                }
-                unlock_pdf_and_close_task(unlock_params)
-                logger.debug("Successfully unlocked PDF and closed task")
-            except Exception as e:
-                logger.error(f"Failed to unlock PDF and close task: {str(e)}", exc_info=True)
-                error = ({"idDocFailed": id_doc, "message": "Error al desbloquear PDF: " + str(e)})
-                raise Exception("Error al desbloquear PDF: " + str(e))
-            try:
-                logger.debug(f"Saving signed PDF to filepath: {filepath}")
-                save_signed_pdf(finalpdf, filepath)
-                logger.debug("Successfully saved signed PDF")
-            except Exception as e:
-                logger.error(f"Failed to save signed PDF: {str(e)}", exc_info=True)
-                error = ({"idDocFailed": id_doc, "message": f"Error al guardar PDF firmado: {str(e)}"})
-                raise signature_exc.SignatureValidationError(f"Error al guardar PDF firmado: {str(e)}")
+        try:
+            logger.debug(f"Processing signature with parameters - Digital: {is_digital}, Closing: {is_closing}")
+            match (is_digital, is_closing):
+                case (True, True):
+                    try:
+                        logger.debug(f"Getting data to sign for digital closing signature using timestamp {document_timestamp}")
+                        data_to_sign_response = get_data_to_sign_token(pdf_b64, certificates, document_timestamp, field_id, role, custom_image)
+                        data_to_sign = (data_to_sign_response["bytes"])
+                        logger.debug("Successfully obtained data to sign")
+                        # Log the data to sign
+                        logger.debug(f"Data to sign (first 100 chars): {data_to_sign[:100]}...")
+                    except Exception as e:
+                        logger.error(f"Failed to get data to sign for digital closing signature: {str(e)}", exc_info=True)
+                        error = ({"idDocFailed": id_doc, "message": f"Error al obtener datos para firmar: {str(e)}"})
+                        raise signature_exc.SignatureValidationError(f"Error al obtener datos para firmar: {str(e)}")
+                case (True, False):
+                    try:
+                        logger.debug(f"Getting data to sign for digital signature using timestamp {document_timestamp}")
+                        data_to_sign_response = get_data_to_sign_token(pdf_b64, certificates, document_timestamp, field_id, role, custom_image)
+                        data_to_sign = (data_to_sign_response["bytes"])
+                        logger.debug("Successfully obtained data to sign")
+                        # Log the data to sign
+                        logger.debug(f"Data to sign (first 100 chars): {data_to_sign[:100]}...")
+                    except Exception as e:
+                        logger.error(f"Failed to get data to sign for digital signature: {str(e)}", exc_info=True)
+                        error = ({"idDocFailed": id_doc, "message": f"Error al obtener datos para firmar: {str(e)}"})
+                        raise signature_exc.SignatureValidationError(f"Error al obtener datos para firmar: {str(e)}")
+                case (False, True):
+                    try:
+                        logger.debug("Processing non-digital closing signature")
+                        signed_pdf_base64 = self.sign_own_pdf(pdf_b64, False, field_id, stamp, area, name, app_state.datetimesigned, role)
+                        logger.debug("Successfully signed PDF")
+                    except Exception as e:
+                        logger.error(f"Failed to sign PDF with non-digital closing signature: {str(e)}", exc_info=True)
+                        error = ({"idDocFailed": id_doc, "message": f"Error al firmar documento: {str(e)}"})
+                        raise signature_exc.SignatureValidationError(f"Error al firmar documento: {str(e)}")
+                    if not es_caratula:
+                        try:
+                            logger.debug("Getting number and date for non-cover PDF")
+                            lastpdf = get_number_and_date_then_close(
+                                signed_pdf_base64,
+                                id_doc,
+                                conn=transaction_conn,
+                                commit=False
+                            )
+                            logger.debug("Successfully obtained number and date")
+                        except Exception as e:
+                            logger.error(f"Failed to close PDF: {str(e)}", exc_info=True)
+                            error = ({"idDocFailed": id_doc, "message": f"Error al cerrar PDF: {str(e)}"})
+                            raise signature_exc.SignatureValidationError(f"Error al cerrar PDF: {str(e)}")
+                    else:
+                        logger.debug("Skipping number and date for cover page")
+                        lastpdf = signed_pdf_base64
+                    try:
+                        logger.debug("Signing PDF with closing signature")
+                        signed_pdf_base64_closed = self.sign_own_pdf(lastpdf, True, closing_place, stamp, area, name, app_state.datetimesigned, role)
+                        logger.debug("Successfully added closing signature")
+                    except Exception as e:
+                        logger.error(f"Failed to add closing signature: {str(e)}", exc_info=True)
+                        error = ({"idDocFailed": id_doc, "message": f"Error al firmar documento: {str(e)}"})
+                        raise signature_exc.SignatureValidationError(f"Error al firmar documento: {str(e)}")
+                    finalpdf = signed_pdf_base64_closed
+                    is_closed = True
+                    logger.debug("PDF closing process completed")
+
+                case (False, False):
+                    try:
+                        logger.debug("Processing non-digital signature")
+                        signed_pdf_base64 = self.sign_own_pdf(pdf_b64, False, field_id, stamp, area, name, app_state.datetimesigned, role)
+                        logger.debug("Successfully signed PDF")
+                    except Exception as e:
+                        logger.error(f"Failed to sign PDF with non-digital signature: {str(e)}", exc_info=True)
+                        error = ({"idDocFailed": id_doc, "message": f"Error al firmar documento: {str(e)}"})
+                        raise signature_exc.SignatureValidationError(f"Error al firmar documento: {str(e)}")
+                    finalpdf = signed_pdf_base64
+                    is_closed = False
+                    logger.debug("Non-digital signature process completed")
+
+            tipo_firma = 2 if is_digital else 1
+            logger.debug(f"Signature type set to: {tipo_firma}")
+
+            if not is_digital:
+                logger.debug("Processing hash for non-digital signature")
+                hash_object = hashlib.sha256(io.BytesIO(base64.b64decode(finalpdf)).getvalue())
+                hash_doc = hash_object.hexdigest()
+                logger.debug("Hash generated successfully")
+
+                try:
+                    logger.debug("Unlocking PDF and closing task")
+                    unlock_params = {
+                        'id_doc': id_doc,
+                        'id_user': id_user,
+                        'hash_doc': hash_doc,
+                        'is_closed': is_closed,
+                        'id_sello': id_sello,
+                        'id_oficina': id_oficina,
+                        'tipo_firma': tipo_firma
+                    }
+                    unlock_pdf_and_close_task(unlock_params, conn=transaction_conn, commit=False)
+                    logger.debug("Successfully unlocked PDF and closed task")
+                except Exception as e:
+                    logger.error(f"Failed to unlock PDF and close task: {str(e)}", exc_info=True)
+                    error = ({"idDocFailed": id_doc, "message": "Error al desbloquear PDF: " + str(e)})
+                    raise Exception("Error al desbloquear PDF: " + str(e))
+                try:
+                    logger.debug(f"Saving signed PDF to filepath: {filepath}")
+                    save_signed_pdf(finalpdf, filepath)
+                    saved_filepath = filepath
+                    logger.debug("Successfully saved signed PDF")
+                    transaction_conn.commit()
+                    logger.debug("Committed signature transaction successfully")
+                except Exception as e:
+                    logger.error(f"Failed to save or commit signed PDF: {str(e)}", exc_info=True)
+                    error = ({"idDocFailed": id_doc, "message": f"Error al guardar PDF firmado: {str(e)}"})
+                    raise signature_exc.SignatureValidationError(f"Error al guardar PDF firmado: {str(e)}")
+        except Exception:
+            if transaction_conn:
+                self._rollback_signature_transaction(transaction_conn, saved_filepath)
+            raise
+        finally:
+            if transaction_conn:
+                self._close_signature_connection(transaction_conn)
 
         logger.info(f"PDF signature initialization completed for document ID: {id_doc}")
         # Log that we're using the document-specific timestamp
@@ -246,6 +291,8 @@ class SignaturesService:
         # Initialize return variables
         error = None
         
+        transaction_conn = None
+        saved_filepath = None
         try:
             # Extract and log key parameters
             pdf_b64 = pdfs['pdf']
@@ -284,6 +331,8 @@ class SignaturesService:
             logger.debug(f"Processing PDF with ID: {id_doc}")
             logger.debug(f"Signature parameters - Field: {field_id}, Name: {name}, Area: {area}")
             logger.debug(f"Document properties - Is closing: {is_closing}, Is digital: {is_digital}")
+
+            transaction_conn = open_db_connection()
 
             if is_digital:
                 """
@@ -328,7 +377,12 @@ class SignaturesService:
                         error = {"idDocFailed": id_doc, "message": f"Error al firmar documento: {str(e)}", "stack": str(e.__traceback__)}
                         raise Exception(f"Error al firmar documento: {str(e)}")
                     try:
-                        lastpdf = get_number_and_date_then_close(signed_pdf_response['bytes'], id_doc)
+                        lastpdf = get_number_and_date_then_close(
+                            signed_pdf_response['bytes'],
+                            id_doc,
+                            conn=transaction_conn,
+                            commit=False
+                        )
                     except Exception as e:
                         logger.error(f"Failed to close PDF: {str(e)}", exc_info=True)
                         error = {"idDocFailed": id_doc, "message": f"Error al cerrar PDF: {str(e)}", "stack": str(e.__traceback__)}
@@ -370,7 +424,7 @@ class SignaturesService:
                     'id_oficina': id_oficina,
                     'tipo_firma': tipo_firma
                 }
-                unlock_pdf_and_close_task(unlock_params)
+                unlock_pdf_and_close_task(unlock_params, conn=transaction_conn, commit=False)
             except Exception as e:
                 logger.error(f"Failed to unlock PDF and close task: {str(e)}", exc_info=True)
                 error = {"idDocFailed": id_doc, "message": f"Error al desbloquear PDF: {str(e)}", "stack": str(e.__traceback__)}
@@ -378,7 +432,10 @@ class SignaturesService:
             try:
                 logger.debug(f"Saving signed PDF to filepath: {filepath}")
                 save_signed_pdf(finalpdf, filepath)
+                saved_filepath = filepath
                 logger.debug("Successfully saved signed PDF")
+                transaction_conn.commit()
+                logger.debug("Committed signature transaction successfully")
                 
                 # Clean up the timestamp entry for this document after successful processing
                 app_state.remove_document_timestamp(id_doc)
@@ -399,9 +456,17 @@ class SignaturesService:
             return id_doc, error
         except Exception as e:
             logger.error(f"Error during signature finalization: {str(e)}", exc_info=True)
+            if transaction_conn:
+                self._rollback_signature_transaction(transaction_conn, saved_filepath)
             if error is None:
                 error = {"idDocFailed": id_doc, "message": f"Error al finalizar firma: {str(e)}", "stack": str(e.__traceback__)}
             return id_doc, error
+        finally:
+            if transaction_conn:
+                self._close_signature_connection(transaction_conn)
+            app_state.current_time = old_current_time if 'old_current_time' in locals() else app_state.current_time
+            app_state.datetimesigned = old_datetimesigned if 'old_datetimesigned' in locals() else app_state.datetimesigned
+            app_state.isclosing = old_isclosing if 'old_isclosing' in locals() else app_state.isclosing
     
     def init_sign_jades(self, index_data, certificates, data_signature):
         """
