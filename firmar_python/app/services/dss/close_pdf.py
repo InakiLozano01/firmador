@@ -3,10 +3,15 @@
 import requests
 import base64
 import json
+import os
 from app.exceptions.dss_exc import PDFClosingError, DSSRequestError
 import logging
 
 logger = logging.getLogger(__name__)
+
+DSS_CONNECT_TIMEOUT_SECONDS = int(os.getenv("DSS_CONNECT_TIMEOUT_SECONDS", "5"))
+DSS_READ_TIMEOUT_SECONDS = int(os.getenv("DSS_READ_TIMEOUT_SECONDS", "60"))
+DSS_TIMEOUT = (DSS_CONNECT_TIMEOUT_SECONDS, DSS_READ_TIMEOUT_SECONDS)
 
 def close_pdf(pdf_to_close, json_field_values):
     """
@@ -29,7 +34,34 @@ def close_pdf(pdf_to_close, json_field_values):
             'fileName': "documento.pdf",
             'fieldValues': json_field_values
         }
-        response = requests.post('http://java-webapp:5555/pdf/update', headers={'Content-Type': 'application/json'}, data=json.dumps(data))
+        logger.info(
+            "Close PDF request",
+            extra={
+                "obs_kind": "external_request",
+                "obs_payload": {
+                    "url": "http://java-webapp:5555/pdf/update",
+                    "method": "POST",
+                    "body": data,
+                    "timeout": DSS_TIMEOUT,
+                },
+            },
+        )
+        response = requests.post(
+            'http://java-webapp:5555/pdf/update',
+            json=data,
+            timeout=DSS_TIMEOUT,
+        )
+        logger.info(
+            "Close PDF response",
+            extra={
+                "obs_kind": "external_response",
+                "obs_payload": {
+                    "url": "http://java-webapp:5555/pdf/update",
+                    "status_code": response.status_code,
+                    "body": response.text[:1000],
+                },
+            },
+        )
         response.raise_for_status()
         return base64.b64encode(response.content).decode("utf-8")
     except requests.exceptions.RequestException as e:

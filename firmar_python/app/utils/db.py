@@ -14,11 +14,20 @@ import io
 # Configure logging
 logger = logging.getLogger(__name__)
 
+
+def _resolve_pdf_page_count(pdf_to_close, page_count=None):
+    if page_count is not None:
+        return int(page_count)
+
+    pdf_bytes = base64.b64decode(pdf_to_close)
+    pdf_reader = PyPDF2.PdfReader(io.BytesIO(pdf_bytes))
+    return len(pdf_reader.pages)
+
 ###################################################
 ###      Función para obtener el número de      ###
 ###         cierre y la fecha de cierre         ###
 ###################################################
-def get_number_and_date_then_close(pdf_to_close, id_doc):
+def get_number_and_date_then_close(pdf_to_close, id_doc, page_count=None):
     """
     Get the closing number and date, then close the PDF.
 
@@ -36,7 +45,9 @@ def get_number_and_date_then_close(pdf_to_close, id_doc):
         PDFClosingError: If there's an error closing the PDF
     """
     logger.info(f"Starting get number and date process for document {id_doc}")
-    global conn
+    conn = None
+    cursor = None
+    should_commit = False
     
     # Get database connection parameters
     dbname = os.getenv('DB_NAME')
@@ -93,10 +104,8 @@ def get_number_and_date_then_close(pdf_to_close, id_doc):
                 "fecha": f"San Miguel de Tucumán, {datetime.strptime(datos_json['fecha'], '%Y-%m-%d').strftime('%d de %B de %Y').replace('January', 'enero').replace('February', 'febrero').replace('March', 'marzo').replace('April', 'abril').replace('May', 'mayo').replace('June', 'junio').replace('July', 'julio').replace('August', 'agosto').replace('September', 'septiembre').replace('October', 'octubre').replace('November', 'noviembre').replace('December', 'diciembre')}"
             }
 
-        pdf_base64_string = pdf_to_close # Keep original base64 string
-        pdf_bytes = base64.b64decode(pdf_to_close) # Decode for PyPDF2
-        pdf_reader = PyPDF2.PdfReader(io.BytesIO(pdf_bytes))
-        pdf_number_of_pages = len(pdf_reader.pages)
+        pdf_base64_string = pdf_to_close
+        pdf_number_of_pages = _resolve_pdf_page_count(pdf_to_close, page_count=page_count)
         logger.debug(f"PDF number of pages: {pdf_number_of_pages}")
 
         final_json_field_values = {}
@@ -112,24 +121,30 @@ def get_number_and_date_then_close(pdf_to_close, id_doc):
             logger.debug(f"Passing field values to close_pdf: {final_json_field_values_string}")
             pdf = close_pdf(pdf_base64_string, final_json_field_values_string) # Pass JSON string
             logger.debug("PDF closed successfully")
+            should_commit = True
             return pdf
         except Exception as e:
             logger.error(f"Failed to close PDF: {str(e)}", exc_info=True)
-            conn.rollback()
+            if conn and conn.closed == 0:
+                conn.rollback()
             raise PDFClosingError(f"Error closing PDF: {str(e)}")
 
     except DocumentProcessingError:
         logger.error("Document processing error occurred", exc_info=True)
-        conn.rollback()
+        if conn and conn.closed == 0:
+            conn.rollback()
         raise
     except Exception as e:
         logger.error(f"Database transaction error: {str(e)}", exc_info=True)
-        conn.rollback()
+        if conn and conn.closed == 0:
+            conn.rollback()
         raise DatabaseTransactionError(f"Transaction error: {str(e)}")
     finally:
-        conn.commit()
-        cursor.close()
-        if conn and not conn.closed:
+        if cursor:
+            cursor.close()
+        if conn and conn.closed == 0:
+            if should_commit:
+                conn.commit()
             logger.debug("Closing database connection")
             conn.close()
 
@@ -168,7 +183,9 @@ def unlock_pdf_and_close_task(params: dict):
 
     logger.debug(f"Processing parameters: {params}")
 
-    global conn
+    conn = None
+    cursor = None
+    should_commit = False
     dbname = os.getenv('DB_NAME')
     user = os.getenv('DB_USER')
     password = os.getenv('DB_PASSWORD')
@@ -184,8 +201,7 @@ def unlock_pdf_and_close_task(params: dict):
 
     logger.debug(f"Attempting database connection to {host}:{port}/{dbname}")
     try:
-        if not (conn and conn.closed == 0):
-            conn = psycopg2.connect(**conn_params)
+        conn = psycopg2.connect(**conn_params)
         cursor = conn.cursor()
         logger.debug("Database connection established")
     except (psycopg2.InterfaceError, Exception) as e:
@@ -213,15 +229,19 @@ def unlock_pdf_and_close_task(params: dict):
                 params['hash_doc']
             )
         )
+        should_commit = True
         logger.debug("Finalization process completed successfully")
     except Exception as e:
         logger.error(f"Error in finalization process: {str(e)}", exc_info=True)
-        conn.rollback()
+        if conn and conn.closed == 0:
+            conn.rollback()
         raise DatabaseTransactionError(f"Error in finalization process: {str(e)}")
     finally:
-        conn.commit()
-        cursor.close()
-        if conn and not conn.closed:
+        if cursor:
+            cursor.close()
+        if conn and conn.closed == 0:
+            if should_commit:
+                conn.commit()
             logger.debug("Closing database connection")
             conn.close()
         logger.info("Unlock and close task completed")
@@ -255,7 +275,9 @@ def unlock_pdf_and_close_task_project(params: dict):
         logger.error(f"Missing required parameters: {missing_params}")
         raise ValueError(f"Missing required parameters: {', '.join(missing_params)}")
 
-    global conn
+    conn = None
+    cursor = None
+    should_commit = False
     dbname = os.getenv('DB_NAME')
     user = os.getenv('DB_USER')
     password = os.getenv('DB_PASSWORD')
@@ -271,8 +293,7 @@ def unlock_pdf_and_close_task_project(params: dict):
 
     logger.debug(f"Attempting database connection to {host}:{port}/{dbname}")
     try:
-        if not (conn and conn.closed == 0):
-            conn = psycopg2.connect(**conn_params)
+        conn = psycopg2.connect(**conn_params)
         cursor = conn.cursor()
         logger.debug("Database connection established")
     except (psycopg2.InterfaceError, Exception) as e:
@@ -300,20 +321,24 @@ def unlock_pdf_and_close_task_project(params: dict):
                 params['hash_doc']
             )
         )
+        should_commit = True
         logger.debug("Finalization process completed successfully")
     except Exception as e:
         logger.error(f"Error in finalization process: {str(e)}", exc_info=True)
-        conn.rollback()
+        if conn and conn.closed == 0:
+            conn.rollback()
         raise DatabaseTransactionError(f"Error in finalization process: {str(e)}")
     finally:
-        conn.commit()
-        cursor.close()
-        if conn and not conn.closed:
+        if cursor:
+            cursor.close()
+        if conn and conn.closed == 0:
+            if should_commit:
+                conn.commit()
             logger.debug("Closing database connection")
             conn.close()
         logger.info("Unlock and close task completed")
 
-def get_number_and_date_then_close_project(pdf_to_close, id_doc):
+def get_number_and_date_then_close_project(pdf_to_close, id_doc, page_count=None):
     """
     Get the closing number and date, then close the PDF.
 
@@ -331,7 +356,9 @@ def get_number_and_date_then_close_project(pdf_to_close, id_doc):
         PDFClosingError: If there's an error closing the PDF
     """
     logger.info(f"Starting get number and date process for document {id_doc}")
-    global conn
+    conn = None
+    cursor = None
+    should_commit = False
     
     # Get database connection parameters
     dbname = os.getenv('DB_NAME')
@@ -388,10 +415,8 @@ def get_number_and_date_then_close_project(pdf_to_close, id_doc):
                 "fecha": f"San Miguel de Tucumán, {datetime.strptime(datos_json['fecha'], '%Y-%m-%d').strftime('%d de %B de %Y').replace('January', 'enero').replace('February', 'febrero').replace('March', 'marzo').replace('April', 'abril').replace('May', 'mayo').replace('June', 'junio').replace('July', 'julio').replace('August', 'agosto').replace('September', 'septiembre').replace('October', 'octubre').replace('November', 'noviembre').replace('December', 'diciembre')}"
             }
 
-        pdf_base64_string = pdf_to_close # Keep original base64 string
-        pdf_bytes = base64.b64decode(pdf_to_close) # Decode for PyPDF2
-        pdf_reader = PyPDF2.PdfReader(io.BytesIO(pdf_bytes))
-        pdf_number_of_pages = len(pdf_reader.pages)
+        pdf_base64_string = pdf_to_close
+        pdf_number_of_pages = _resolve_pdf_page_count(pdf_to_close, page_count=page_count)
         logger.debug(f"PDF number of pages: {pdf_number_of_pages}")
 
         final_json_field_values = {}
@@ -407,23 +432,29 @@ def get_number_and_date_then_close_project(pdf_to_close, id_doc):
             logger.debug(f"Passing field values to close_pdf: {final_json_field_values_string}")
             pdf = close_pdf(pdf_base64_string, final_json_field_values_string) # Pass JSON string
             logger.debug("PDF closed successfully")
+            should_commit = True
             return pdf
         except Exception as e:
             logger.error(f"Failed to close PDF: {str(e)}", exc_info=True)
-            conn.rollback()
+            if conn and conn.closed == 0:
+                conn.rollback()
             raise PDFClosingError(f"Error closing PDF: {str(e)}")
     except DocumentProcessingError:
         logger.error("Document processing error occurred", exc_info=True)
-        conn.rollback()
+        if conn and conn.closed == 0:
+            conn.rollback()
         raise
     except Exception as e:
         logger.error(f"Database transaction error: {str(e)}", exc_info=True)
-        conn.rollback()
+        if conn and conn.closed == 0:
+            conn.rollback()
         raise DatabaseTransactionError(f"Transaction error: {str(e)}")
     finally:
-        conn.commit()
-        cursor.close()
-        if conn and not conn.closed:
+        if cursor:
+            cursor.close()
+        if conn and conn.closed == 0:
+            if should_commit:
+                conn.commit()
             logger.debug("Closing database connection")
             conn.close()
-        logger.info("Get number and date process completed")    
+        logger.info("Get number and date process completed")

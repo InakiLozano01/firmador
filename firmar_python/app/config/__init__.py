@@ -1,3 +1,8 @@
-from .main import app, create_app
+"""
+Configuration package.
 
-__all__ = ['app', 'create_app']
+Imports are intentionally side-effect free so utility modules can import
+`app.config.settings` without triggering full Flask app bootstrap.
+"""
+
+__all__ = []

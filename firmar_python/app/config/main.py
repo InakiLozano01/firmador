@@ -1,16 +1,18 @@
 import logging
-import os
-from flask import Flask, request
+from flask import Flask
 from app.config.state import AppState
 from app.config.settings import settings
 from app.routes.routes import register_routes
+from app.services.observability import install_observability_logging
+from app.utils.saving import recover_pending_repairs
 
 # Configure logging
 logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=getattr(logging, settings.OBS_LOG_LEVEL.upper(), logging.INFO),
+    format='%(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+install_observability_logging()
 
 def create_app():
     try:
@@ -24,23 +26,16 @@ def create_app():
         # Register routes
         register_routes(app)
         logger.info('Routes registered successfully')
+        recovered_repairs = recover_pending_repairs()
+        if recovered_repairs:
+            logger.warning("Recovered %s pending repair file(s) at startup", len(recovered_repairs))
 
         # Add error handlers
         @app.errorhandler(Exception)
         def handle_exception(e):
             logger.error(f'Unhandled exception: {str(e)}', exc_info=True)
-            return {'status': False, 'message': f'Internal server error: {str(e)}'}, 500
+            return {'status': False, 'message': 'Internal server error'}, 500
 
-        @app.before_request
-        def log_request_info():
-            logger.debug('Headers: %s', request.headers)
-            logger.debug('Body: %s', request.get_data())
-
-        @app.after_request
-        def log_response_info(response):
-            logger.debug('Response: %s', response.get_data())
-            return response
-            
         return app
     except Exception as e:
         logger.error(f'Failed to create application: {str(e)}', exc_info=True)
@@ -58,4 +53,4 @@ except Exception as e:
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', debug=True, port=5000)
+    app.run(host='0.0.0.0', debug=False, port=5000)

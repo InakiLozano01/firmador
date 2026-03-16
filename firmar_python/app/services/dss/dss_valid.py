@@ -1,97 +1,112 @@
-# Descripcion: Este modulo contiene las funciones necesarias para validar una firma con la API de DSS
-
-import requests
 import base64
 import json
 import logging
-from app.exceptions.validation_exc import SignatureValidationError, DSServiceConnectionError, InvalidSignatureDataError
+import os
+
+import requests
+
+from app.exceptions.validation_exc import DSServiceConnectionError, InvalidSignatureDataError, SignatureValidationError
+from app.services.observability import stage_scope
 
 logger = logging.getLogger(__name__)
 
+DSS_VALIDATE_URL = os.getenv(
+    "DSS_VALIDATE_URL",
+    "http://java-webapp:5555/services/rest/validation/validateSignature",
+)
+
+
+def _post_validation_request(body, timeout):
+    with stage_scope("dss.validate.build_request", "Preparar request DSS"):
+        body_size = len(json.dumps(body, separators=(",", ":"), ensure_ascii=False))
+
+    logger.info(
+        "dss_validate_request",
+        extra={
+            "obs_kind": "external_request",
+            "obs_payload": {
+                "url": DSS_VALIDATE_URL,
+                "method": "POST",
+                "timeout": timeout,
+                "request_size_bytes": body_size,
+            },
+            "obs_raw_payload": body,
+            "obs_capture_raw_payload": True,
+            "obs_payload_content_kind": "dss.validateSignature.request",
+            "obs_raw_payload_attrs": {"endpoint": "validateSignature", "direction": "request"},
+            "obs_attrs": {"dependency": "dss", "endpoint": "validateSignature"},
+        },
+    )
+
+    with stage_scope("dss.validate.http", "Ejecutar request DSS"):
+        response = requests.post(DSS_VALIDATE_URL, json=body, timeout=timeout)
+
+    with stage_scope("dss.validate.parse_response", "Parsear respuesta DSS"):
+        payload = response.json() if response.content else None
+
+    logger.info(
+        "dss_validate_response",
+        extra={
+            "obs_kind": "external_response",
+            "obs_payload": {
+                "url": DSS_VALIDATE_URL,
+                "status_code": response.status_code,
+                "request_size_bytes": body_size,
+            },
+            "obs_raw_payload": payload if payload is not None else response.text,
+            "obs_capture_raw_payload": True,
+            "obs_payload_content_kind": "dss.validateSignature.response",
+            "obs_raw_payload_attrs": {"endpoint": "validateSignature", "direction": "response"},
+            "obs_attrs": {
+                "dependency": "dss",
+                "endpoint": "validateSignature",
+                "status_code": response.status_code,
+                "request_size_bytes": body_size,
+            }
+        },
+    )
+    return response, payload
+
+
 def validate_signature_json(data, signature):
-    """
-    Validate the signature of a JSON document.
-
-    Args:
-        data (dict): The JSON data to validate
-        signature (str): The signature to validate
-
-    Returns:
-        tuple: (validation_result, status_code)
-
-    Raises:
-        InvalidSignatureDataError: If input data is invalid
-        DSServiceConnectionError: If service is unreachable
-        SignatureValidationError: For other validation errors
-    """
     if not signature:
-        logger.error("Missing signature data")
         raise InvalidSignatureDataError("Signature data is required")
 
     try:
-        # Convert data to base64 if needed
         data_str = base64.b64encode(
-            json.dumps(data, separators=(',', ':'), ensure_ascii=False).encode('utf-8')
-        ).decode('utf-8') if data else None
+            json.dumps(data, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+        ).decode("utf-8") if data else None
 
         body = {
             "signedDocument": {
                 "bytes": signature,
                 "digestAlgorithm": None,
-                "name": "sign.json"
+                "name": "sign.json",
             },
             "originalDocuments": [{
                 "bytes": data_str,
                 "digestAlgorithm": None,
-                "name": "signed.json"
+                "name": "signed.json",
             }],
             "policy": None,
             "evidenceRecords": None,
             "tokenExtractionStrategy": "NONE",
-            "signatureId": None
+            "signatureId": None,
         }
 
-        logger.debug("Sending validation request to DSS service", extra={
-            "request_body": body
-        })
-        
-        response = requests.post(
-            'http://java-webapp:5555/services/rest/validation/validateSignature',
-            json=body,
-            timeout=30
-        )
-        
+        response, payload = _post_validation_request(body, timeout=30)
         if response.status_code != 200:
-            logger.error(f"DSS service returned status code {response.status_code}")
             return None, response.status_code
-            
-        return response.json(), 200
-        
-    except requests.exceptions.ConnectionError as e:
-        logger.error(f"Failed to connect to DSS service: {str(e)}")
-        raise DSServiceConnectionError(details=str(e))
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Request error during validation: {str(e)}")
-        raise SignatureValidationError(f"Error validating signature: {str(e)}")
-    except Exception as e:
-        logger.error(f"Unexpected error during validation: {str(e)}")
-        raise SignatureValidationError(f"Unexpected error during validation: {str(e)}")
+        return payload, 200
+    except requests.exceptions.ConnectionError as exc:
+        raise DSServiceConnectionError(details=str(exc)) from exc
+    except requests.exceptions.RequestException as exc:
+        raise SignatureValidationError(f"Error validating signature: {str(exc)}") from exc
+    except Exception as exc:
+        raise SignatureValidationError(f"Unexpected error during validation: {str(exc)}") from exc
+
 
 def validate_signature_pdf(data):
-    """
-    Validate the signature of a PDF document.
-
-    Args:
-        data (str): The data to validate.
-
-    Returns:
-        dict: The validation result.
-
-    Raises:
-        InvalidSignatureDataError: If the input data is invalid.
-        DSServiceConnectionError: If there's an error connecting to the DSS service.
-        SignatureValidationError: For other validation-related errors.
-    """
     if not data:
         raise InvalidSignatureDataError("PDF data is required")
 
@@ -99,92 +114,57 @@ def validate_signature_pdf(data):
         "signedDocument": {
             "bytes": data,
             "digestAlgorithm": None,
-            "name": "sign.pdf"
+            "name": "sign.pdf",
         },
         "originalDocuments": [{
             "bytes": None,
             "digestAlgorithm": None,
-            "name": None
+            "name": None,
         }],
         "policy": None,
         "evidenceRecords": None,
         "tokenExtractionStrategy": "NONE",
-        "signatureId": None
+        "signatureId": None,
     }
-    
+
     try:
-        response = requests.post('http://java-webapp:5555/services/rest/validation/validateSignature', json=body, timeout=60)
-        
-        # Log full response details for debugging
-        logger.debug(f"DSS validate_signature_pdf response: status={response.status_code}, content={response.text[:100]}")
-        
+        response, payload = _post_validation_request(body, timeout=60)
         if response.status_code == 500:
             error_content = response.text
-            logger.warning(f"500 error from validation service. Response content: {error_content[:1000]}")
-            
-            # Look for format recognition errors in the response
-            if "Document format not recognized" in error_content or "Document format not recognized/handled" in error_content or "format not recognized" in error_content:
-                # Create a special exception with a marker that can be detected at higher levels
+            if "Document format not recognized" in error_content or "format not recognized" in error_content:
                 error = SignatureValidationError(f"PDF_FORMAT_ERROR: {error_content[:500]}")
-                error.is_format_error = True  # Add a special attribute to the exception
+                error.is_format_error = True
                 raise error
-            else:
-                # For other 500 errors
-                raise SignatureValidationError(f"Validation service error (500): {error_content[:500]}")
-            
+            raise SignatureValidationError(f"Validation service error (500): {error_content[:500]}")
         response.raise_for_status()
-        return response.json()
-    except requests.exceptions.ConnectionError as e:
-        logger.error(f"Connection error to DSS service: {str(e)}")
-        raise DSServiceConnectionError(details=str(e))
-    except requests.exceptions.RequestException as e:
-        if not hasattr(e, 'is_format_error'):  # Only add this if it's not our custom format error
-            logger.error(f"Request error to DSS service: {str(e)}")
-        raise SignatureValidationError(f"Error validating PDF signature: {str(e)}")
+        return payload
+    except requests.exceptions.ConnectionError as exc:
+        raise DSServiceConnectionError(details=str(exc)) from exc
+    except requests.exceptions.RequestException as exc:
+        raise SignatureValidationError(f"Error validating PDF signature: {str(exc)}") from exc
+
 
 def validation_analyze(validation_report):
-    """
-    Analyze the validation report from DSS.
-
-    Args:
-        validation_report (dict): The validation report to analyze
-
-    Returns:
-        tuple: (analysis_result, status_code)
-
-    Raises:
-        SignatureValidationError: If analysis fails
-    """
     try:
         if not validation_report:
-            logger.error("Empty validation report")
             return None, 400
 
-        signatures = validation_report.get('signatures', [])
+        signatures = validation_report.get("signatures", [])
         if not signatures:
-            logger.error("No signatures found in validation report")
             return None, 400
 
         result = []
         for sig in signatures:
-            conclusion = sig.get('conclusion', {})
-            indication = conclusion.get('indication', '')
-            
-            analysis = {
-                'valid': indication == 'TOTAL_PASSED',
-                'certs_valid': indication != 'INDETERMINATE_CERTIFICATE_CHAIN_GENERAL_FAILURE',
-                'indication': indication,
-                'subindication': conclusion.get('subIndication', ''),
-                'errors': conclusion.get('errors', [])
-            }
-            result.append(analysis)
+            conclusion = sig.get("conclusion", {})
+            indication = conclusion.get("indication", "")
+            result.append({
+                "valid": indication == "TOTAL_PASSED",
+                "certs_valid": indication != "INDETERMINATE_CERTIFICATE_CHAIN_GENERAL_FAILURE",
+                "indication": indication,
+                "subindication": conclusion.get("subIndication", ""),
+                "errors": conclusion.get("errors", []),
+            })
 
-        logger.debug("Validation analysis completed", extra={
-            "analysis_result": result
-        })
-        
         return result, 200
-
-    except Exception as e:
-        logger.error(f"Error analyzing validation report: {str(e)}")
-        raise SignatureValidationError(f"Error analyzing validation report: {str(e)}")
+    except Exception as exc:
+        raise SignatureValidationError(f"Error analyzing validation report: {str(exc)}") from exc

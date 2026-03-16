@@ -35,15 +35,10 @@ services:
       dockerfile: Dockerfile
     ports:
       - "5000:5000"
-    environment:
-      - TZ=Etc/GMT+3
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_DB=0
-      - REDIS_TTL_SECONDS=21600
-      - REDIS_KEY_PREFIX=signctx
-      - REDIS_CONNECT_TIMEOUT_SECONDS=2
-      - REDIS_SOCKET_TIMEOUT_SECONDS=5
+    env_file:
+      - env/common.env
+      - env/redis.env
+      - env/obs-db.env
     volumes:
       - ./firmar_python/app:/app
       - ./firmar_python/app/assets:/app/assets
@@ -55,11 +50,50 @@ services:
         condition: service_started
       redis:
         condition: service_healthy
+      obs-postgres:
+        condition: service_healthy
+    networks:
+      - firmador_signnet
+
+  obs-postgres:
+    container_name: firmador-obs-postgres-test
+    image: postgres:16-alpine
+    restart: always
+    env_file:
+      - env/common.env
+      - env/obs-postgres.env
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U obs_user -d obs_dashboard"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - obs_postgres_data:/var/lib/postgresql/data
+      - ./dashboard/db/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - firmador_signnet
+
+  dashboard:
+    container_name: firmador-dashboard-test
+    restart: always
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    env_file:
+      - env/common.env
+      - env/obs-db.env
+      - env/dashboard.env
+    depends_on:
+      obs-postgres:
+        condition: service_healthy
     networks:
       - firmador_signnet
 
 volumes:
   redis_data:
+  obs_postgres_data:
 
 networks:
   firmador_signnet:

@@ -4,8 +4,8 @@ import logging
 
 # Configure logging
 logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=getattr(logging, os.getenv("OBS_LOG_LEVEL", "INFO").upper(), logging.INFO),
+    format='%(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 

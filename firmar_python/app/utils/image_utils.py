@@ -5,6 +5,7 @@ import base64
 import io
 import os
 import logging
+from functools import lru_cache
 from app.exceptions.tool_exc import (
     ImageProcessingError,
     ImageNotFoundError,
@@ -29,6 +30,11 @@ FONT_PATHS = [
     "/app/assets/fonts/RobotoCondensed-BoldItalic.ttf"  # bold italic font path 4
 ]
 
+@lru_cache(maxsize=32)
+def _load_font(font_path: str, size: int) -> ImageFont.FreeTypeFont:
+    return ImageFont.truetype(font_path, size)
+
+
 def get_available_font(size: int, font_type: int = -1) -> ImageFont.FreeTypeFont:
     """
     Try to load a font from the available font paths.
@@ -48,12 +54,12 @@ def get_available_font(size: int, font_type: int = -1) -> ImageFont.FreeTypeFont
         for font_path in FONT_PATHS:
             try:
                 logger.debug(f"Attempting to load font from: {font_path}")
-                return ImageFont.truetype(font_path, size)
+                return _load_font(font_path, size)
             except Exception as e:
                 errors.append(f"Failed to load {font_path}: {str(e)}")
                 continue
     else:
-        return ImageFont.truetype(FONT_PATHS[font_type], size)
+        return _load_font(FONT_PATHS[font_type], size)
 
     # If we get here, try to use default font
     try:
@@ -148,6 +154,11 @@ def decode_image(encoded_image: str) -> dict:
         logger.error(f"Unexpected error during image processing: {str(e)}", exc_info=True)
         raise ImageProcessingError(f"Unexpected error during image processing: {str(e)}")
 
+
+@lru_cache(maxsize=16)
+def _decoded_stamp_bytes(encoded_image: str) -> bytes:
+    return base64.b64decode(encoded_image)
+
 def create_signature_image(text: str, encoded_image: str, path: str, width: int = 280, height: int = 40, scale_factor: int = 3, usuario: str = '') -> dict:
     """
     Create a signature image with text and a stamp, with all elements properly centered.
@@ -189,7 +200,7 @@ def create_signature_image(text: str, encoded_image: str, path: str, width: int 
         # Decode and open the stamp image (logo)
         logger.debug("Decoding stamp image")
         try:
-            stamp_data = base64.b64decode(encoded_image)
+            stamp_data = _decoded_stamp_bytes(encoded_image)
             stamp = Image.open(io.BytesIO(stamp_data))
             logger.debug("Stamp image decoded successfully")
         except (base64.binascii.Error, IOError) as e:
@@ -485,7 +496,7 @@ def create_signature_image_system(text: str, encoded_image: str, path: str, widt
         # Decode and open the stamp image
         logger.debug("Decoding stamp image")
         try:
-            stamp_data = base64.b64decode(encoded_image)
+            stamp_data = _decoded_stamp_bytes(encoded_image)
             stamp = Image.open(io.BytesIO(stamp_data))
             logger.debug("Stamp image decoded successfully")
         except (base64.binascii.Error, IOError) as e:
@@ -638,7 +649,7 @@ def create_sello_image(text: str, encoded_image: str, path: str, width: int = 32
         # Decode and open the stamp image
         logger.debug("Decoding stamp image")
         try:
-            stamp_data = base64.b64decode(encoded_image)
+            stamp_data = _decoded_stamp_bytes(encoded_image)
             stamp = Image.open(io.BytesIO(stamp_data))
             logger.debug("Stamp image decoded successfully")
         except (base64.binascii.Error, IOError) as e:

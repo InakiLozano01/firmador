@@ -5,6 +5,11 @@ import os
 from app.controllers.signatures import SignaturesController
 from app.controllers.tools import ToolsController
 from app.controllers.validations import ValidationsController
+from app.services.observability import (
+    OPERATION_PARTIAL_ERROR,
+    observe_http_operation,
+    update_operation,
+)
 import logging
 
 signatures_controller = SignaturesController()
@@ -12,8 +17,17 @@ tools_controller = ToolsController()
 validations_controller = ValidationsController()
 logger = logging.getLogger(__name__)
 
+
+def _resolve_expediente_path(file_path: str) -> str:
+    base_dir = os.path.abspath("/app/expedientes")
+    requested = os.path.abspath(os.path.join(base_dir, file_path))
+    if not requested.startswith(base_dir + os.sep) and requested != base_dir:
+        raise ValueError("ZIP_PATH_REJECTED: la ruta solicitada está fuera del directorio permitido")
+    return requested
+
 def register_routes(app):
     @app.route('/firmaloro', methods=['POST'])
+    @observe_http_operation("sign.pdf.loro")
     def firmaloro():
         """
         Route for batch signing process or complete electronic signing process for loro system.
@@ -31,27 +45,34 @@ def register_routes(app):
                 }]
             }), 500
 
+        update_operation(batch_size=len(pdfs))
         try:
             id_docs_signeds, docs_not_signed, signed_pdfs, errors_stack, success, message = signatures_controller.signature_pdf_loro(pdfs)
+            if errors_stack:
+                update_operation(
+                    operation_status=OPERATION_PARTIAL_ERROR,
+                    error_message=f"{len(errors_stack)} doc(s) failed",
+                )
             return jsonify({
-                "status": success, 
-                "message": message, 
-                "docsSigned": id_docs_signeds, 
-                "docsNotSigned": docs_not_signed, 
-                "signedPdfs": signed_pdfs, 
+                "status": success,
+                "message": message,
+                "docsSigned": id_docs_signeds,
+                "docsNotSigned": docs_not_signed,
+                "signedPdfs": signed_pdfs,
                 "errors": errors_stack
             }), 200
         except Exception as e:
             logger.error(f"Error in signature process: {str(e)}", exc_info=True)
             return jsonify({
-                "status": False, 
+                "status": False,
                 "message": f"Error en la firma: {str(e)}",
                 "errors": [{
                     "message": str(e)
                 }]
             }), 500
-        
+
     @app.route('/firmalote', methods=['POST'])
+    @observe_http_operation("sign.pdf.init")
     def firmalote():
         """
         Route for batch signing process or complete electronic signing process.
@@ -70,20 +91,26 @@ def register_routes(app):
                 }]
             }), 500
 
+        update_operation(batch_size=len(pdfs))
         try:
             id_docs_signeds, docs_not_signed, datas_to_sign, errors_stack, success, message = signatures_controller.init_signature_pdf(pdfs, certificates)
+            if errors_stack:
+                update_operation(
+                    operation_status=OPERATION_PARTIAL_ERROR,
+                    error_message=f"{len(errors_stack)} doc(s) failed",
+                )
             return jsonify({
-                "status": success, 
-                "message": message, 
-                "docsSigned": id_docs_signeds, 
-                "docsNotSigned": docs_not_signed, 
-                "dataToSign": datas_to_sign, 
+                "status": success,
+                "message": message,
+                "docsSigned": id_docs_signeds,
+                "docsNotSigned": docs_not_signed,
+                "dataToSign": datas_to_sign,
                 "errors": errors_stack
             }), 200
         except Exception as e:
             logger.error(f"Error in signature process: {str(e)}", exc_info=True)
             return jsonify({
-                "status": False, 
+                "status": False,
                 "message": f"Error en la firma: {str(e)}",
                 "errors": [{
                     "message": str(e)
@@ -91,6 +118,7 @@ def register_routes(app):
             }), 500
 
     @app.route('/firmaloteend', methods=['POST'])
+    @observe_http_operation("sign.pdf.finalize")
     def firmaloteend():
         """
         Route for completing the digital signing process.
@@ -102,19 +130,26 @@ def register_routes(app):
         except Exception as e:
             return jsonify({"status": False, "message": "Error al obtener los datos de la request: " + str(e)}), 500
         
+        update_operation(batch_size=len(pdfs) if isinstance(pdfs, list) else 1)
         try:
             id_docs_signeds, docs_not_signed, errors_stack = signatures_controller.end_signature_pdf(pdfs, certificates)
+            if errors_stack:
+                update_operation(
+                    operation_status=OPERATION_PARTIAL_ERROR,
+                    error_message=f"{len(errors_stack)} doc(s) failed",
+                )
             return jsonify({
-                "status": True, 
-                "message": "Firma completada correctamente", 
-                "docsSigned": id_docs_signeds, 
-                "docsNotSigned": docs_not_signed, 
+                "status": True,
+                "message": "Firma completada correctamente",
+                "docsSigned": id_docs_signeds,
+                "docsNotSigned": docs_not_signed,
                 "errors": errors_stack
             }), 200
         except Exception as e:
             return jsonify({"status": False, "message": "Error en la firma: " + str(e)}), 500
     
     @app.route('/firmajades', methods=['POST'])
+    @observe_http_operation("sign.jades.init")
     def firmajades():
         """
         Route for signing documents using JADES.
@@ -161,9 +196,10 @@ def register_routes(app):
                 }]
             }), 400
         
+        update_operation(batch_size=len(indexes_data))
         try:
             id_exps_signeds, exps_not_signed, data_to_sign, index_signeds, errors_stack = signatures_controller.init_sign_jades(certificates, indexes_data, data_signature)
-            
+
             response = {
                 "status": True if not errors_stack else False,
                 "message": "Firma iniciada correctamente" if not errors_stack else "Error al procesar algunos expedientes",
@@ -173,15 +209,18 @@ def register_routes(app):
                 "indexSigneds": index_signeds,
                 "errors": errors_stack
             }
-            
+
             if errors_stack:
                 logger.warning(f"JADES signing completed with {len(errors_stack)} errors")
-                logger.debug(f"Error details: {errors_stack}")
+                update_operation(
+                    operation_status=OPERATION_PARTIAL_ERROR,
+                    error_message=f"{len(errors_stack)} exp(s) failed",
+                )
             else:
                 logger.info("JADES signing completed successfully")
-                
+
             return jsonify(response), 200
-            
+
         except Exception as e:
             logger.error(f"Unexpected error in JADES signing: {str(e)}", exc_info=True)
             return jsonify({
@@ -193,8 +232,9 @@ def register_routes(app):
                     "details": "Error general en el endpoint firmajades"
                 }]
             }), 500
-    
+
     @app.route('/firmajadesend', methods=['POST'])
+    @observe_http_operation("sign.jades.finalize")
     def firmajadesend():
         """
         Route for completing the JADES signing process.
@@ -207,20 +247,27 @@ def register_routes(app):
         except Exception as e:
             return jsonify({"status": False, "message": "Error al obtener los datos de la request: " + str(e)}), 500
         
+        update_operation(batch_size=len(indexes_data))
         try:
             id_exps_signeds, exps_not_signed, index_signeds, errors_stack = signatures_controller.end_sign_jades(certificates, indexes_data, data_signature)
+            if errors_stack:
+                update_operation(
+                    operation_status=OPERATION_PARTIAL_ERROR,
+                    error_message=f"{len(errors_stack)} exp(s) failed",
+                )
             return jsonify({
-                "status": True, 
-                "message": "Firma completada correctamente", 
-                "expsSigned": id_exps_signeds, 
-                "expsNotSigned": exps_not_signed, 
-                "indexSigneds": index_signeds, 
+                "status": True,
+                "message": "Firma completada correctamente",
+                "expsSigned": id_exps_signeds,
+                "expsNotSigned": exps_not_signed,
+                "indexSigneds": index_signeds,
                 "errors": errors_stack
             }), 200
         except Exception as e:
             return jsonify({"status": False, "message": "Error en la firma: " + str(e)}), 500
-    
+
     @app.route('/validarjades', methods=['POST'])
+    @observe_http_operation("validate.jades")
     def validarjades():
         """
         Route for validating JADES signatures.
@@ -254,7 +301,7 @@ def register_routes(app):
         
         try:
             validation, data_original, success, message, errors = validations_controller.validate_signatures_jades(data)
-            
+
             response = {
                 "status": success,
                 "message": message,
@@ -262,15 +309,15 @@ def register_routes(app):
                 "original_data": data_original,
                 "errors": errors
             }
-            
+
             if not success:
                 logger.warning(f"Validation failed: {message}")
-                logger.debug(f"Validation errors: {errors}")
+                update_operation(operation_status=OPERATION_PARTIAL_ERROR, error_message=message[:500])
             else:
                 logger.info("Validation completed successfully")
-                
+
             return jsonify(response), 200
-            
+
         except Exception as e:
             logger.error(f"Error in JADES validation: {str(e)}", exc_info=True)
             return jsonify({
@@ -282,8 +329,9 @@ def register_routes(app):
                     "details": "Error general en el endpoint validarjades"
                 }]
             }), 500
-    
+
     @app.route('/validatepdfs', methods=['POST'])
+    @observe_http_operation("validate.pdf")
     def validatepdfs():
         """
         Route for validating PDFs.
@@ -301,8 +349,14 @@ def register_routes(app):
                 }]
             }), 500
         
+        update_operation(batch_size=len(pdfs))
         try:
             results, errors, success, message = validations_controller.validate_signatures_pdf(pdfs)
+            if errors:
+                update_operation(
+                    operation_status=OPERATION_PARTIAL_ERROR,
+                    error_message=f"{len(errors)} pdf(s) failed",
+                )
             return jsonify({
                 "status": success,
                 "message": message,
@@ -320,6 +374,7 @@ def register_routes(app):
             }), 500
     
     @app.route('/validar_expediente', methods=['POST'])
+    @observe_http_operation("validate.expediente")
     def validar_expediente():
         """
         Route for validating an entire set of documents (expediente) in compressed format.
@@ -327,22 +382,26 @@ def register_routes(app):
         try:
             data = request.get_json()
             file_path = data.get('zip_filepath')
-            path = "/app/expedientes/" + file_path
+            path = _resolve_expediente_path(file_path or "")
             if not file_path or not os.path.exists(path):
                 return jsonify({
                     "status": False, 
-                    "message": f"Archivo no encontrado en la ruta: {path}"
+                    "message": "Archivo no encontrado en la ruta solicitada"
                 }), 400
         except Exception as e:
-            return jsonify({"status": False, "message": "Error al obtener los datos de la request: " + str(e)}), 500
+            logger.error("validate.expediente request error", exc_info=True)
+            return jsonify({"status": False, "message": "Error al obtener los datos de la request"}), 400
         
+        update_operation(attrs={"zip_filepath": file_path})
         try:
             controller_response, code = validations_controller.validate_expediente(path)
             return controller_response, code
         except Exception as e:
-            return jsonify({"status": False, "message": "Error en la validacion del expediente: " + str(e)}), 500
-    
+            logger.error("validate.expediente failed", exc_info=True)
+            return jsonify({"status": False, "message": "Error en la validacion del expediente"}), 500
+
     @app.route('/concatenarpdfs', methods=['POST'])
+    @observe_http_operation("tool.pdf.concat_watermark")
     def concatenarpdfs():
         """
         Route for concatenating PDFs.
@@ -354,11 +413,12 @@ def register_routes(app):
         except Exception as e:
             return jsonify({"status": False, "message": "Error al obtener los datos de la request: " + str(e)}), 500
 
+        update_operation(batch_size=len(pdfs))
         try:
             controller_response = tools_controller.merge_and_watermark_pdfs(pdfs, watermark_text)
             return jsonify({
-                "status": True, 
-                "message": "Concatenacion y watermarking completados correctamente", 
+                "status": True,
+                "message": "Concatenacion y watermarking completados correctamente",
                 "output_pdf": controller_response
             }), 200
         except Exception as e:
@@ -373,6 +433,7 @@ def register_routes(app):
         return jsonify({"status": "success", "message": "Esta todo perfectito."}), 200
     
     @app.route('/create_signature_image', methods=['POST'])
+    @observe_http_operation("tool.signature_image.create")
     def create_signature():
         """
         Route for creating a signature image from user info.
@@ -421,10 +482,6 @@ def register_routes(app):
                     "message": str(e)
                 }]
             }), 400
-
-
-
-
 
 
 

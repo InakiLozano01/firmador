@@ -20,3 +20,6 @@ firmar_python/firma_cliente/instalador/Tuquito-v2_2/
 firmar_python/firma_cliente/instalador/TuquitoInstaller2_2_console.exe
 firmar_python/firma_cliente/instalador/TuquitoInstaller2_2.exe
 docker-compose.yml
+/env/*.env
+/dashboard/.next
+/dashboard/node_modules

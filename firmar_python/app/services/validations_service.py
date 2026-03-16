@@ -3,28 +3,109 @@ from app.utils.validation_utils import process_signature, validation_analyze
 from .dss.dss_valid import validate_signature_pdf, validate_signature_json
 import copy
 from app.exceptions import validation_exc
+from app.config.settings import settings
 import libarchive
 import os
 import json
 import re
 import unicodedata
 from concurrent.futures import ThreadPoolExecutor
+import threading
 import base64
 import hashlib
 import multiprocessing
 from flask import jsonify
-import tempfile
-import shutil
-import zipfile
+from app.services.observability import SUBJECT_ERROR, stage_scope, subject_scope, submit_with_observability_context
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
 class ValidationsService:
     def __init__(self):
-        cpu_count = multiprocessing.cpu_count()
-        self.max_workers = cpu_count * 2/3  # Adjust based on testing
+        self.max_workers = max(1, int(settings.VALIDATION_MAX_WORKERS))
+        self._dss_validate_limiter = threading.BoundedSemaphore(max(1, int(settings.DSS_MAX_INFLIGHT_VALIDATE)))
         logger.debug(f"ValidationsService initialized with {self.max_workers} workers")
+
+    @staticmethod
+    def _validation_response(message, conclusion=False):
+        return jsonify({
+            "status": True,
+            "validation": {
+                "conclusion": conclusion,
+                "message": message,
+            }
+        }), 200
+
+    @staticmethod
+    def _decode_archive_entry_name(entry_pathname):
+        if isinstance(entry_pathname, bytes):
+            for encoding in ("cp1252", "utf-8", "latin-1", "iso-8859-1"):
+                try:
+                    return entry_pathname.decode(encoding)
+                except UnicodeDecodeError:
+                    continue
+            return entry_pathname.decode("iso-8859-1", errors="ignore")
+        return str(entry_pathname)
+
+    @staticmethod
+    def _sanitize_archive_name(filename: str) -> str:
+        normalized = unicodedata.normalize("NFKC", filename)
+        base_name = os.path.basename(os.path.normpath(normalized)).split("\\")[-1].split("/")[-1]
+        sanitized = re.sub(r"[^a-zA-Z0-9_.\-() áéíóúÁÉÍÓÚ]", "", base_name).strip()
+        return sanitized or "unnamed"
+
+    def _read_archive_files(self, path):
+        files = {}
+        doc_order_to_filename = {}
+        total_entries = 0
+        total_bytes = 0
+        sanitized_names = {}
+
+        with stage_scope("archive.extract", "Extraer expediente"):
+            with libarchive.file_reader(path) as archive:
+                for entry in archive:
+                    if entry.isdir:
+                        continue
+
+                    total_entries += 1
+                    if total_entries > settings.MAX_EXPEDIENTE_ARCHIVE_FILES:
+                        raise validation_exc.InvalidSignatureDataError(
+                            "ZIP_SANITIZE_COLLISION: cantidad de archivos excede el límite permitido"
+                        )
+
+                    entry_name = self._decode_archive_entry_name(entry.pathname)
+                    sanitized_name = self._sanitize_archive_name(entry_name)
+                    if sanitized_name in sanitized_names and sanitized_names[sanitized_name] != entry_name:
+                        raise validation_exc.InvalidSignatureDataError(
+                            f"ZIP_SANITIZE_COLLISION: colisión al sanitizar {entry_name!r}"
+                        )
+                    sanitized_names[sanitized_name] = entry_name
+
+                    content = b"".join(entry.get_blocks())
+                    total_bytes += len(content)
+                    if total_bytes > settings.MAX_EXPEDIENTE_ARCHIVE_BYTES:
+                        raise validation_exc.InvalidSignatureDataError(
+                            "ZIP_SANITIZE_COLLISION: tamaño del archivo excede el límite permitido"
+                        )
+
+                    files[sanitized_name] = content
+                    if sanitized_name.lower().endswith(".pdf"):
+                        base_name = os.path.splitext(sanitized_name)[0]
+                        match = re.match(r"[^_]+_([^_]+)_?", base_name)
+                        if match:
+                            doc_order_to_filename[match.group(1)] = sanitized_name
+
+        return files, doc_order_to_filename
+
+    def _validate_pdf_report(self, pdf_b64):
+        with self._dss_validate_limiter:
+            with stage_scope("dss.validate_request", "Validar PDF en DSS"):
+                return validate_signature_pdf(pdf_b64)
+
+    def _validate_json_report(self, json_data, signature):
+        with self._dss_validate_limiter:
+            with stage_scope("dss.validate_request", "Validar JSON en DSS"):
+                return validate_signature_json(json_data, signature)
 
     def validate_signatures_pdf(self, pdf):
         logger.info("Starting PDF signatures validation")
@@ -33,23 +114,22 @@ class ValidationsService:
         logger.debug(f"Processing PDF with ID: {id_doc}")
 
         try:
-            logger.debug("Validating PDF signature")
-            report = validate_signature_pdf(pdf_b64)
-            logger.debug("PDF signature validation completed")
+            report = self._validate_pdf_report(pdf_b64)
         except Exception as e:
             logger.error(f"Failed to validate PDF signature for document {id_doc}: {str(e)}", exc_info=True)
             raise validation_exc.InvalidSignatureDataError(f"Error al validar PDF: Error en validate_pdf: id_doc: {id_doc}")
 
         try:
-            logger.debug("Analyzing validation report")
-            result = validation_analyze(report)
-            if isinstance(result, tuple):
-                signatures, _ = result
-            else:
-                signatures = result
-            if not signatures:
-                raise validation_exc.InvalidSignatureDataError(f"Error al validar PDF: No se encontraron firmas válidas: id_doc: {id_doc}")
-            logger.debug("Validation analysis completed")
+            with stage_scope("validation.analyze", "Analizar validación"):
+                logger.debug("Analyzing validation report")
+                result = validation_analyze(report)
+                if isinstance(result, tuple):
+                    signatures, _ = result
+                else:
+                    signatures = result
+                if not signatures:
+                    raise validation_exc.InvalidSignatureDataError(f"Error al validar PDF: No se encontraron firmas válidas: id_doc: {id_doc}")
+                logger.debug("Validation analysis completed")
         except Exception as e:
             logger.error(f"Failed to analyze validation report for document {id_doc}: {str(e)}", exc_info=True)
             raise validation_exc.InvalidSignatureDataError(f"Error al validar PDF: Error en validation_analyze: id_doc: {id_doc}")
@@ -88,22 +168,24 @@ class ValidationsService:
                         continue
 
                     # Validate signature
-                    validation_report, status_code = validate_signature_json(data, signature)
-                    if status_code != 200 or not validation_report:
-                        error = {
-                            "secuencia": tramite.get('secuencia', i),
-                            "message": "Error en la validación de firma",
-                            "status_code": status_code
-                        }
-                        errors_stack.append(error)
-                        continue
+                    with stage_scope("tramite.signature.validate", "Validar firma de tramite"):
+                        validation_report, status_code = self._validate_json_report(data, signature)
+                        if status_code != 200 or not validation_report:
+                            error = {
+                                "secuencia": tramite.get('secuencia', i),
+                                "message": "Error en la validación de firma",
+                                "status_code": status_code
+                            }
+                            errors_stack.append(error)
+                            continue
 
                     # Analyze validation results
-                    result_val = validation_analyze(validation_report)
-                    if isinstance(result_val, tuple):
-                        validation_result, _ = result_val
-                    else:
-                        validation_result = result_val
+                    with stage_scope("validation.analyze", "Analizar validación"):
+                        result_val = validation_analyze(validation_report)
+                        if isinstance(result_val, tuple):
+                            validation_result, _ = result_val
+                        else:
+                            validation_result = result_val
                     # Process validation result
                     first_signature = validation_result[0] if validation_result else None
                     tested = bool(first_signature.get('valid', False)) if first_signature else False
@@ -153,130 +235,26 @@ class ValidationsService:
     
     def validate_expediente(self, path):
         try:
-            files = {}
-            doc_order_to_filename = {}
-            pdf_count = 0
-            
             logger.info(f"Processing expediente at path: {path}")
-            
-            # Create temporary directory for extraction and processing
-            temp_dir = tempfile.mkdtemp(prefix="expediente_")
-            extract_dir = os.path.join(temp_dir, "extracted")
-            os.makedirs(extract_dir, exist_ok=True)
-            
-            logger.info(f"Created temporary extraction directory: {extract_dir}")
-            
-            try:
-                # Extract all files from the original archive
-                with libarchive.file_reader(path) as archive:
-                    for entry in archive:
-                        if entry.isdir:
-                            continue
-                        
-                        entry_pathname = entry.pathname
-                        if isinstance(entry_pathname, bytes):
-                            # Try common encodings in a specific order
-                            decoded = None
-                            encodings_to_try = ['cp1252', 'utf-8', 'latin-1', 'iso-8859-1']
-                            for encoding in encodings_to_try:
-                                try:
-                                    decoded = entry_pathname.decode(encoding)
-                                    break
-                                except UnicodeDecodeError:
-                                    continue
-                            
-                            # If all attempts failed, use a fallback with 'ignore' error handling
-                            if decoded is None:
-                                decoded = entry_pathname.decode('iso-8859-1', errors='ignore')
-                            
-                            entry_pathname = decoded
-                        
-                        # Normalize path and get just the filename
-                        normalized_path = os.path.normpath(entry_pathname)
-                        file_name = os.path.basename(normalized_path)
-                        # Remove any directory prefix from the filename
-                        file_name = file_name.split('\\')[-1]  # Handle Windows-style paths
-                        file_name = file_name.split('/')[-1]   # Handle Unix-style paths
-                        
-                        # Store original for comparison
-                        original_filename = file_name
-                        
-                        # Sanitize the filename using regex
-                        # Keep alphanumeric, underscore, dot, hyphen, spaces, and parentheses
-                        sanitized_name = re.sub(r'[^a-zA-Z0-9_.\-() áéíóúÁÉÍÓÚ]', '', original_filename)
-                        
-                        # Extract the file content
-                        content = b''.join(entry.get_blocks())
-                        
-                        # Save the file with the sanitized name
-                        output_path = os.path.join(extract_dir, sanitized_name)
-                        with open(output_path, 'wb') as f:
-                            f.write(content)
-                        
-                        # Log if the name was changed
-                        if original_filename != sanitized_name:
-                            logger.info(f"Renamed file: {original_filename!r} -> {sanitized_name!r}")
-                
-                
-                # Now create a new ZIP file at the original path, replacing it
-                with zipfile.ZipFile(path, 'w') as new_zip:
-                    for root, _, filenames in os.walk(extract_dir):
-                        for filename in filenames:
-                            file_path = os.path.join(root, filename)
-                            # Add file to the archive with just the filename (no path)
-                            new_zip.write(file_path, arcname=filename)
-                
-                logger.info(f"Replaced original archive with sanitized version at {path}")
-                
-                # Now process the sanitized archive
-                files = {}
-                with zipfile.ZipFile(path, 'r') as archive:
-                    for file_info in archive.infolist():
-                        file_name = file_info.filename
-                        with archive.open(file_info) as file:
-                            content = file.read()
-                            files[file_name] = content
-                        
-                        if file_name.lower().endswith('.pdf'):
-                            pdf_count += 1
-                            base_name = os.path.splitext(file_name)[0]
-                            match = re.match(r'[^_]+_([^_]+)_?', base_name)
-                            if match:
-                                doc_order = match.group(1)
-                                doc_order_to_filename[doc_order] = file_name
-            
-            finally:
-                # Clean up temp directory and its contents
-                try:
-                    shutil.rmtree(temp_dir)
-                    logger.info(f"Cleaned up temporary directory: {temp_dir}")
-                except Exception as e:
-                    logger.error(f"Error cleaning up temporary directory: {e}")
-            
-            # Find and validate index.json
+            with stage_scope("archive.sanitize", "Sanitizar expediente"):
+                files, doc_order_to_filename = self._read_archive_files(path)
+
             index_json = None
-            for filename, content in files.items():
-                if filename.endswith('.json'):
-                    try:
-                        index_json = json.loads(content.decode('utf-8'))
-                        break
-                    except json.JSONDecodeError:
-                        return jsonify({
-                            "status": True,
-                            "validation": {
-                                "conclusion": False,
-                                "message": f"La validación fue procesada correctamente pero el archivo {filename} no es un JSON válido"
-                            }
-                        }), 200
+            with stage_scope("index.load", "Cargar indice"):
+                for filename, content in files.items():
+                    if filename.endswith('.json'):
+                        try:
+                            index_json = json.loads(content.decode('utf-8'))
+                            break
+                        except json.JSONDecodeError:
+                            return self._validation_response(
+                                f"La validación fue procesada correctamente pero el archivo {filename} no es un JSON válido"
+                            )
                         
             if index_json is None:
-                return jsonify({
-                    "status": True,
-                    "validation": {
-                        "conclusion": False,
-                        "message": "La validación fue procesada correctamente pero no se encontró el archivo índice JSON en el ZIP"
-                    }
-                }), 200
+                return self._validation_response(
+                    "La validación fue procesada correctamente pero no se encontró el archivo índice JSON en el ZIP"
+                )
 
             # Validate file count
             total_docs_in_index = sum(len(tramite['documentos']) for tramite in index_json['tramites'])
@@ -297,13 +275,9 @@ class ValidationsService:
                 tramite_copy = copy.deepcopy(tramite)
                 signature = tramite_copy.pop('firma', '')
                 if not signature:
-                    return jsonify({
-                        "status": True,
-                        "validation": {
-                            "conclusion": False,
-                            "message": f"La validación fue procesada correctamente pero el trámite {tramite.get('secuencia', idx)} no contiene firma digital"
-                        }
-                    }), 200
+                    return self._validation_response(
+                        f"La validación fue procesada correctamente pero el trámite {tramite.get('secuencia', idx)} no contiene firma digital"
+                    )
 
                 tramites_to_include = tramites_processed + [tramite_copy]
                 json_str = copy.deepcopy(index_json)
@@ -311,25 +285,21 @@ class ValidationsService:
                 tramites_processed.append(tramite)
                 tramite_args.append((idx, json_str, signature, tramite_copy, files, doc_order_to_filename, self.max_workers))
 
-            # Process tramites in parallel
-            with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-                futures = {
-                    executor.submit(self.process_tramite, *args): idx
-                    for idx, args in enumerate(tramite_args)
-                }
-                results_dict = {}
-                for future in futures:
-                    idx = futures[future]
-                    result = future.result()
-                    if 'error' in result:
-                        return jsonify({
-                            "status": True,
-                            "validation": {
-                                "conclusion": False,
-                                "message": f"La validación fue procesada correctamente pero hubo un error: {result['error']}"
-                            }
-                        }), 200
-                    results_dict[idx] = result
+            with stage_scope("tramites.dispatch", "Procesar tramites"):
+                with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+                    futures = {
+                        submit_with_observability_context(executor, self.process_tramite, *args): idx
+                        for idx, args in enumerate(tramite_args)
+                    }
+                    results_dict = {}
+                    for future in futures:
+                        idx = futures[future]
+                        result = future.result()
+                        if 'error' in result:
+                            return self._validation_response(
+                                f"La validación fue procesada correctamente pero hubo un error: {result['error']}"
+                            )
+                        results_dict[idx] = result
 
             validation_results = [results_dict[idx] for idx in range(len(tramites))]
             validation = {
@@ -342,27 +312,16 @@ class ValidationsService:
                 validation['conclusion'] = False
                 validation['message'] = file_count_message + " " + validation['message']
 
-            return jsonify({
-                "status": True,
-                "validation": validation
-            }), 200
+            return jsonify({"status": True, "validation": validation}), 200
 
         except libarchive.exception.ArchiveError as e:
-            return jsonify({
-                "status": True,
-                "validation": {
-                    "conclusion": False,
-                    "message": f"La validación fue procesada correctamente pero hubo un error al leer el archivo ZIP: {str(e)}"
-                }
-            }), 200
+            return self._validation_response(
+                f"La validación fue procesada correctamente pero hubo un error al leer el archivo ZIP: {str(e)}"
+            )
         except Exception as e:
-            return jsonify({
-                "status": True,
-                "validation": {
-                    "conclusion": False,
-                    "message": f"La validación fue procesada correctamente pero hubo un error inesperado: {str(e)}"
-                }
-            }), 200
+            return self._validation_response(
+                f"La validación fue procesada correctamente pero hubo un error inesperado: {str(e)}"
+            )
 
     def process_document(self, doc, files, doc_order_to_filename):
         doc_hash = doc['hash_contenido']
@@ -378,68 +337,66 @@ class ValidationsService:
             "invalid_format": False  # Add new field for format validation
         }
         try:
-            if doc_order in doc_order_to_filename:
-                doc_filename = doc_order_to_filename[doc_order]
-                doc_content = files[doc_filename]
-                
-                # Set the filename regardless of validation outcome
-                result_doc["doc_filename"] = doc_filename
-                
-                # Calculate hash and check validity regardless of validation outcome
-                hash_doc = hashlib.sha256(doc_content).hexdigest()
-                valid_hash = False if not doc_hash else (hash_doc == doc_hash.lower())
-                result_doc["valid_hash"] = valid_hash
-                
-                docb64 = base64.b64encode(doc_content).decode('utf-8')
+            with subject_scope("document", str(doc_id), display_name=f"Documento {doc_id}", attrs={"orden": doc_order}) as tracked_subject:
+                if doc_order in doc_order_to_filename:
+                    doc_filename = doc_order_to_filename[doc_order]
+                    doc_content = files[doc_filename]
+                    result_doc["doc_filename"] = doc_filename
 
-                # Validate the document
-                try:
-                    validation_report = validate_signature_pdf(docb64)
-                    if not validation_report:
-                        logger.warning(f"No validation report received for document {doc_id}")
-                        result_doc["signatures"] = []  # Empty signatures list instead of None
+                    with stage_scope("hash.check", "Validar hash"):
+                        hash_doc = hashlib.sha256(doc_content).hexdigest()
+                        valid_hash = False if not doc_hash else (hash_doc == doc_hash.lower())
+                        result_doc["valid_hash"] = valid_hash
+
+                    docb64 = base64.b64encode(doc_content).decode('utf-8')
+
+                    try:
+                        validation_report = self._validate_pdf_report(docb64)
+                        if not validation_report:
+                            logger.warning(f"No validation report received for document {doc_id}")
+                            result_doc["signatures"] = []
+                            tracked_subject.set_status(SUBJECT_ERROR, error_message="No validation report received")
+                            return result_doc
+                    except Exception as e:
+                        logger.error(f"Error validating signature in document {doc_id}: {str(e)}")
+                        result_doc["signatures"] = []
+                        error_str = str(e)
+                        logger.debug(f"Checking error message for format issues: {error_str}")
+
+                        if "PDF_FORMAT_ERROR" in error_str or "Document format not recognized" in error_str:
+                            result_doc["invalid_format"] = True
+                            logger.info(f"Document {doc_id} format not recognized by validation service (explicit marker)")
+                        elif "500 Server Error" in error_str and "validateSignature" in error_str:
+                            result_doc["invalid_format"] = True
+                            logger.info(f"Document {doc_id} likely has format issues (500 error from validation service): {error_str}")
+
+                        tracked_subject.set_status(SUBJECT_ERROR, error_message=error_str[:500])
                         return result_doc
-                except Exception as e:
-                    logger.error(f"Error validating signature in document {doc_id}: {str(e)}")
-                    result_doc["signatures"] = []  # Empty signatures list instead of None
-                    
-                    # Check if this is a format recognition error
-                    error_str = str(e)
-                    logger.debug(f"Checking error message for format issues: {error_str}")
-                    
-                    # Look for our special marker or other indicators of format problems
-                    if "PDF_FORMAT_ERROR" in error_str or "Document format not recognized" in error_str:
-                        result_doc["invalid_format"] = True
-                        logger.info(f"Document {doc_id} format not recognized by validation service (explicit marker)")
-                    # Fallback: For PDFs, most 500 errors from validation are format issues
-                    elif "500 Server Error" in error_str and "validateSignature" in error_str:
-                        result_doc["invalid_format"] = True
-                        logger.info(f"Document {doc_id} likely has format issues (500 error from validation service): {error_str}")
-                    
-                    return result_doc
-                
-                try:
-                    result_doc_val = validation_analyze(validation_report)
-                    if isinstance(result_doc_val, tuple):
-                        signatures, _ = result_doc_val
-                    else:
-                        signatures = result_doc_val
-                    # If no signatures found, that's okay - just use an empty list
-                    if not signatures:
-                        logger.info(f"No signatures found in document {doc_id}")
-                        signatures = []
-                except Exception as e:
-                    logger.error(f"Error analyzing validation in document {doc_id}: {str(e)}")
-                    result_doc["signatures"] = []  # Empty signatures list instead of None
-                    return result_doc
-                
-                result_doc["signatures"] = signatures
-            else:
-                result_doc['not_found'] = True
+
+                    try:
+                        with stage_scope("validation.analyze", "Analizar validación"):
+                            result_doc_val = validation_analyze(validation_report)
+                            if isinstance(result_doc_val, tuple):
+                                signatures, _ = result_doc_val
+                            else:
+                                signatures = result_doc_val
+                            if not signatures:
+                                logger.info(f"No signatures found in document {doc_id}")
+                                signatures = []
+                    except Exception as e:
+                        logger.error(f"Error analyzing validation in document {doc_id}: {str(e)}")
+                        result_doc["signatures"] = []
+                        tracked_subject.set_status(SUBJECT_ERROR, error_message=str(e)[:500])
+                        return result_doc
+
+                    result_doc["signatures"] = signatures
+                else:
+                    result_doc['not_found'] = True
+                    tracked_subject.set_status(SUBJECT_ERROR, error_message="Documento no encontrado en ZIP")
         except Exception as e:
             logger.error(f"Error processing document {doc_id}: {str(e)}")
             result_doc['error'] = str(e)
-            result_doc["signatures"] = []  # Empty signatures list instead of None
+            result_doc["signatures"] = []
         return result_doc
 
     def process_tramite(self, index, json_str, signature, tramite, files, doc_order_to_filename, max_workers):
@@ -447,20 +404,21 @@ class ValidationsService:
         try:
             # Validate the signature using the prepared json_str and signature
             try:
-                validation_report, status_code = validate_signature_json(json_str, signature)
-                if status_code != 200 or not validation_report:
-                    logger.warning("No validation response received for tramite")
-                    return {
-                        'secuencia': tramite['secuencia'],
-                        'is_valid': False,
-                        'certs_valid': False,
-                        'signature': [],
-                        'docs_validation': [],
-                        'docs_not_found': [],
-                        'subindication': f"Trámite {tramite['secuencia']}: La validación fue procesada correctamente pero no se recibió respuesta de validación",
-                        'result_indication': False,
-                        'message': f"Trámite {tramite['secuencia']}: La validación fue procesada correctamente pero no se recibió respuesta de validación"
-                    }
+                with stage_scope("tramite.signature.validate", "Validar firma de tramite"):
+                    validation_report, status_code = self._validate_json_report(json_str, signature)
+                    if status_code != 200 or not validation_report:
+                        logger.warning("No validation response received for tramite")
+                        return {
+                            'secuencia': tramite['secuencia'],
+                            'is_valid': False,
+                            'certs_valid': False,
+                            'signature': [],
+                            'docs_validation': [],
+                            'docs_not_found': [],
+                            'subindication': f"Trámite {tramite['secuencia']}: La validación fue procesada correctamente pero no se recibió respuesta de validación",
+                            'result_indication': False,
+                            'message': f"Trámite {tramite['secuencia']}: La validación fue procesada correctamente pero no se recibió respuesta de validación"
+                        }
             except Exception as e:
                 logger.error(f"Error validating tramite signature: {str(e)}")
                 return {
@@ -476,14 +434,15 @@ class ValidationsService:
                 }
 
             try:
-                result_tramite = validation_analyze(validation_report)
-                if isinstance(result_tramite, tuple):
-                    validation_result, _ = result_tramite
-                else:
-                    validation_result = result_tramite
-                if not validation_result:
-                    logger.info("No signatures found in tramite")
-                    validation_result = []
+                with stage_scope("validation.analyze", "Analizar validación"):
+                    result_tramite = validation_analyze(validation_report)
+                    if isinstance(result_tramite, tuple):
+                        validation_result, _ = result_tramite
+                    else:
+                        validation_result = result_tramite
+                    if not validation_result:
+                        logger.info("No signatures found in tramite")
+                        validation_result = []
             except Exception as e:
                 logger.error(f"Error analyzing validation in tramite: {str(e)}")
                 return {
@@ -507,14 +466,8 @@ class ValidationsService:
             docs_not_found = []
             errors = []
 
-            # Process documents in parallel using threads
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                results = executor.map(
-                    lambda doc: self.process_document(doc, files, doc_order_to_filename),
-                    tramite['documentos']
-                )
-
-            for result_doc in results:
+            for doc in tramite['documentos']:
+                result_doc = self.process_document(doc, files, doc_order_to_filename)
                 docs_validation.append(result_doc)
                 if result_doc.get('not_found', False):
                     docs_not_found.append({
