@@ -1,0 +1,42 @@
+[Setup]
+AppName=Tuquito
+AppVersion=2.2
+DefaultDirName={autopf32}\Tuquito
+DefaultGroupName=Tuquito
+OutputDir=.
+OutputBaseFilename=TuquitoInstaller2_2
+Compression=lzma2
+SolidCompression=yes
+DisableWelcomePage=no
+WizardImageFile=tapir.bmp
+SetupIconFile="app.ico"
+PrivilegesRequired=admin
+
+[Languages]
+Name: "es"; MessagesFile: "compiler:Languages\Spanish.isl"
+
+[CustomMessages]
+es.SetupWindowTitle=Instalación de {AppName}
+es.WelcomeLabel1=Estas por instalar {AppName}. El programa firmador del Tribunal de Cuentas de Tucumán.
+es.WelcomeLabel2=Este asistente instalará {AppName} en su sistema. Se recomienda cerrar otras aplicaciones antes de continuar.
+es.ButtonNext=Siguiente
+es.ButtonCancel=Cancelar
+es.ButtonFinish=Finalizar
+
+[Files]
+Source: ".\Tuquito-v2_2\*"; DestDir: "{autopf32}\Tuquito"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: ".\token_lib.json"; DestDir: "{autopf32}\Tuquito"; Flags: ignoreversion
+
+[Icons]
+Name: "{commonprograms}\Tuquito"; Filename: "{autopf32}\Tuquito\Tuquito-v2_2.exe"
+Name: "{commondesktop}\Tuquito"; Filename: "{autopf32}\Tuquito\Tuquito-v2_2.exe"
+
+[Registry]
+; Add to Windows Startup for all users
+Root: HKLM; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Tuquito"; ValueData: "{autopf32}\Tuquito\Tuquito-v2_2.exe"; Flags: uninsdeletevalue
+
+[Run]
+Filename: "{autopf32}\Tuquito\Tuquito-v2_2.exe"; Description: "Iniciar Tuquito"; Flags: nowait postinstall
+
+[Dirs]
+Name: "{app}"; Permissions: users-modify

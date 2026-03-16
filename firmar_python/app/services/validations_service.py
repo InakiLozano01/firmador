@@ -13,7 +13,6 @@ import base64
 import hashlib
 import multiprocessing
 from flask import jsonify
-import chardet
 import tempfile
 import shutil
 import zipfile

@@ -15,9 +15,11 @@ class AppState:
         self.encoded_image = encode_image(settings.LOGO_PATH)
         self.encoded_image_yunga = encode_image(settings.LOGO_YUNGA_PATH)
         self.isclosing = None
-        # Initialize the document timestamps map
+        # Deprecated for token batch signing flow (now backed by Redis context store).
+        # Kept for backward compatibility with non-migrated code paths.
         self.doc_timestamps = {}
-        # Map for other document-specific data
+        # Deprecated for token batch signing flow (now backed by Redis context store).
+        # Kept for backward compatibility with non-migrated code paths.
         self.doc_data = {}
 
     def load_settings(self):

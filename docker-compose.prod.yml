@@ -1,19 +1,4 @@
 services:
-  redis:
-    container_name: firmador-redis
-    image: redis:7-alpine
-    restart: always
-    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
-    volumes:
-      - redis_data:/data
-    networks:
-      - firmador_signnet
-
   java-webapp:
     container_name: firmador-java
     restart: always
@@ -37,13 +22,6 @@ services:
       - "5000:5000"
     environment:
       - TZ=Etc/GMT+3
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_DB=0
-      - REDIS_TTL_SECONDS=21600
-      - REDIS_KEY_PREFIX=signctx
-      - REDIS_CONNECT_TIMEOUT_SECONDS=2
-      - REDIS_SOCKET_TIMEOUT_SECONDS=5
     volumes:
       - ./firmar_python/app:/app
       - ./firmar_python/app/assets:/app/assets
@@ -52,15 +30,9 @@ services:
       - ../tapir/documentos_temp:/var/documentos
 
     depends_on:
-      java-webapp:
-        condition: service_started
-      redis:
-        condition: service_healthy
+      - java-webapp
     networks:
       - firmador_signnet
-
-volumes:
-  redis_data:
 
 networks:
   firmador_signnet:

@@ -21,7 +21,7 @@ class ToolsController:
             return {"error": str(e)}
     # Añade este método a la clase ToolsController
 
-    def create_signature_image(self, username, area, department, datetime):
+    def create_signature_image(self, username, area, department, datetime,label_signed_by,label_signed_at):
         """
         Create a signature image with user information
         
@@ -51,7 +51,9 @@ class ToolsController:
                 text=text,
                 encoded_image=stamp_path,  # La imagen se cargará desde stamp_path
                 path='show',
-                usuario=username
+                usuario=username,
+                label_signed_by=label_signed_by,
+                label_signed_at=label_signed_at
             )
             
             if result.get("success"):
