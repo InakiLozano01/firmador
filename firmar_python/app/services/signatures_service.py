@@ -34,6 +34,7 @@ from app.services.signing_context_store import (
 from app.utils.db import (
     get_number_and_date_then_close,
     get_number_and_date_then_close_project,
+    open_db_connection,
     unlock_pdf_and_close_task,
     unlock_pdf_and_close_task_project,
 )
@@ -355,6 +356,16 @@ class SignaturesService:
                 extra={"obs_attrs": {"subject_key": lock.entity}},
             )
 
+    @staticmethod
+    def _rollback_db_connection(conn):
+        if conn and conn.closed == 0:
+            conn.rollback()
+
+    @staticmethod
+    def _close_db_connection(conn):
+        if conn and conn.closed == 0:
+            conn.close()
+
     def _build_signature_image(self, *, stamp_text: str, encoded_image_data: str, mode: str, usuario: str, label_signed_by: Optional[str] = None):
         with stage_scope("signature_image.create", "Crear imagen de firma"):
             with stage_scope("signature_image.assets_load", "Cargar recursos de firma"):
@@ -412,7 +423,7 @@ class SignaturesService:
                 id_doc=str(id_doc),
                 hash_doc=hash_doc,
                 operation_id=operation_id,
-                extra={"subject_key": subject_key},
+                extra={"subject_key": subject_key, "db_committed": db_committed},
             )
             record_entry(
                 entry_kind=ENTRY_ERROR,
@@ -433,6 +444,32 @@ class SignaturesService:
             raise RepairRequiredError(
                 f"Error al promover PDF firmado; se generó reparación pendiente: {str(exc)}"
             ) from exc
+
+    def _persist_signed_pdf_transactional(
+        self,
+        *,
+        finalpdf: str,
+        filepath: str,
+        unlock_params: dict,
+        db_conn,
+        db_finalize,
+    ):
+        try:
+            with stage_scope("task.unlock_close", "Desbloquear y cerrar tarea"):
+                db_finalize(unlock_params, conn=db_conn, commit=False)
+            with stage_scope("pdf.persist.stage", "Persistir PDF en staging"):
+                staged_file = save_signed_pdf_atomic(
+                    finalpdf,
+                    filepath,
+                    self._operation_id_fallback(str(unlock_params["id_doc"])),
+                )
+            with stage_scope("pdf.persist.promote", "Promover PDF firmado"):
+                promote_staged_file(staged_file)
+            with stage_scope("db.commit", "Confirmar transaccion de firma"):
+                db_conn.commit()
+        except Exception:
+            self._rollback_db_connection(db_conn)
+            raise
 
     def signature_pdf_loro(self, pdf):
         error = None
@@ -496,6 +533,7 @@ class SignaturesService:
         es_caratula = pdf.get("es_caratula", False)
         is_project = pdf.get("is_project", False)
         entity_lock = None
+        transaction_conn = None
 
         try:
             if certificates:
@@ -594,20 +632,19 @@ class SignaturesService:
             )
 
             if is_closing:
+                transaction_conn = open_db_connection()
                 if not es_caratula:
+                    protocolize_pdf = (
+                        get_number_and_date_then_close_project if is_project else get_number_and_date_then_close
+                    )
                     with stage_scope("pdf.close", "Cerrar PDF"):
-                        if not is_project:
-                            lastpdf = get_number_and_date_then_close(
-                                signed_pdf_base64,
-                                id_doc,
-                                page_count=document_context.page_count,
-                            )
-                        else:
-                            lastpdf = get_number_and_date_then_close_project(
-                                signed_pdf_base64,
-                                id_doc,
-                                page_count=document_context.page_count,
-                            )
+                        lastpdf = protocolize_pdf(
+                            signed_pdf_base64,
+                            id_doc,
+                            page_count=document_context.page_count,
+                            conn=transaction_conn,
+                            commit=False,
+                        )
                 else:
                     lastpdf = signed_pdf_base64
 
@@ -638,25 +675,37 @@ class SignaturesService:
                 "is_signed": 1,
             }
             db_finalize = unlock_pdf_and_close_task_project if is_project else unlock_pdf_and_close_task
-            self._persist_signed_pdf(
-                finalpdf=finalpdf,
-                filepath=filepath,
-                hash_doc=hash_doc,
-                unlock_params=unlock_params,
-                id_doc=id_doc,
-                subject_key=str(id_doc),
-                db_finalize=db_finalize,
-            )
+            if is_closing:
+                self._persist_signed_pdf_transactional(
+                    finalpdf=finalpdf,
+                    filepath=filepath,
+                    unlock_params=unlock_params,
+                    db_conn=transaction_conn,
+                    db_finalize=db_finalize,
+                )
+            else:
+                self._persist_signed_pdf(
+                    finalpdf=finalpdf,
+                    filepath=filepath,
+                    hash_doc=hash_doc,
+                    unlock_params=unlock_params,
+                    id_doc=id_doc,
+                    subject_key=str(id_doc),
+                    db_finalize=db_finalize,
+                )
             return id_doc, error, data_to_sign
         except Exception as exc:
+            self._rollback_db_connection(transaction_conn)
             error = self._error_payload(id_doc=id_doc, message=str(exc))
             return id_doc, error, data_to_sign
         finally:
+            self._close_db_connection(transaction_conn)
             self._release_entity_lock(entity_lock)
 
     def end_signature_pdf(self, pdfs, certificates):
         error = None
         lease_token = None
+        transaction_conn = None
 
         try:
             if certificates:
@@ -746,19 +795,18 @@ class SignaturesService:
                 )
 
             if is_closing:
+                transaction_conn = open_db_connection()
+                protocolize_pdf = (
+                    get_number_and_date_then_close_project if is_project else get_number_and_date_then_close
+                )
                 with stage_scope("pdf.close", "Cerrar PDF"):
-                    if not is_project:
-                        lastpdf = get_number_and_date_then_close(
-                            signed_pdf_response["bytes"],
-                            id_doc,
-                            page_count=document_context.page_count,
-                        )
-                    else:
-                        lastpdf = get_number_and_date_then_close_project(
-                            signed_pdf_response["bytes"],
-                            id_doc,
-                            page_count=document_context.page_count,
-                        )
+                    lastpdf = protocolize_pdf(
+                        signed_pdf_response["bytes"],
+                        id_doc,
+                        page_count=document_context.page_count,
+                        conn=transaction_conn,
+                        commit=False,
+                    )
                 finalpdf = self.sign_own_pdf(
                     lastpdf,
                     True,
@@ -788,16 +836,25 @@ class SignaturesService:
             db_finalize = unlock_pdf_and_close_task_project if is_project else unlock_pdf_and_close_task
 
             try:
-                self._persist_signed_pdf(
-                    finalpdf=finalpdf,
-                    filepath=filepath,
-                    hash_doc=hash_doc,
-                    unlock_params=unlock_params,
-                    id_doc=id_doc,
-                    subject_key=str(id_doc),
-                    db_finalize=db_finalize,
-                    lease_token=lease_token,
-                )
+                if is_closing:
+                    self._persist_signed_pdf_transactional(
+                        finalpdf=finalpdf,
+                        filepath=filepath,
+                        unlock_params=unlock_params,
+                        db_conn=transaction_conn,
+                        db_finalize=db_finalize,
+                    )
+                else:
+                    self._persist_signed_pdf(
+                        finalpdf=finalpdf,
+                        filepath=filepath,
+                        hash_doc=hash_doc,
+                        unlock_params=unlock_params,
+                        id_doc=id_doc,
+                        subject_key=str(id_doc),
+                        db_finalize=db_finalize,
+                        lease_token=lease_token,
+                    )
             except RepairRequiredError:
                 lease_token = None
                 raise
@@ -810,6 +867,7 @@ class SignaturesService:
             lease_token = None
             return id_doc, error
         except Exception as exc:
+            self._rollback_db_connection(transaction_conn)
             if error is None:
                 error = self._error_payload(
                     id_doc=pdfs.get("id_doc", "unknown") if isinstance(pdfs, dict) else "unknown",
@@ -823,6 +881,8 @@ class SignaturesService:
                     error["message"],
                 )
             return pdfs.get("id_doc", "unknown"), error
+        finally:
+            self._close_db_connection(transaction_conn)
 
     def init_sign_jades(self, index_data, certificates, data_signature):
         id_exp_signed = None

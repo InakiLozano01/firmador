@@ -9,10 +9,16 @@ APP_ROOT = os.path.dirname(CONFIG_DIR)
 load_dotenv(os.path.join(CONFIG_DIR, '.env'))
 
 
-def _get_int_env(name, default):
+def _get_str_env(name, default=None):
     value = os.getenv(name, default)
-    if isinstance(value, str):
-        value = value.strip().strip("'").strip('"')
+    if value is None:
+        return default
+    normalized = str(value).strip().strip("'").strip('"')
+    return normalized or default
+
+
+def _get_int_env(name, default):
+    value = _get_str_env(name, default)
     try:
         return int(value)
     except (TypeError, ValueError):
@@ -25,34 +31,42 @@ def _get_bool_env(name, default=False):
         return default
     if isinstance(value, bool):
         return value
-    normalized = str(value).strip().strip("'").strip('"').lower()
+    normalized = _get_str_env(name, "").lower()
     return normalized in {"1", "true", "yes", "y", "on"}
+
+
+def _resolve_logo_path():
+    raw_value = _get_str_env('LOGO_YUNGA_FILE', 'logo_yunga.png')
+    if os.path.isabs(raw_value):
+        return raw_value
+    if os.path.dirname(raw_value):
+        return os.path.abspath(os.path.join(APP_ROOT, raw_value))
+    return os.path.join(APP_ROOT, 'assets', 'images', raw_value)
+
 
 class Settings:
     # Database settings
-    DB_NAME = os.getenv('DB_NAME')
-    DB_USER = os.getenv('DB_USER')
-    DB_PASSWORD = os.getenv('DB_PASSWORD')
-    DB_HOST = os.getenv('DB_HOST')
-    DB_PORT = os.getenv('DB_PORT')
+    DB_NAME = _get_str_env('DB_NAME')
+    DB_USER = _get_str_env('DB_USER')
+    DB_PASSWORD = _get_str_env('DB_PASSWORD')
+    DB_HOST = _get_str_env('DB_HOST')
+    DB_PORT = _get_str_env('DB_PORT')
 
     # Certificate settings
-    PRIVATE_KEY_PASSWORD = os.getenv('PRIVATE_KEY_PASSWORD')
-    
-    # Resolve absolute paths for certificates
-    # PRIVATE_KEY_PATH = os.path.abspath(os.path.join(APP_ROOT, 'certs/own/TC_clave_csr.key'))
-    # CERTIFICATE_PATH = os.path.abspath(os.path.join(APP_ROOT, 'certs/own/GDEcert.cer'))
+    PRIVATE_KEY_PASSWORD = _get_str_env('PRIVATE_KEY_PASSWORD')
+    PRIVATE_KEY_PATH = _get_str_env('PRIVATE_KEY_PATH')
+    CERTIFICATE_PATH = _get_str_env('CERTIFICATE_PATH')
 
     # Assets paths
     LOGO_PATH = os.path.join(APP_ROOT, 'assets', 'images', 'logo_tribunal_para_tapir_250px.png')
-    LOGO_YUNGA_PATH = os.path.join(APP_ROOT, 'assets', 'images', os.getenv('LOGO_YUNGA_FILE'))
+    LOGO_YUNGA_PATH = _resolve_logo_path()
 
     # Redis settings
-    REDIS_HOST = os.getenv('REDIS_HOST', 'redis')
+    REDIS_HOST = _get_str_env('REDIS_HOST', 'redis')
     REDIS_PORT = _get_int_env('REDIS_PORT', 6379)
     REDIS_DB = _get_int_env('REDIS_DB', 0)
     REDIS_TTL_SECONDS = _get_int_env('REDIS_TTL_SECONDS', 21600)
-    REDIS_KEY_PREFIX = os.getenv('REDIS_KEY_PREFIX', 'signctx')
+    REDIS_KEY_PREFIX = _get_str_env('REDIS_KEY_PREFIX', 'signctx')
     REDIS_CONNECT_TIMEOUT_SECONDS = _get_int_env('REDIS_CONNECT_TIMEOUT_SECONDS', 2)
     REDIS_SOCKET_TIMEOUT_SECONDS = _get_int_env('REDIS_SOCKET_TIMEOUT_SECONDS', 5)
     REDIS_FINALIZED_TTL_SECONDS = _get_int_env('REDIS_FINALIZED_TTL_SECONDS', 300)
@@ -60,7 +74,7 @@ class Settings:
     # Signing concurrency and repair settings
     SIGNING_FINALIZE_LEASE_MS = _get_int_env('SIGNING_FINALIZE_LEASE_MS', 120000)
     SIGNING_ENTITY_LOCK_TTL_MS = _get_int_env('SIGNING_ENTITY_LOCK_TTL_MS', 120000)
-    SIGNING_REPAIR_DIR = os.getenv('SIGNING_REPAIR_DIR', os.path.join(APP_ROOT, 'repair_queue'))
+    SIGNING_REPAIR_DIR = _get_str_env('SIGNING_REPAIR_DIR', os.path.join(APP_ROOT, 'repair_queue'))
 
     # DSS performance settings
     DSS_POOL_MAXSIZE = _get_int_env('DSS_POOL_MAXSIZE', 20)
@@ -72,17 +86,18 @@ class Settings:
     MAX_EXPEDIENTE_ARCHIVE_BYTES = _get_int_env('MAX_EXPEDIENTE_ARCHIVE_BYTES', 250 * 1024 * 1024)
 
     # Observability settings
-    OBS_LOG_LEVEL = os.getenv('OBS_LOG_LEVEL', 'INFO').upper()
+    OBS_LOG_LEVEL = _get_str_env('OBS_LOG_LEVEL', 'INFO').upper()
     OBS_CAPTURE_HTTP_BODIES = _get_bool_env('OBS_CAPTURE_HTTP_BODIES', False)
     OBS_CAPTURE_SIGNING_HTTP_BODIES = _get_bool_env('OBS_CAPTURE_SIGNING_HTTP_BODIES', False)
     OBS_PERSIST_DEBUG_LOGS = _get_bool_env('OBS_PERSIST_DEBUG_LOGS', False)
     OBS_ASYNC_QUEUE_SIZE = _get_int_env('OBS_ASYNC_QUEUE_SIZE', 10000)
     OBS_ASYNC_BATCH_SIZE = _get_int_env('OBS_ASYNC_BATCH_SIZE', 50)
     OBS_ASYNC_FLUSH_MS = _get_int_env('OBS_ASYNC_FLUSH_MS', 250)
-    OBS_PAYLOAD_VAULT_KEY = os.getenv('OBS_PAYLOAD_VAULT_KEY')
+    OBS_PAYLOAD_VAULT_KEY = _get_str_env('OBS_PAYLOAD_VAULT_KEY')
     OBS_PAYLOAD_VAULT_MAX_BYTES = _get_int_env('OBS_PAYLOAD_VAULT_MAX_BYTES', 5 * 1024 * 1024)
     OBS_PAYLOAD_VAULT_RETENTION_DAYS = _get_int_env('OBS_PAYLOAD_VAULT_RETENTION_DAYS', 30)
     OBS_RUNTIME_HEARTBEAT_SECONDS = _get_int_env('OBS_RUNTIME_HEARTBEAT_SECONDS', 10)
-    OBS_PAYLOAD_REVEAL_ROLE = os.getenv('OBS_PAYLOAD_REVEAL_ROLE', 'admin')
+    OBS_PAYLOAD_REVEAL_ROLE = _get_str_env('OBS_PAYLOAD_REVEAL_ROLE', 'admin')
 
-settings = Settings() 
+
+settings = Settings()

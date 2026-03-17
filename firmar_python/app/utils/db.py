@@ -1,18 +1,67 @@
-# Archivo para la conexión a la base de datos y funciones de la base de datos
-
-import os
-import json
-import logging
-import psycopg2
-from datetime import datetime
-from app.services.dss.close_pdf import close_pdf
-from app.exceptions.tool_exc import DatabaseConnectionError, DatabaseTransactionError, DocumentProcessingError, PDFClosingError
-import PyPDF2
 import base64
 import io
+import json
+import logging
+import os
+from datetime import datetime
 
-# Configure logging
+import PyPDF2
+import psycopg2
+
+from app.exceptions.tool_exc import (
+    DatabaseConnectionError,
+    DatabaseTransactionError,
+    DocumentProcessingError,
+    PDFClosingError,
+)
+from app.services.dss.close_pdf import close_pdf
+
 logger = logging.getLogger(__name__)
+
+SPANISH_MONTHS = {
+    1: "enero",
+    2: "febrero",
+    3: "marzo",
+    4: "abril",
+    5: "mayo",
+    6: "junio",
+    7: "julio",
+    8: "agosto",
+    9: "septiembre",
+    10: "octubre",
+    11: "noviembre",
+    12: "diciembre",
+}
+
+
+def open_db_connection():
+    dbname = os.getenv("DB_NAME")
+    user = os.getenv("DB_USER")
+    password = os.getenv("DB_PASSWORD")
+    host = os.getenv("DB_HOST")
+    port = os.getenv("DB_PORT")
+
+    conn_params = {
+        "dbname": dbname,
+        "user": user,
+        "password": password,
+        "host": host,
+        "port": port,
+    }
+
+    logger.debug("Attempting database connection to %s:%s/%s", host, port, dbname)
+    try:
+        conn = psycopg2.connect(**conn_params)
+    except Exception as exc:
+        logger.error("Failed to connect to database: %s", str(exc), exc_info=True)
+        raise DatabaseConnectionError(f"Error connecting to database: {str(exc)}") from exc
+
+    if not conn or conn.closed != 0:
+        logger.error("Database connection is not valid")
+        raise DatabaseConnectionError("Failed to establish database connection")
+
+    logger.debug("Database connection established")
+    return conn
 
 
 def _resolve_pdf_page_count(pdf_to_close, page_count=None):
@@ -23,438 +72,167 @@ def _resolve_pdf_page_count(pdf_to_close, page_count=None):
     pdf_reader = PyPDF2.PdfReader(io.BytesIO(pdf_bytes))
     return len(pdf_reader.pages)
 
-###################################################
-###      Función para obtener el número de      ###
-###         cierre y la fecha de cierre         ###
-###################################################
-def get_number_and_date_then_close(pdf_to_close, id_doc, page_count=None):
-    """
-    Get the closing number and date, then close the PDF.
 
-    Args:
-        pdf_to_close (str): Base64 encoded PDF to close.
-        id_doc (int): Document ID.
+def _normalize_protocolization_payload(payload):
+    if isinstance(payload, str):
+        return json.loads(payload)
+    return json.loads(json.dumps(payload))
 
-    Returns:
-        str: Base64 encoded closed PDF.
 
-    Raises:
-        DatabaseConnectionError: If connection to database fails
-        DatabaseTransactionError: If there's an error during database transaction
-        DocumentProcessingError: If there's an error processing the document
-        PDFClosingError: If there's an error closing the PDF
-    """
-    logger.info(f"Starting get number and date process for document {id_doc}")
-    conn = None
+def _format_close_date(raw_date: str):
+    date_value = datetime.strptime(raw_date, "%Y-%m-%d")
+    year = date_value.strftime("%Y")
+    formatted_date = f"{date_value.strftime('%d')} de {SPANISH_MONTHS[date_value.month]} de {year}"
+    return year, formatted_date
+
+
+def _build_close_field_values(payload, page_count: int):
+    year, formatted_date = _format_close_date(payload["fecha"])
+    close_number = f"{payload['numero']} / {year}"
+    close_date = formatted_date if payload.get("solo_fecha") == 1 else f"San Miguel de Tucumán, {formatted_date}"
+
+    field_values = {f"numero{i + 1}": close_number for i in range(page_count)}
+    field_values["fecha"] = close_date
+    return field_values
+
+
+def _rollback_connection(conn):
+    if conn and conn.closed == 0:
+        conn.rollback()
+
+
+def _close_owned_connection(conn, owns_connection: bool):
+    if owns_connection and conn and conn.closed == 0:
+        logger.debug("Closing database connection")
+        conn.close()
+
+
+def _protocolize_and_close_pdf(protocolize_function, pdf_to_close, id_doc, page_count=None, conn=None, commit=True):
+    logger.info("Starting get number and date process for document %s", id_doc)
+    active_conn = conn or open_db_connection()
+    owns_connection = conn is None
     cursor = None
-    should_commit = False
-    
-    # Get database connection parameters
-    dbname = os.getenv('DB_NAME')
-    user = os.getenv('DB_USER')
-    password = os.getenv('DB_PASSWORD')
-    host = os.getenv('DB_HOST')
-    port = os.getenv('DB_PORT')
 
-    conn_params = {
-        'dbname': dbname,
-        'user': user,
-        'password': password,
-        'host': host,
-        'port': port
-    }
-
-    logger.debug(f"Attempting database connection to {host}:{port}/{dbname}")
     try:
-        conn = psycopg2.connect(**conn_params)
-        logger.debug("Database connection established")
-    except Exception as e:
-        logger.error(f"Failed to connect to database: {str(e)}", exc_info=True)
-        raise DatabaseConnectionError(f"Error connecting to database: {str(e)}")
-
-    if not conn or conn.closed != 0:
-        logger.error("Database connection is not valid")
-        raise DatabaseConnectionError("Failed to establish database connection")
-
-    cursor = conn.cursor()
-    try:
-        logger.debug(f"Executing document protocolization for document {id_doc}")
-        cursor.execute("SELECT f_documento_protocolizar(%s)", (id_doc,))
+        cursor = active_conn.cursor()
+        logger.debug("Executing document protocolization for document %s", id_doc)
+        cursor.execute(f"SELECT {protocolize_function}(%s)", (id_doc,))
         datos = cursor.fetchone()
-        datos_json = json.loads(json.dumps(datos[0]))
-        logger.debug(f"Protocolization result: {datos_json}")
-        
-        if not datos_json['status']:
-            logger.error(f"Document processing error: {datos_json['message']}")
-            raise DocumentProcessingError(f"Error getting date and number: {datos_json['message']}")
+        if not datos:
+            raise DatabaseTransactionError("Transaction error: empty protocolization response")
 
-        try:
-            only_date = datos_json['solo_fecha'] == 1
-        except:
-            only_date = False
+        datos_json = _normalize_protocolization_payload(datos[0])
+        logger.debug("Protocolization result: %s", datos_json)
 
-        if only_date:
-            json_field_values1 = {
-                "numero": f"{datos_json['numero']} / {datetime.strptime(datos_json['fecha'], '%Y-%m-%d').strftime('%Y')}",
-                "fecha": f"{datetime.strptime(datos_json['fecha'], '%Y-%m-%d').strftime('%d de %B de %Y').replace('January', 'enero').replace('February', 'febrero').replace('March', 'marzo').replace('April', 'abril').replace('May', 'mayo').replace('June', 'junio').replace('July', 'julio').replace('August', 'agosto').replace('September', 'septiembre').replace('October', 'octubre').replace('November', 'noviembre').replace('December', 'diciembre')}"
-            }
-        else:
-            json_field_values1 = {
-                "numero": f"{datos_json['numero']} / {datetime.strptime(datos_json['fecha'], '%Y-%m-%d').strftime('%Y')}",
-                "fecha": f"San Miguel de Tucumán, {datetime.strptime(datos_json['fecha'], '%Y-%m-%d').strftime('%d de %B de %Y').replace('January', 'enero').replace('February', 'febrero').replace('March', 'marzo').replace('April', 'abril').replace('May', 'mayo').replace('June', 'junio').replace('July', 'julio').replace('August', 'agosto').replace('September', 'septiembre').replace('October', 'octubre').replace('November', 'noviembre').replace('December', 'diciembre')}"
-            }
+        if not datos_json.get("status"):
+            logger.error("Document processing error: %s", datos_json.get("message"))
+            raise DocumentProcessingError(f"Error getting date and number: {datos_json.get('message')}")
 
-        pdf_base64_string = pdf_to_close
         pdf_number_of_pages = _resolve_pdf_page_count(pdf_to_close, page_count=page_count)
-        logger.debug(f"PDF number of pages: {pdf_number_of_pages}")
-
-        final_json_field_values = {}
-
-        for i in range(pdf_number_of_pages):
-            final_json_field_values[f"numero{i+1}"] = json_field_values1["numero"]
-
-        final_json_field_values["fecha"] = json_field_values1["fecha"]
+        logger.debug("PDF number of pages: %s", pdf_number_of_pages)
+        final_json_field_values = _build_close_field_values(datos_json, pdf_number_of_pages)
 
         try:
             logger.debug("Attempting to close PDF")
-            final_json_field_values_string = json.dumps(final_json_field_values) # Serialize dict to JSON string
-            logger.debug(f"Passing field values to close_pdf: {final_json_field_values_string}")
-            pdf = close_pdf(pdf_base64_string, final_json_field_values_string) # Pass JSON string
+            pdf = close_pdf(pdf_to_close, json.dumps(final_json_field_values))
             logger.debug("PDF closed successfully")
-            should_commit = True
-            return pdf
-        except Exception as e:
-            logger.error(f"Failed to close PDF: {str(e)}", exc_info=True)
-            if conn and conn.closed == 0:
-                conn.rollback()
-            raise PDFClosingError(f"Error closing PDF: {str(e)}")
+        except Exception as exc:
+            logger.error("Failed to close PDF: %s", str(exc), exc_info=True)
+            raise PDFClosingError(f"Error closing PDF: {str(exc)}") from exc
 
-    except DocumentProcessingError:
-        logger.error("Document processing error occurred", exc_info=True)
-        if conn and conn.closed == 0:
-            conn.rollback()
+        if commit:
+            active_conn.commit()
+        return pdf
+    except (DocumentProcessingError, PDFClosingError, DatabaseTransactionError):
+        _rollback_connection(active_conn)
         raise
-    except Exception as e:
-        logger.error(f"Database transaction error: {str(e)}", exc_info=True)
-        if conn and conn.closed == 0:
-            conn.rollback()
-        raise DatabaseTransactionError(f"Transaction error: {str(e)}")
+    except Exception as exc:
+        logger.error("Database transaction error: %s", str(exc), exc_info=True)
+        _rollback_connection(active_conn)
+        raise DatabaseTransactionError(f"Transaction error: {str(exc)}") from exc
     finally:
         if cursor:
             cursor.close()
-        if conn and conn.closed == 0:
-            if should_commit:
-                conn.commit()
-            logger.debug("Closing database connection")
-            conn.close()
+        _close_owned_connection(active_conn, owns_connection)
 
-###################################################
-###    Funcion para desbloquear el documento    ###
-###       cerrar la tarea y guardar hash        ###
-###################################################
-def unlock_pdf_and_close_task(params: dict):
-    """
-    Unlock the PDF, close the task, and save the hash.
 
-    Args:
-        params (dict): Dictionary containing:
-            - id_doc (int): Document ID
-            - id_user (int): User ID
-            - hash_doc (str): Document hash
-            - is_closed (bool): Flag indicating if the document is closed
-            - id_sello (int): Seal ID
-            - id_oficina (int): Office ID
-            - tipo_firma (int): Type of signature
-            - is_signed (int): Flag indicating if the document is signed (1 for signed, 0 for unsigned)
+def get_number_and_date_then_close(pdf_to_close, id_doc, page_count=None, conn=None, commit=True):
+    return _protocolize_and_close_pdf(
+        "f_documento_protocolizar",
+        pdf_to_close,
+        id_doc,
+        page_count=page_count,
+        conn=conn,
+        commit=commit,
+    )
 
-    Raises:
-        DatabaseConnectionError: If connection to database fails
-        DatabaseTransactionError: If there's an error during the finalization process
-        ValueError: If required parameters are missing
-    """
-    logger.info(f"Starting unlock and close task for document {params.get('id_doc')}")
-    
-    # Validate required parameters
-    required_params = {'id_doc', 'id_user', 'hash_doc', 'is_closed', 'id_sello', 'id_oficina', 'tipo_firma', 'is_signed'}
+
+def _unlock_pdf_and_close_task(finalize_function, params: dict, conn=None, commit=True):
+    logger.info("Starting unlock and close task for document %s", params.get("id_doc"))
+    required_params = {"id_doc", "id_user", "hash_doc", "is_closed", "id_sello", "id_oficina", "tipo_firma"}
     missing_params = required_params - set(params.keys())
     if missing_params:
-        logger.error(f"Missing required parameters: {missing_params}")
+        logger.error("Missing required parameters: %s", missing_params)
         raise ValueError(f"Missing required parameters: {', '.join(missing_params)}")
 
-    logger.debug(f"Processing parameters: {params}")
-
-    conn = None
+    active_conn = conn or open_db_connection()
+    owns_connection = conn is None
     cursor = None
-    should_commit = False
-    dbname = os.getenv('DB_NAME')
-    user = os.getenv('DB_USER')
-    password = os.getenv('DB_PASSWORD')
-    host = os.getenv('DB_HOST')
-    port = os.getenv('DB_PORT')
-    conn_params = {
-        'dbname': dbname,
-        'user': user,
-        'password': password,
-        'host': host,
-        'port': port
-    }
-
-    logger.debug(f"Attempting database connection to {host}:{port}/{dbname}")
-    try:
-        conn = psycopg2.connect(**conn_params)
-        cursor = conn.cursor()
-        logger.debug("Database connection established")
-    except (psycopg2.InterfaceError, Exception) as e:
-        try:
-            logger.debug("Retrying database connection")
-            conn = psycopg2.connect(**conn_params)
-            cursor = conn.cursor()
-            logger.debug("Database connection established on retry")
-        except Exception as exc:
-            logger.error(f"Failed to connect to database: {str(exc)}", exc_info=True)
-            raise DatabaseConnectionError(f"Error connecting to database: {str(exc)}")
 
     try:
+        cursor = active_conn.cursor()
         logger.debug("Executing finalization process")
         cursor.execute(
-            "SELECT f_finalizar_proceso_firmado_v2 (%s, %s, %s, %s, %s, %s, %s, %s)", 
+            f"SELECT {finalize_function} (%s, %s, %s, %s, %s, %s, %s, %s)",
             (
-                params['id_doc'],
-                params['id_user'],
-                params['is_signed'],
-                params['is_closed'],
-                params['id_sello'],
-                params['id_oficina'],
-                params['tipo_firma'],
-                params['hash_doc']
-            )
+                params["id_doc"],
+                params["id_user"],
+                params.get("is_signed", 1),
+                params["is_closed"],
+                params["id_sello"],
+                params["id_oficina"],
+                params["tipo_firma"],
+                params["hash_doc"],
+            ),
         )
-        should_commit = True
+        if commit:
+            active_conn.commit()
         logger.debug("Finalization process completed successfully")
-    except Exception as e:
-        logger.error(f"Error in finalization process: {str(e)}", exc_info=True)
-        if conn and conn.closed == 0:
-            conn.rollback()
-        raise DatabaseTransactionError(f"Error in finalization process: {str(e)}")
+    except Exception as exc:
+        logger.error("Error in finalization process: %s", str(exc), exc_info=True)
+        _rollback_connection(active_conn)
+        raise DatabaseTransactionError(f"Error in finalization process: {str(exc)}") from exc
     finally:
         if cursor:
             cursor.close()
-        if conn and conn.closed == 0:
-            if should_commit:
-                conn.commit()
-            logger.debug("Closing database connection")
-            conn.close()
+        _close_owned_connection(active_conn, owns_connection)
         logger.info("Unlock and close task completed")
 
-def unlock_pdf_and_close_task_project(params: dict):
-    """
-    Unlock the PDF, close the task, and save the hash.
 
-    Args:
-        params (dict): Dictionary containing:
-            - id_doc (int): Document ID
-            - id_user (int): User ID
-            - hash_doc (str): Document hash
-            - is_closed (bool): Flag indicating if the document is closed
-            - id_sello (int): Seal ID
-            - id_oficina (int): Office ID
-            - tipo_firma (int): Type of signature
-            - is_signed (int): Flag indicating if the document is signed (1 for signed, 0 for unsigned)
+def unlock_pdf_and_close_task(params: dict, conn=None, commit=True):
+    _unlock_pdf_and_close_task(
+        "f_finalizar_proceso_firmado_v2",
+        params,
+        conn=conn,
+        commit=commit,
+    )
 
-    Raises:
-        DatabaseConnectionError: If connection to database fails
-        DatabaseTransactionError: If there's an error during the finalization process
-        ValueError: If required parameters are missing
-    """
-    logger.info(f"Starting unlock and close task for document {params.get('id_doc')}")
-    
-    # Validate required parameters
-    required_params = {'id_doc', 'id_user', 'hash_doc', 'is_closed', 'id_sello', 'id_oficina', 'tipo_firma', 'is_signed'}
-    missing_params = required_params - set(params.keys())
-    if missing_params:
-        logger.error(f"Missing required parameters: {missing_params}")
-        raise ValueError(f"Missing required parameters: {', '.join(missing_params)}")
 
-    conn = None
-    cursor = None
-    should_commit = False
-    dbname = os.getenv('DB_NAME')
-    user = os.getenv('DB_USER')
-    password = os.getenv('DB_PASSWORD')
-    host = os.getenv('DB_HOST')
-    port = os.getenv('DB_PORT')
-    conn_params = {
-        'dbname': dbname,
-        'user': user,
-        'password': password,
-        'host': host,
-        'port': port
-    }
+def unlock_pdf_and_close_task_project(params: dict, conn=None, commit=True):
+    _unlock_pdf_and_close_task(
+        "f_proyecto_finalizar_proceso_firmado_v2",
+        params,
+        conn=conn,
+        commit=commit,
+    )
 
-    logger.debug(f"Attempting database connection to {host}:{port}/{dbname}")
-    try:
-        conn = psycopg2.connect(**conn_params)
-        cursor = conn.cursor()
-        logger.debug("Database connection established")
-    except (psycopg2.InterfaceError, Exception) as e:
-        try:
-            logger.debug("Retrying database connection")
-            conn = psycopg2.connect(**conn_params)
-            cursor = conn.cursor()
-            logger.debug("Database connection established on retry")
-        except Exception as exc:
-            logger.error(f"Failed to connect to database: {str(exc)}", exc_info=True)
-            raise DatabaseConnectionError(f"Error connecting to database: {str(exc)}")
 
-    try:
-        logger.debug("Executing finalization process")
-        cursor.execute(
-            "SELECT f_proyecto_finalizar_proceso_firmado_v2 (%s, %s, %s, %s, %s, %s, %s, %s)", 
-            (
-                params['id_doc'],
-                params['id_user'],
-                params['is_signed'],
-                params['is_closed'],
-                params['id_sello'],
-                params['id_oficina'],
-                params['tipo_firma'],
-                params['hash_doc']
-            )
-        )
-        should_commit = True
-        logger.debug("Finalization process completed successfully")
-    except Exception as e:
-        logger.error(f"Error in finalization process: {str(e)}", exc_info=True)
-        if conn and conn.closed == 0:
-            conn.rollback()
-        raise DatabaseTransactionError(f"Error in finalization process: {str(e)}")
-    finally:
-        if cursor:
-            cursor.close()
-        if conn and conn.closed == 0:
-            if should_commit:
-                conn.commit()
-            logger.debug("Closing database connection")
-            conn.close()
-        logger.info("Unlock and close task completed")
-
-def get_number_and_date_then_close_project(pdf_to_close, id_doc, page_count=None):
-    """
-    Get the closing number and date, then close the PDF.
-
-    Args:
-        pdf_to_close (str): Base64 encoded PDF to close.
-        id_doc (int): Document ID
-
-    Returns:
-        str: Base64 encoded closed PDF.
-
-    Raises:
-        DatabaseConnectionError: If connection to database fails
-        DatabaseTransactionError: If there's an error during database transaction
-        DocumentProcessingError: If there's an error processing the document
-        PDFClosingError: If there's an error closing the PDF
-    """
-    logger.info(f"Starting get number and date process for document {id_doc}")
-    conn = None
-    cursor = None
-    should_commit = False
-    
-    # Get database connection parameters
-    dbname = os.getenv('DB_NAME')
-    user = os.getenv('DB_USER')
-    password = os.getenv('DB_PASSWORD')
-    host = os.getenv('DB_HOST')
-    port = os.getenv('DB_PORT')
-
-    conn_params = {
-        'dbname': dbname,
-        'user': user,
-        'password': password,
-        'host': host,
-        'port': port
-    }
-    
-    logger.debug(f"Attempting database connection to {host}:{port}/{dbname}")
-    try:
-        conn = psycopg2.connect(**conn_params)
-        logger.debug("Database connection established")
-    except Exception as e:
-        logger.error(f"Failed to connect to database: {str(e)}", exc_info=True)
-        raise DatabaseConnectionError(f"Error connecting to database: {str(e)}")
-    
-    if not conn or conn.closed != 0:
-        logger.error("Database connection is not valid")
-        raise DatabaseConnectionError("Failed to establish database connection")
-    
-    cursor = conn.cursor()
-    try:
-        logger.debug(f"Executing document protocolization for document {id_doc}")
-        cursor.execute("SELECT f_proyecto_protocolizar(%s)", (id_doc,))
-        datos = cursor.fetchone()
-        datos_json = json.loads(json.dumps(datos[0]))
-        logger.debug(f"Protocolization result: {datos_json}")
-        
-        if not datos_json['status']:
-            logger.error(f"Document processing error: {datos_json['message']}")
-            raise DocumentProcessingError(f"Error getting date and number: {datos_json['message']}")
-        
-        try:
-            only_date = datos_json['solo_fecha'] == 1
-        except:
-            only_date = False
-
-        if only_date:
-            json_field_values1 = {
-                "numero": f"{datos_json['numero']} / {datetime.strptime(datos_json['fecha'], '%Y-%m-%d').strftime('%Y')}",
-                "fecha": f"{datetime.strptime(datos_json['fecha'], '%Y-%m-%d').strftime('%d de %B de %Y').replace('January', 'enero').replace('February', 'febrero').replace('March', 'marzo').replace('April', 'abril').replace('May', 'mayo').replace('June', 'junio').replace('July', 'julio').replace('August', 'agosto').replace('September', 'septiembre').replace('October', 'octubre').replace('November', 'noviembre').replace('December', 'diciembre')}"
-            }
-        else:
-            json_field_values1 = {
-                "numero": f"{datos_json['numero']} / {datetime.strptime(datos_json['fecha'], '%Y-%m-%d').strftime('%Y')}",
-                "fecha": f"San Miguel de Tucumán, {datetime.strptime(datos_json['fecha'], '%Y-%m-%d').strftime('%d de %B de %Y').replace('January', 'enero').replace('February', 'febrero').replace('March', 'marzo').replace('April', 'abril').replace('May', 'mayo').replace('June', 'junio').replace('July', 'julio').replace('August', 'agosto').replace('September', 'septiembre').replace('October', 'octubre').replace('November', 'noviembre').replace('December', 'diciembre')}"
-            }
-
-        pdf_base64_string = pdf_to_close
-        pdf_number_of_pages = _resolve_pdf_page_count(pdf_to_close, page_count=page_count)
-        logger.debug(f"PDF number of pages: {pdf_number_of_pages}")
-
-        final_json_field_values = {}
-
-        for i in range(pdf_number_of_pages):
-            final_json_field_values[f"numero{i+1}"] = json_field_values1["numero"]
-
-        final_json_field_values["fecha"] = json_field_values1["fecha"]
-        
-        try:
-            logger.debug("Attempting to close PDF")
-            final_json_field_values_string = json.dumps(final_json_field_values) # Serialize dict to JSON string
-            logger.debug(f"Passing field values to close_pdf: {final_json_field_values_string}")
-            pdf = close_pdf(pdf_base64_string, final_json_field_values_string) # Pass JSON string
-            logger.debug("PDF closed successfully")
-            should_commit = True
-            return pdf
-        except Exception as e:
-            logger.error(f"Failed to close PDF: {str(e)}", exc_info=True)
-            if conn and conn.closed == 0:
-                conn.rollback()
-            raise PDFClosingError(f"Error closing PDF: {str(e)}")
-    except DocumentProcessingError:
-        logger.error("Document processing error occurred", exc_info=True)
-        if conn and conn.closed == 0:
-            conn.rollback()
-        raise
-    except Exception as e:
-        logger.error(f"Database transaction error: {str(e)}", exc_info=True)
-        if conn and conn.closed == 0:
-            conn.rollback()
-        raise DatabaseTransactionError(f"Transaction error: {str(e)}")
-    finally:
-        if cursor:
-            cursor.close()
-        if conn and conn.closed == 0:
-            if should_commit:
-                conn.commit()
-            logger.debug("Closing database connection")
-            conn.close()
-        logger.info("Get number and date process completed")
+def get_number_and_date_then_close_project(pdf_to_close, id_doc, page_count=None, conn=None, commit=True):
+    return _protocolize_and_close_pdf(
+        "f_proyecto_protocolizar",
+        pdf_to_close,
+        id_doc,
+        page_count=page_count,
+        conn=conn,
+        commit=commit,
+    )

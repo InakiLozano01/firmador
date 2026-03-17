@@ -12,7 +12,9 @@ from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.primitives.serialization import load_pem_private_key
 from dotenv import load_dotenv
 
-load_dotenv()
+SERVICES_DIR = os.path.dirname(os.path.abspath(__file__))
+APP_ROOT = os.path.dirname(SERVICES_DIR)
+load_dotenv(os.path.join(APP_ROOT, "config", ".env"))
 
 
 class CertificateError(Exception):
@@ -35,10 +37,18 @@ _CACHE_LOCK = threading.RLock()
 _LOCAL_MATERIAL_CACHE: _CachedLocalMaterial | None = None
 
 
+def _get_str_env(name: str) -> str | None:
+    value = os.getenv(name)
+    if value is None:
+        return None
+    normalized = str(value).strip().strip("'").strip('"')
+    return normalized or None
+
+
 def _load_environment_variables() -> Tuple[str, str, str]:
-    private_key_password = os.getenv('PRIVATE_KEY_PASSWORD')
-    private_key_path = os.getenv('PRIVATE_KEY_PATH')
-    certificate_path = os.getenv('CERTIFICATE_PATH')
+    private_key_password = _get_str_env('PRIVATE_KEY_PASSWORD')
+    private_key_path = _get_str_env('PRIVATE_KEY_PATH')
+    certificate_path = _get_str_env('CERTIFICATE_PATH')
 
     if not all([private_key_password, private_key_path, certificate_path]):
         raise CertificateError("Missing required environment variables")

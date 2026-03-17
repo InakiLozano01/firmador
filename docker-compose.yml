@@ -37,6 +37,7 @@ services:
       - "5000:5000"
     env_file:
       - env/common.env
+      - env/flask-app.env
       - env/redis.env
       - env/obs-db.env
     volumes:
