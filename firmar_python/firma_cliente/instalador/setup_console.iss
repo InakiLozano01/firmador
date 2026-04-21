@@ -1,6 +1,6 @@
 [Setup]
 AppName=Tuquito
-AppVersion=2.2
+AppVersion=2.4
 DefaultDirName={autopf32}\Tuquito
 DefaultGroupName=Tuquito
 OutputDir=.

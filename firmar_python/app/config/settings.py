@@ -1,5 +1,8 @@
+import logging
 import os
 from dotenv import load_dotenv
+
+_logger_settings = logging.getLogger(__name__)
 
 # Get the absolute path to the config directory
 CONFIG_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -56,6 +59,10 @@ class Settings:
     PRIVATE_KEY_PASSWORD = _get_str_env('PRIVATE_KEY_PASSWORD')
     PRIVATE_KEY_PATH = _get_str_env('PRIVATE_KEY_PATH')
     CERTIFICATE_PATH = _get_str_env('CERTIFICATE_PATH')
+    ISSUER_POOL_DIR = _get_str_env(
+        'ISSUER_POOL_DIR',
+        os.path.join(APP_ROOT, 'certs', 'issuer_pool'),
+    )
 
     # Assets paths
     LOGO_PATH = os.path.join(APP_ROOT, 'assets', 'images', 'logo_tribunal_para_tapir_250px.png')
@@ -101,3 +108,11 @@ class Settings:
 
 
 settings = Settings()
+
+# Register /rest/issuer-certs/resolve by wrapping register_routes (runs before main imports register_routes).
+try:
+    from app.route_extensions import ensure_issuer_resolve_registered
+
+    ensure_issuer_resolve_registered()
+except Exception as e:
+    _logger_settings.warning("No se pudo registrar /rest/issuer-certs/resolve: %s", e)

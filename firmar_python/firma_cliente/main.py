@@ -100,7 +100,7 @@ def get_certificates_route(): # Renamed to avoid conflict with certificates.py m
         print(f"Selected token info: {selected_token_info}")
 
         try:
-            _token_unique_id, token_name = get_token_unique_id_internal(selected_token_info)
+            token_atr_hex, token_name = get_token_unique_id_internal(selected_token_info)
         except TokenIdError as e:
             print(f"TokenIdError in get_token_unique_id_internal: {e.message}")
             return jsonify({"status": False, "message": e.message}), e.status_code
@@ -156,7 +156,9 @@ def get_certificates_route(): # Renamed to avoid conflict with certificates.py m
         user_selected_cert, user_selected_cert_der = certificates[selected_index]
 
         try:
-            chain_result, chain_status_code = get_full_chain(user_selected_cert, user_selected_cert_der)
+            chain_result, chain_status_code = get_full_chain(
+                user_selected_cert, user_selected_cert_der, token_atr_hex
+            )
             if chain_status_code != 200:
                 print(f"Error from get_full_chain (status {chain_status_code})")
                 return chain_result, chain_status_code 
@@ -194,7 +196,7 @@ def get_certificates_route(): # Renamed to avoid conflict with certificates.py m
                     "osArch": platform.machine(), "osVersion": platform.version(),
                     "arch": platform.architecture()[0], "os": platform.system().upper()
                 },
-                "TuquitoVersion": "1.8"
+                "TuquitoVersion": "2.4"
             }
         }
         return jsonify(response_data), 200

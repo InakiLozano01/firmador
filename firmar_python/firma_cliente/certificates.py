@@ -1,14 +1,23 @@
+# Emisor por servidor: TUQUITO_ISSUER_SERVICE_URL en el entorno o en .env junto al .exe (ver client_env).
 ##################################################
 ###              Imports externos              ###
 ##################################################
 
-from base64 import b64encode
-from requests import get, exceptions as requests_exceptions # Explicit import for requests exceptions
+from base64 import b64decode, b64encode
+import os
+import re
+import sys
+from requests import get, post, exceptions as requests_exceptions # Explicit import for requests exceptions
+import threading
 import PyKCS11
 from cryptography import x509
 from cryptography.x509.oid import ExtensionOID, AuthorityInformationAccessOID
-from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives import hashes, serialization
 from flask import jsonify
+
+from client_env import load_client_dotenv
+
+load_client_dotenv()
 
 ##################################################
 ###          Custom Exceptions                 ###
@@ -68,10 +77,194 @@ class TokenLoginError(CertificateError):
 ###          Certificate Functions             ###
 ##################################################
 
-def get_issuer_cert(cert: x509.Certificate) -> x509.Certificate:
+# Caché de certificados emisor (superiores) por token (p. ej. ATR hex) y huella del certificado inferior.
+_issuer_cert_cache: dict[tuple[str, str], bytes] = {}
+_issuer_cert_cache_lock = threading.Lock()
+
+
+def _client_base_dir() -> str:
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+def _issuer_disk_cache_dir() -> str:
+    d = os.path.join(_client_base_dir(), "issuer_cache")
+    try:
+        os.makedirs(d, exist_ok=True)
+    except OSError:
+        pass
+    return d
+
+
+def _issuer_disk_cache_path(token_key: str, lower_fp_hex: str) -> str:
+    safe_tok = re.sub(r"[^A-Za-z0-9_-]+", "_", token_key)
+    return os.path.join(_issuer_disk_cache_dir(), f"{safe_tok}_{lower_fp_hex}.der")
+
+
+def _lower_cert_fingerprint_hex(cert: x509.Certificate) -> str:
+    return cert.fingerprint(hashes.SHA256()).hex().upper()
+
+
+def _store_issuer_cache(token_key: str | None, lower_cert: x509.Certificate, issuer_der: bytes) -> None:
+    if not token_key:
+        return
+    cache_key = (token_key, _lower_cert_fingerprint_hex(lower_cert))
+    with _issuer_cert_cache_lock:
+        _issuer_cert_cache[cache_key] = issuer_der
+    path = _issuer_disk_cache_path(token_key, cache_key[1])
+    try:
+        with open(path, "wb") as f:
+            f.write(issuer_der)
+    except OSError as e_w:
+        print(f"No se pudo escribir caché de emisor en disco: {e_w}")
+
+
+def _load_issuer_from_cache(token_key: str | None, lower_cert: x509.Certificate) -> x509.Certificate | None:
+    if not token_key:
+        return None
+    fp = _lower_cert_fingerprint_hex(lower_cert)
+    cache_key = (token_key, fp)
+    with _issuer_cert_cache_lock:
+        cached_der = _issuer_cert_cache.get(cache_key)
+    if cached_der:
+        try:
+            print("Usando certificado emisor en caché en memoria (respaldo tras fallo de red o AIA).")
+            c_mem = x509.load_der_x509_certificate(cached_der)
+            if not _issuer_dn_matches_parent_candidate(lower_cert, c_mem):
+                print("Caché en memoria no coincide con el emisor esperado; se elimina.")
+                with _issuer_cert_cache_lock:
+                    _issuer_cert_cache.pop(cache_key, None)
+                return None
+            return c_mem
+        except ValueError as e_parse:
+            print(f"Entrada de caché en memoria inválida, se elimina: {e_parse}")
+            with _issuer_cert_cache_lock:
+                _issuer_cert_cache.pop(cache_key, None)
+            return None
+    path = _issuer_disk_cache_path(token_key, fp)
+    try:
+        with open(path, "rb") as f:
+            disk_der = f.read()
+    except OSError:
+        return None
+    if not disk_der:
+        return None
+    try:
+        print("Usando certificado emisor en caché en disco (respaldo tras fallo de red o AIA).")
+        cert = x509.load_der_x509_certificate(disk_der)
+        if not _issuer_dn_matches_parent_candidate(lower_cert, cert):
+            print("Caché en disco no coincide con el emisor esperado; se elimina.")
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+            return None
+        with _issuer_cert_cache_lock:
+            _issuer_cert_cache[cache_key] = disk_der
+        return cert
+    except ValueError as e_parse:
+        print(f"Caché en disco inválida, se elimina: {e_parse}")
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        return None
+
+
+def _authority_key_extensions_consistent(lower: x509.Certificate, candidate_parent: x509.Certificate) -> bool:
+    """Comprueba AKI del hijo frente a SKI y número de serie del padre cuando esas extensiones existen."""
+    try:
+        aki_ext = lower.extensions.get_extension_for_oid(ExtensionOID.AUTHORITY_KEY_IDENTIFIER)
+    except x509.ExtensionNotFound:
+        return True
+
+    aki = aki_ext.value
+
+    if aki.key_identifier is not None:
+        try:
+            ski_ext = candidate_parent.extensions.get_extension_for_oid(ExtensionOID.SUBJECT_KEY_IDENTIFIER)
+        except x509.ExtensionNotFound:
+            pass
+        else:
+            if ski_ext.value.digest != aki.key_identifier:
+                return False
+
+    if aki.authority_cert_serial_number is not None:
+        if candidate_parent.serial_number != aki.authority_cert_serial_number:
+            return False
+
+    return True
+
+
+def _issuer_dn_matches_parent_candidate(lower: x509.Certificate, candidate_parent: x509.Certificate) -> bool:
+    return candidate_parent.subject == lower.issuer and _authority_key_extensions_consistent(lower, candidate_parent)
+
+
+def _fetch_issuer_from_service(token_key: str | None, lower_cert: x509.Certificate) -> x509.Certificate | None:
+    url = os.environ.get("TUQUITO_ISSUER_SERVICE_URL", "").strip()
+    if not url:
+        return None
+    try:
+        child_b64 = b64encode(lower_cert.public_bytes(serialization.Encoding.DER)).decode("ascii")
+        response = post(
+            url,
+            json={"childCertificate": child_b64},
+            timeout=15,
+            headers={"Content-Type": "application/json"},
+        )
+    except requests_exceptions.RequestException as e_req:
+        print(f"Error de red al obtener emisor desde el servicio Tuquito: {e_req}")
+        return None
+    if response.status_code == 404:
+        return None
+    if response.status_code != 200:
+        print(f"Servicio de emisor respondió HTTP {response.status_code}: {response.text[:200]!r}")
+        return None
+    try:
+        payload = response.json()
+    except ValueError:
+        print("Respuesta del servicio de emisor no es JSON válido.")
+        return None
+    if not payload.get("status"):
+        return None
+    b64_issuer = payload.get("issuerCertificate")
+    if not b64_issuer or not isinstance(b64_issuer, str):
+        return None
+    try:
+        try:
+            issuer_der = b64decode(b64_issuer, validate=True)
+        except TypeError:
+            issuer_der = b64decode(b64_issuer)
+    except Exception:
+        print("issuerCertificate del servicio no es base64 válido.")
+        return None
+    try:
+        issuer = x509.load_der_x509_certificate(issuer_der)
+    except ValueError:
+        print("No se pudo parsear el certificado emisor devuelto por el servicio.")
+        return None
+    if not _issuer_dn_matches_parent_candidate(lower_cert, issuer):
+        print("El emisor devuelto por el servicio no coincide con el certificado hijo; se ignora.")
+        return None
+    print("Usando certificado emisor obtenido del servidor de aplicación (TUQUITO_ISSUER_SERVICE_URL).")
+    _store_issuer_cache(token_key, lower_cert, issuer_der)
+    return issuer
+
+
+def _resolve_issuer_fallback(token_key: str | None, lower_cert: x509.Certificate) -> x509.Certificate | None:
+    cached = _load_issuer_from_cache(token_key, lower_cert)
+    if cached:
+        return cached
+    return _fetch_issuer_from_service(token_key, lower_cert)
+
+
+def get_issuer_cert(cert: x509.Certificate, token_key: str | None = None) -> x509.Certificate:
     """
     Obtiene el certificado emisor de un certificado dado utilizando la extensión AIA.
     Intenta todas las URLs de CA_ISSUERS disponibles como fallback.
+    Si token_key está definido, guarda en caché el emisor obtenido con éxito (memoria y disco; clave: token + huella del cert inferior)
+    y lo usa como respaldo si las peticiones o la AIA fallan. Si no hay caché, consulta TUQUITO_ISSUER_SERVICE_URL (POST con childCertificate en base64).
     Devuelve un objeto x509.Certificate o levanta una CertificateError.
     """
     try:
@@ -85,6 +278,9 @@ def get_issuer_cert(cert: x509.Certificate) -> x509.Certificate:
                 issuer_urls.append(access_description.access_location.value)
         
         if not issuer_urls:
+            fallback = _resolve_issuer_fallback(token_key, cert)
+            if fallback:
+                return fallback
             raise AIAExtensionNotFoundError("Descriptor CA_ISSUERS no encontrado en la extensión AIA.")
         
         # Intentar cada URL como fallback
@@ -96,11 +292,17 @@ def get_issuer_cert(cert: x509.Certificate) -> x509.Certificate:
                 response.raise_for_status() 
                 
                 try:
-                    return x509.load_der_x509_certificate(response.content)
+                    issuer = x509.load_der_x509_certificate(response.content)
+                    if token_key:
+                        _store_issuer_cache(token_key, cert, issuer.public_bytes(serialization.Encoding.DER))
+                    return issuer
                 except ValueError: 
                     print("Error al parsear formato DER, intentando PEM...")
                     try:
-                        return x509.load_pem_x509_certificate(response.content)
+                        issuer = x509.load_pem_x509_certificate(response.content)
+                        if token_key:
+                            _store_issuer_cache(token_key, cert, issuer.public_bytes(serialization.Encoding.DER))
+                        return issuer
                     except ValueError as e_pem:
                         last_error = CertificateParsingError(f"No se pudo parsear el certificado desde {issuer_url} como DER ni PEM.", e_pem)
                         print(f"Error parseando desde {issuer_url}: {str(e_pem)}")
@@ -110,12 +312,18 @@ def get_issuer_cert(cert: x509.Certificate) -> x509.Certificate:
                 print(f"Error de red desde {issuer_url}: {str(e_req)}")
                 continue  # Intentar siguiente URL
         
-        # Si llegamos aquí, todas las URLs fallaron
+        # Si llegamos aquí, todas las URLs fallaron: caché (memoria/disco) y servicio remoto antes del error
+        fallback = _resolve_issuer_fallback(token_key, cert)
+        if fallback:
+            return fallback
         if last_error:
             raise last_error
         raise IssuerCertificateFetchError("No se pudo obtener el certificado del emisor desde ninguna URL disponible.")
         
-    except x509.ExtensionNotFound: 
+    except x509.ExtensionNotFound:
+        fallback = _resolve_issuer_fallback(token_key, cert)
+        if fallback:
+            return fallback
         raise AIAExtensionNotFoundError("Extensión AIA no encontrada en el certificado.")
     except CertificateError:
         raise  # Re-raise our custom errors as-is
@@ -196,9 +404,10 @@ def get_certificates_from_token(lib_path: str, pin: str) -> tuple[list[tuple[x50
     
     return cert_data_list, session, first_cert_subject
 
-def get_full_chain(cert: x509.Certificate, cert_der: bytes):
+def get_full_chain(cert: x509.Certificate, cert_der: bytes, token_key: str | None = None):
     """
     Construye la cadena de certificados completa.
+    token_key: identificador estable del token (p. ej. ATR en hex) para caché de emisores.
     Devuelve una tupla (lista_de_cert_der, http_status_code) o 
     (respuesta_jsonify_de_error, http_status_code_de_error).
     """
@@ -212,7 +421,7 @@ def get_full_chain(cert: x509.Certificate, cert_der: bytes):
                 print("Certificado autofirmado alcanzado. Construcción de cadena completada.")
                 return chain, 200 
 
-            issuer_cert = get_issuer_cert(current_cert) 
+            issuer_cert = get_issuer_cert(current_cert, token_key)
             issuer_cert_der = issuer_cert.public_bytes(serialization.Encoding.DER)
 
             if issuer_cert_der in chain:

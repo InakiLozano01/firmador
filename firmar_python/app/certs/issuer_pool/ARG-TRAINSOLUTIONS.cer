@@ -1,0 +1,144 @@
+Certificate:
+    Data:
+        Version: 3 (0x2)
+        Serial Number: 8 (0x8)
+        Signature Algorithm: sha1WithRSAEncryption
+        Issuer: C=AR, O=Infraestructura de Firma Digital, CN=AC Ra\xC3\xADz
+        Validity
+            Not Before: Jun 24 15:06:45 2015 GMT
+            Not After : Jun 21 15:06:45 2025 GMT
+        Subject: C=AR, ST=CIUDAD AUTONOMA DE BUENOS AIRES, OU=AC TRAIN SOLUTIONS, O=TRAIN SOLUTIONS S.A./serialNumber=CUIT 30708802545, CN=AC TRAIN SOLUTIONS
+        Subject Public Key Info:
+            Public Key Algorithm: rsaEncryption
+            RSA Public Key: (4096 bit)
+                Modulus (4096 bit):
+                    00:b8:b7:c0:9e:8b:69:2e:fe:31:68:38:f8:c2:25:
+                    1e:4c:15:c2:7a:02:4c:53:89:e0:19:08:c7:14:53:
+                    fa:74:47:2d:00:22:2f:3d:5e:3f:bd:1b:ec:d4:0e:
+                    6c:ea:d7:a0:3f:22:66:e2:66:35:c6:3a:9e:69:0d:
+                    b3:39:22:4f:36:04:39:c8:b6:8b:83:2a:fe:f4:5f:
+                    99:50:96:99:ca:2b:45:2f:ed:6f:de:a9:da:ec:e0:
+                    24:d2:34:2d:91:fa:6c:38:16:f3:30:ed:9f:7e:31:
+                    be:59:77:fb:84:bf:c5:16:e0:07:b0:37:26:a0:d6:
+                    18:3e:85:b2:16:a5:6f:4d:cc:d9:1a:c2:c7:ba:b1:
+                    f0:c6:64:3c:35:25:c7:5c:60:1c:65:79:a3:e9:e3:
+                    cd:11:9c:dd:f4:82:68:1d:d4:55:3f:67:ab:00:a6:
+                    5c:90:4d:05:4d:52:63:c9:f4:4e:ef:ba:ee:02:0d:
+                    ff:6d:da:ac:52:e0:ea:ff:0c:36:8c:8c:c3:e5:f8:
+                    cf:0f:12:ac:d1:b2:36:9e:3d:cf:39:77:13:d2:87:
+                    00:fb:37:ce:33:53:ce:67:c6:fa:4d:ea:2b:1a:a5:
+                    05:89:48:49:8f:d0:e9:69:54:48:8d:1c:c7:b2:15:
+                    89:41:12:f1:e5:cb:7c:ad:ae:95:46:41:fe:88:a2:
+                    a2:6a:99:02:90:36:24:77:2e:13:57:bb:34:8c:99:
+                    79:e2:47:40:d0:1d:64:eb:88:79:cf:0c:34:1b:1e:
+                    51:d0:34:58:97:98:a5:be:00:0e:71:aa:8d:58:03:
+                    31:82:1a:f6:b3:73:01:67:66:a2:19:0d:aa:2b:d7:
+                    ea:ec:a2:70:e1:3f:29:1e:6a:3b:8e:ed:26:fa:7b:
+                    6f:4b:c2:ce:ae:1d:6b:8f:35:bc:64:a5:18:39:16:
+                    4e:e0:97:9d:a6:7a:f8:91:00:e0:a8:96:81:b1:37:
+                    c1:37:54:47:7d:24:b7:a8:55:91:e3:3b:19:f7:7e:
+                    ce:ce:21:51:28:38:67:0f:47:ad:9c:d9:a5:a1:f3:
+                    d1:d5:9f:69:5b:2b:81:cf:bc:42:31:b6:10:72:6a:
+                    e6:7d:08:10:46:2c:2a:b9:12:71:4f:f0:e0:6f:16:
+                    dd:04:b6:1d:8a:1b:77:dd:fd:94:e0:16:07:41:4c:
+                    e2:b3:0d:73:c0:48:21:39:4a:43:1a:5e:a5:a3:5f:
+                    d3:fe:6c:a0:83:82:3b:d8:a7:f3:4f:4b:cc:ef:56:
+                    bb:5f:2f:54:71:91:53:fe:b6:9d:97:49:47:ec:1d:
+                    65:06:1f:89:08:e0:71:66:6f:1d:35:c9:03:d3:8d:
+                    76:56:a1:54:67:7f:93:7b:76:ed:ea:4d:1f:11:30:
+                    cb:b2:c1
+                Exponent: 65537 (0x10001)
+        X509v3 extensions:
+            X509v3 Basic Constraints: critical
+                CA:TRUE, pathlen:0
+            X509v3 Key Usage: 
+                Certificate Sign, CRL Sign
+            X509v3 Authority Key Identifier: 
+                keyid:5D:06:DC:3C:31:82:9F:43:5B:25:60:6B:47:01:C0:98:74:81:E5:64
+
+            X509v3 Subject Key Identifier: 
+                D4:B3:35:6A:9E:01:16:18:A3:FA:B2:F1:79:6D:75:90:98:E0:6E:4A
+            X509v3 CRL Distribution Points: 
+                URI:http://acraiz.cdp1.gov.ar/ca.crl
+                URI:http://acraiz.cdp2.gov.ar/ca.crl
+
+            X509v3 Certificate Policies: 
+                Policy: 2.16.32.1.1.0
+                  CPS: http://acraiz.gov.ar/cps.pdf
+                  User Notice:
+                    Explicit Text: Ley 25.506 - Infraestructura de Firma Digital de la Republica Argentina, Autoridad Certificante Raiz
+
+            Authority Information Access: 
+                CA Issuers - URI:http://acraiz.gov.ar/ca.crt
+
+    Signature Algorithm: sha1WithRSAEncryption
+        90:4d:6c:c5:79:09:4e:94:ee:86:c1:e0:13:c3:18:58:45:b6:
+        6d:55:80:58:6a:b6:37:9c:37:5e:d5:ba:30:2b:45:0c:87:c4:
+        04:b7:30:12:68:a9:9a:09:9b:6e:47:fc:08:94:a1:12:97:25:
+        9f:a6:8c:ba:a9:b3:a1:5a:61:b4:22:c3:a7:4d:57:0e:53:19:
+        b8:85:d2:a3:2e:20:de:25:3e:9b:0e:bf:54:3e:ac:79:79:36:
+        6e:8c:38:07:38:3b:22:30:72:7c:99:f9:ff:1f:56:0f:d9:17:
+        d9:de:74:65:6d:0f:35:a2:ce:50:c8:c3:df:48:aa:12:bf:e8:
+        5e:fd:04:99:e0:b5:fe:d7:bc:5d:7b:84:16:e9:4a:08:f6:cc:
+        6d:4d:cf:dc:2e:8f:4c:7f:93:3c:33:e7:aa:00:60:d1:cf:37:
+        0c:4b:7a:78:ee:73:9b:3c:ac:eb:8b:d9:01:a7:fb:69:5b:e7:
+        72:a4:0c:1b:fa:28:fd:0b:1b:a6:b3:7c:c9:7e:ab:c7:48:18:
+        4c:a2:5f:89:a4:36:08:6f:33:c9:3d:5b:31:71:89:45:33:0a:
+        7a:8f:65:95:1b:3e:59:70:36:28:43:d0:2b:5e:57:b2:78:ef:
+        5b:63:6f:ac:03:cb:3c:3f:2e:94:d2:e3:9c:ec:7a:36:67:ef:
+        33:73:66:57:97:59:4c:31:a7:9f:1d:69:fe:24:7d:8c:27:a7:
+        f5:2d:4e:08:c4:df:a1:52:a5:ae:8c:64:b1:77:33:e6:64:26:
+        a0:a4:7b:0b:49:dc:6e:09:45:a0:f7:0d:43:5f:21:80:eb:8b:
+        7f:ec:f3:3c:01:99:cc:5f:ef:cd:61:ad:10:62:ef:61:9b:45:
+        70:62:76:d7:c4:f6:1e:4d:fd:75:de:b7:9d:61:43:b1:f2:5f:
+        0f:99:cf:fe:80:f5:f5:f9:61:cf:b5:1b:1e:66:3b:33:c0:2c:
+        0c:8d:ab:f1:16:f3:5c:3a:2a:cd:26:5a:43:10:41:67:73:f4:
+        e3:50:13:ff:fb:6a:a4:69:e8:94:53:d5:25:4f:d8:09:c3:75:
+        43:53:b7:d4:f0:65:69:c8:bc:38:f5:f1:da:a6:f8:4d:ed:f7:
+        c6:63:23:a6:eb:bd:f6:a2:e7:d3:39:d2:1c:e7:0b:35:46:2b:
+        da:e5:db:f2:10:1f:85:e6:79:01:c4:a4:7d:7b:23:95:00:79:
+        55:69:69:7d:6e:b2:d6:8f:32:00:ed:73:c3:49:73:17:a0:14:
+        cf:ac:ce:76:d7:df:f2:cd:5c:3c:0a:3a:e8:f3:f8:58:5f:67:
+        71:a7:6c:3a:0f:7f:d1:25:96:1f:e2:ff:35:df:bf:85:e5:0b:
+        f8:eb:59:30:94:c8:a3:43
+-----BEGIN CERTIFICATE-----
+MIIHJjCCBQ6gAwIBAgIBCDANBgkqhkiG9w0BAQUFADBLMQswCQYDVQQGEwJBUjEp
+MCcGA1UECgwgSW5mcmFlc3RydWN0dXJhIGRlIEZpcm1hIERpZ2l0YWwxETAPBgNV
+BAMMCEFDIFJhw616MB4XDTE1MDYyNDE1MDY0NVoXDTI1MDYyMTE1MDY0NVowgasx
+CzAJBgNVBAYTAkFSMSgwJgYDVQQIDB9DSVVEQUQgQVVUT05PTUEgREUgQlVFTk9T
+IEFJUkVTMRswGQYDVQQLDBJBQyBUUkFJTiBTT0xVVElPTlMxHTAbBgNVBAoMFFRS
+QUlOIFNPTFVUSU9OUyBTLkEuMRkwFwYDVQQFExBDVUlUIDMwNzA4ODAyNTQ1MRsw
+GQYDVQQDDBJBQyBUUkFJTiBTT0xVVElPTlMwggIiMA0GCSqGSIb3DQEBAQUAA4IC
+DwAwggIKAoICAQC4t8Cei2ku/jFoOPjCJR5MFcJ6AkxTieAZCMcUU/p0Ry0AIi89
+Xj+9G+zUDmzq16A/ImbiZjXGOp5pDbM5Ik82BDnItouDKv70X5lQlpnKK0Uv7W/e
+qdrs4CTSNC2R+mw4FvMw7Z9+Mb5Zd/uEv8UW4AewNyag1hg+hbIWpW9NzNkawse6
+sfDGZDw1JcdcYBxleaPp480RnN30gmgd1FU/Z6sAplyQTQVNUmPJ9E7vuu4CDf9t
+2qxS4Or/DDaMjMPl+M8PEqzRsjaePc85dxPShwD7N84zU85nxvpN6isapQWJSEmP
+0OlpVEiNHMeyFYlBEvHly3ytrpVGQf6IoqJqmQKQNiR3LhNXuzSMmXniR0DQHWTr
+iHnPDDQbHlHQNFiXmKW+AA5xqo1YAzGCGvazcwFnZqIZDaor1+rsonDhPykeajuO
+7Sb6e29Lws6uHWuPNbxkpRg5Fk7gl52meviRAOColoGxN8E3VEd9JLeoVZHjOxn3
+fs7OIVEoOGcPR62c2aWh89HVn2lbK4HPvEIxthByauZ9CBBGLCq5EnFP8OBvFt0E
+th2KG3fd/ZTgFgdBTOKzDXPASCE5SkMaXqWjX9P+bKCDgjvYp/NPS8zvVrtfL1Rx
+kVP+tp2XSUfsHWUGH4kI4HFmbx01yQPTjXZWoVRnf5N7du3qTR8RMMuywQIDAQAB
+o4IBsjCCAa4wEgYDVR0TAQH/BAgwBgEB/wIBADALBgNVHQ8EBAMCAQYwHwYDVR0j
+BBgwFoAUXQbcPDGCn0NbJWBrRwHAmHSB5WQwHQYDVR0OBBYEFNSzNWqeARYYo/qy
+8XltdZCY4G5KMFkGA1UdHwRSMFAwJqAkoCKGIGh0dHA6Ly9hY3JhaXouY2RwMS5n
+b3YuYXIvY2EuY3JsMCagJKAihiBodHRwOi8vYWNyYWl6LmNkcDIuZ292LmFyL2Nh
+LmNybDCBtgYDVR0gBIGuMIGrMIGoBgVgIAEBADCBnjAoBggrBgEFBQcCARYcaHR0
+cDovL2FjcmFpei5nb3YuYXIvY3BzLnBkZjByBggrBgEFBQcCAjBmGmRMZXkgMjUu
+NTA2IC0gSW5mcmFlc3RydWN0dXJhIGRlIEZpcm1hIERpZ2l0YWwgZGUgbGEgUmVw
+dWJsaWNhIEFyZ2VudGluYSwgQXV0b3JpZGFkIENlcnRpZmljYW50ZSBSYWl6MDcG
+CCsGAQUFBwEBBCswKTAnBggrBgEFBQcwAoYbaHR0cDovL2FjcmFpei5nb3YuYXIv
+Y2EuY3J0MA0GCSqGSIb3DQEBBQUAA4ICAQCQTWzFeQlOlO6GweATwxhYRbZtVYBY
+arY3nDde1bowK0UMh8QEtzASaKmaCZtuR/wIlKESlyWfpoy6qbOhWmG0IsOnTVcO
+Uxm4hdKjLiDeJT6bDr9UPqx5eTZujDgHODsiMHJ8mfn/H1YP2RfZ3nRlbQ81os5Q
+yMPfSKoSv+he/QSZ4LX+17xde4QW6UoI9sxtTc/cLo9Mf5M8M+eqAGDRzzcMS3p4
+7nObPKzri9kBp/tpW+dypAwb+ij9Cxums3zJfqvHSBhMol+JpDYIbzPJPVsxcYlF
+Mwp6j2WVGz5ZcDYoQ9ArXleyeO9bY2+sA8s8Py6U0uOc7Ho2Z+8zc2ZXl1lMMaef
+HWn+JH2MJ6f1LU4IxN+hUqWujGSxdzPmZCagpHsLSdxuCUWg9w1DXyGA64t/7PM8
+AZnMX+/NYa0QYu9hm0VwYnbXxPYeTf113redYUOx8l8Pmc/+gPX1+WHPtRseZjsz
+wCwMjavxFvNcOirNJlpDEEFnc/TjUBP/+2qkaeiUU9UlT9gJw3VDU7fU8GVpyLw4
+9fHapvhN7ffGYyOm6732oufTOdIc5ws1Riva5dvyEB+F5nkBxKR9eyOVAHlVaWl9
+brLWjzIA7XPDSXMXoBTPrM5219/yzVw8Cjro8/hYX2dxp2w6D3/RJZYf4v8137+F
+5Qv461kwlMijQw==
+-----END CERTIFICATE-----
