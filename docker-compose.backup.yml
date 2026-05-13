@@ -1,6 +1,6 @@
 services:
   redis:
-    container_name: firmador-redis-test
+    container_name: firmador-redis
     image: redis:7-alpine
     restart: always
     command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
@@ -28,7 +28,7 @@ services:
       - firmador_signnet
 
   flask-app:
-    container_name: firmador-python-test
+    container_name: firmador-python
     restart: always
     build:
       context: ./firmar_python/app
@@ -43,9 +43,10 @@ services:
     volumes:
       - ./firmar_python/app:/app
       - ./firmar_python/app/assets:/app/assets
-      - /qnap/indice_migracion:/app/expedientes
-      - /qnap/documentos_firmados:/var/documentos_firmados
-      - ../devenv/documentos:/var/documentos
+      - /documentos_tapir/indice_migracion:/app/expedientes
+      - /documentos_tapir/documentos_firmados:/var/documentos_firmados
+      - ../tapir/documentos_temp:/var/documentos
+
     depends_on:
       java-webapp:
         condition: service_started
