@@ -1,8 +1,5 @@
-import logging
 import os
 from dotenv import load_dotenv
-
-_logger_settings = logging.getLogger(__name__)
 
 # Get the absolute path to the config directory
 CONFIG_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -108,11 +105,3 @@ class Settings:
 
 
 settings = Settings()
-
-# Register /rest/issuer-certs/resolve by wrapping register_routes (runs before main imports register_routes).
-try:
-    from app.route_extensions import ensure_issuer_resolve_registered
-
-    ensure_issuer_resolve_registered()
-except Exception as e:
-    _logger_settings.warning("No se pudo registrar /rest/issuer-certs/resolve: %s", e)
