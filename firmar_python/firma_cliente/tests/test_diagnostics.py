@@ -66,6 +66,30 @@ class DiagnosticsTests(unittest.TestCase):
         self.assertNotIn("1234", output)
         self.assertIn("[REDACTED]", output)
 
+    def test_exception_log_includes_traceback(self):
+        diagnostics = importlib.import_module("diagnostics")
+        console = io.StringIO()
+
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            redirect_stderr(console),
+        ):
+            diagnostics.configure_diagnostics(
+                log_dir=directory,
+                force=True,
+            )
+            try:
+                try:
+                    raise ValueError("signing failed")
+                except ValueError:
+                    diagnostics.log_exception("signing_request_failed")
+                diagnostics.flush_diagnostics()
+            finally:
+                diagnostics.close_diagnostics()
+
+        self.assertIn("signing_request_failed", console.getvalue())
+        self.assertIn("Traceback", console.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()

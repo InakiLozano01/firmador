@@ -79,6 +79,11 @@ def log_event(event: str, **fields: Any) -> None:
     logger.info(json.dumps(record, ensure_ascii=False, default=str))
 
 
+def log_exception(event: str, **fields: Any) -> None:
+    record = {"event": event, **_safe_fields(fields)}
+    logger.exception(json.dumps(record, ensure_ascii=False, default=str))
+
+
 def flush_diagnostics() -> None:
     for handler in logger.handlers:
         handler.flush()

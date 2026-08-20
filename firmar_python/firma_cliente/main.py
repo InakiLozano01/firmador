@@ -56,6 +56,7 @@ from diagnostics import (
     close_diagnostics,
     configure_diagnostics,
     log_event,
+    log_exception,
 )
 from pkcs11_worker import (
     PKCS11WorkerClient,
@@ -144,6 +145,20 @@ def _record_request_end(response):
         duration_ms=round((time.monotonic() - started_at) * 1000, 1),
         origin_present=bool(_request_origin()),
     )
+    if response.status_code >= 400:
+        error_payload = response.get_json(silent=True)
+        error_message = (
+            error_payload.get("message")
+            if isinstance(error_payload, dict)
+            else None
+        )
+        log_event(
+            "http_request_rejected",
+            route=request.path,
+            method=request.method,
+            status_code=response.status_code,
+            error_message=error_message,
+        )
     return response
 
 
@@ -369,11 +384,20 @@ def get_certificates_route():
         return jsonify(response_data), 200
 
     except SigningTransactionError as e:
+        log_exception(
+            "certificate_request_failed",
+            error_type=type(e).__name__,
+            status_code=e.status_code,
+            error_message=str(e),
+        )
         return jsonify({"status": False, "message": str(e)}), e.status_code
     except Exception as e:
-        print(f"Unexpected error in /rest/certificates: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        log_exception(
+            "certificate_request_failed",
+            error_type=type(e).__name__,
+            status_code=500,
+            error_message=str(e),
+        )
         return jsonify({"status": False, "message": f"Error inesperado en la obtención de certificados: {str(e)}"}), 500
     finally:
         if worker is not None:
@@ -429,14 +453,29 @@ def get_signatures_route():
         return jsonify(response_data), 200
 
     except SigningTransactionError as e:
+        log_exception(
+            "signing_request_failed",
+            error_type=type(e).__name__,
+            status_code=e.status_code,
+            error_message=str(e),
+        )
         return jsonify({"status": False, "message": str(e)}), e.status_code
     except PKCS11WorkerError as e:
         status_code = 504 if isinstance(e, WorkerTimeoutError) else 500
+        log_exception(
+            "signing_request_failed",
+            error_type=type(e).__name__,
+            status_code=status_code,
+            error_message=str(e),
+        )
         return jsonify({"status": False, "message": str(e)}), status_code
     except Exception as e:
-        print(f"Unexpected error in /rest/sign: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        log_exception(
+            "signing_request_failed",
+            error_type=type(e).__name__,
+            status_code=500,
+            error_message=str(e),
+        )
         return jsonify({"status": False, "message": f"Error inesperado al firmar: {str(e)}"}), 500
 
 @app.route('/test', methods=['GET', 'POST'])

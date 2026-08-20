@@ -1,6 +1,7 @@
 import base64
 import importlib
 import sys
+import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -222,6 +223,26 @@ class SigningRouteTests(unittest.TestCase):
         self.assertEqual(200, first_response.status_code)
         self.assertEqual(200, duplicate_response.status_code)
         self.assertEqual(first_response.get_json(), duplicate_response.get_json())
+
+    def test_invalid_sign_request_logs_rejection_reason(self):
+        diagnostics = importlib.import_module("diagnostics")
+
+        with tempfile.TemporaryDirectory() as directory:
+            log_path = diagnostics.configure_diagnostics(
+                log_dir=directory,
+                force=True,
+            )
+            response = self.main.app.test_client().post(
+                "/rest/sign",
+                json={},
+            )
+            diagnostics.flush_diagnostics()
+            log_content = Path(log_path).read_text(encoding="utf-8")
+            diagnostics.close_diagnostics()
+
+        self.assertEqual(400, response.status_code)
+        self.assertIn("http_request_rejected", log_content)
+        self.assertIn("No se recibieron datos para firmar.", log_content)
 
     def test_oversized_batch_is_rejected_without_consuming_transaction(self):
         worker = FakeWorker(self.certificate_der)
