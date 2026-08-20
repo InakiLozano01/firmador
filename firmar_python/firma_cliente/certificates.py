@@ -17,6 +17,7 @@ from cryptography.hazmat.primitives.asymmetric import dsa, ec, ed25519, ed448, p
 from flask import jsonify
 
 from client_env import load_client_dotenv
+from diagnostics import log_event
 
 load_client_dotenv()
 
@@ -105,8 +106,32 @@ def _store_issuer_cache(token_key: str | None, lower_cert: x509.Certificate, iss
         print(f"No se pudo escribir caché de emisor en disco: {e_w}")
 
 
+def _log_issuer_cache_lookup(
+    *,
+    found: bool,
+    source: str | None = None,
+    reason: str | None = None,
+    token_key: str | None = None,
+    child_fingerprint: str | None = None,
+) -> None:
+    fields = {
+        "found": found,
+        "stage": "before_network",
+    }
+    if source is not None:
+        fields["source"] = source
+    if reason is not None:
+        fields["reason"] = reason
+    if token_key is not None:
+        fields["token_key"] = token_key
+    if child_fingerprint is not None:
+        fields["child_fingerprint"] = child_fingerprint
+    log_event("issuer_cache_hit" if found else "issuer_cache_miss", **fields)
+
+
 def _load_issuer_from_cache(token_key: str | None, lower_cert: x509.Certificate) -> x509.Certificate | None:
     if not token_key:
+        _log_issuer_cache_lookup(found=False, reason="no_token_key")
         return None
     fp = _lower_cert_fingerprint_hex(lower_cert)
     cache_key = (token_key, fp)
@@ -114,29 +139,61 @@ def _load_issuer_from_cache(token_key: str | None, lower_cert: x509.Certificate)
         cached_der = _issuer_cert_cache.get(cache_key)
     if cached_der:
         try:
-            print("Usando certificado emisor en caché en memoria (respaldo tras fallo de red o AIA).")
+            print("Usando certificado emisor en caché en memoria; se omite la consulta de red.")
             c_mem = x509.load_der_x509_certificate(cached_der)
             if not _issuer_dn_matches_parent_candidate(lower_cert, c_mem):
                 print("Caché en memoria no coincide con el emisor esperado; se elimina.")
                 with _issuer_cert_cache_lock:
                     _issuer_cert_cache.pop(cache_key, None)
+                _log_issuer_cache_lookup(
+                    found=False,
+                    source="memory",
+                    reason="dn_mismatch",
+                    token_key=token_key,
+                    child_fingerprint=fp,
+                )
                 return None
+            _log_issuer_cache_lookup(
+                found=True,
+                source="memory",
+                token_key=token_key,
+                child_fingerprint=fp,
+            )
             return c_mem
         except ValueError as e_parse:
             print(f"Entrada de caché en memoria inválida, se elimina: {e_parse}")
             with _issuer_cert_cache_lock:
                 _issuer_cert_cache.pop(cache_key, None)
+            _log_issuer_cache_lookup(
+                found=False,
+                source="memory",
+                reason="invalid",
+                token_key=token_key,
+                child_fingerprint=fp,
+            )
             return None
     path = _issuer_disk_cache_path(token_key, fp)
     try:
         with open(path, "rb") as f:
             disk_der = f.read()
     except OSError:
+        _log_issuer_cache_lookup(
+            found=False,
+            reason="not_found",
+            token_key=token_key,
+            child_fingerprint=fp,
+        )
         return None
     if not disk_der:
+        _log_issuer_cache_lookup(
+            found=False,
+            reason="not_found",
+            token_key=token_key,
+            child_fingerprint=fp,
+        )
         return None
     try:
-        print("Usando certificado emisor en caché en disco (respaldo tras fallo de red o AIA).")
+        print("Usando certificado emisor en caché en disco; se omite la consulta de red.")
         cert = x509.load_der_x509_certificate(disk_der)
         if not _issuer_dn_matches_parent_candidate(lower_cert, cert):
             print("Caché en disco no coincide con el emisor esperado; se elimina.")
@@ -144,9 +201,22 @@ def _load_issuer_from_cache(token_key: str | None, lower_cert: x509.Certificate)
                 os.remove(path)
             except OSError:
                 pass
+            _log_issuer_cache_lookup(
+                found=False,
+                source="disk",
+                reason="dn_mismatch",
+                token_key=token_key,
+                child_fingerprint=fp,
+            )
             return None
         with _issuer_cert_cache_lock:
             _issuer_cert_cache[cache_key] = disk_der
+        _log_issuer_cache_lookup(
+            found=True,
+            source="disk",
+            token_key=token_key,
+            child_fingerprint=fp,
+        )
         return cert
     except ValueError as e_parse:
         print(f"Caché en disco inválida, se elimina: {e_parse}")
@@ -154,6 +224,13 @@ def _load_issuer_from_cache(token_key: str | None, lower_cert: x509.Certificate)
             os.remove(path)
         except OSError:
             pass
+        _log_issuer_cache_lookup(
+            found=False,
+            source="disk",
+            reason="invalid",
+            token_key=token_key,
+            child_fingerprint=fp,
+        )
         return None
 
 
@@ -311,9 +388,6 @@ def _resolve_issuer_fallback(
     lower_cert: x509.Certificate,
     deadline: float | None = None,
 ) -> x509.Certificate | None:
-    cached = _load_issuer_from_cache(token_key, lower_cert)
-    if cached:
-        return cached
     return _fetch_issuer_from_service(token_key, lower_cert, deadline)
 
 
@@ -323,10 +397,10 @@ def get_issuer_cert(
     deadline: float | None = None,
 ) -> x509.Certificate:
     """
-    Obtiene el certificado emisor de un certificado dado utilizando la extensión AIA.
-    Intenta todas las URLs de CA_ISSUERS disponibles como fallback.
-    Si token_key está definido, guarda en caché el emisor obtenido con éxito (memoria y disco; clave: token + huella del cert inferior)
-    y lo usa como respaldo si las peticiones o la AIA fallan. Si no hay caché, consulta TUQUITO_ISSUER_SERVICE_URL (POST con childCertificate en base64).
+    Obtiene el certificado emisor de un certificado dado.
+    Orden: caché (memoria/disco) → URLs CA_ISSUERS de AIA → TUQUITO_ISSUER_SERVICE_URL.
+    Si hay acierto en caché, no consulta la red. Los emisores obtenidos con éxito
+    se guardan en caché (clave: token + huella del certificado inferior).
     Devuelve un objeto x509.Certificate o levanta una CertificateError.
     """
     try:
@@ -387,7 +461,7 @@ def get_issuer_cert(
                 print(f"Error de red desde {issuer_url}: {str(e_req)}")
                 continue  # Intentar siguiente URL
 
-        # Si llegamos aquí, todas las URLs fallaron: caché (memoria/disco) y servicio remoto antes del error
+        # Si llegamos aquí, todas las URLs AIA fallaron: servicio remoto (la caché ya se consultó al inicio)
         fallback = _resolve_issuer_fallback(token_key, cert, deadline)
         if fallback:
             return fallback

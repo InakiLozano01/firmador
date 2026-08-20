@@ -122,6 +122,37 @@ class CertificateChainTrustTests(unittest.TestCase):
 
         self.assertEqual(self.trusted_parent, resolved)
 
+    def test_issuer_cache_is_checked_once_before_network(self):
+        child = build_child(self.trusted_parent, self.trusted_key)
+        load_calls = []
+
+        def fake_load(*_args, **_kwargs):
+            load_calls.append(1)
+            return None
+
+        with (
+            patch.object(
+                self.certificates,
+                "_load_issuer_from_cache",
+                side_effect=fake_load,
+            ),
+            patch.object(
+                self.certificates,
+                "_fetch_issuer_from_service",
+                return_value=self.trusted_parent,
+            ) as fetch_service,
+            patch.object(
+                self.certificates,
+                "get",
+                side_effect=AssertionError("AIA network must not run without AIA URLs"),
+            ),
+        ):
+            resolved = self.certificates.get_issuer_cert(child, token_key="token")
+
+        self.assertEqual(self.trusted_parent, resolved)
+        self.assertEqual(1, len(load_calls))
+        fetch_service.assert_called_once()
+
     def test_chain_deadline_stops_network_before_request_can_hang(self):
         child = build_child(self.trusted_parent, self.trusted_key, with_aia=True)
         child_der = child.public_bytes(serialization.Encoding.DER)
@@ -160,6 +191,40 @@ class CertificateChainTrustTests(unittest.TestCase):
             os.path.join(local_app_data, "Tuquito"),
             base_dir,
         )
+
+    def test_issuer_cache_lookup_logs_miss_and_hit(self):
+        diagnostics = importlib.import_module("diagnostics")
+        child = build_child(self.trusted_parent, self.trusted_key)
+        issuer_der = self.trusted_parent.public_bytes(serialization.Encoding.DER)
+
+        with tempfile.TemporaryDirectory() as directory:
+            log_path = diagnostics.configure_diagnostics(
+                log_dir=directory,
+                force=True,
+            )
+            try:
+                with (
+                    patch.object(
+                        self.certificates,
+                        "_client_base_dir",
+                        return_value=directory,
+                    ),
+                    patch.dict(self.certificates._issuer_cert_cache, {}, clear=True),
+                ):
+                    missed = self.certificates._load_issuer_from_cache("token", child)
+                    self.certificates._store_issuer_cache("token", child, issuer_der)
+                    hit = self.certificates._load_issuer_from_cache("token", child)
+                diagnostics.flush_diagnostics()
+                content = Path(log_path).read_text(encoding="utf-8")
+            finally:
+                diagnostics.close_diagnostics()
+
+        self.assertIsNone(missed)
+        self.assertEqual(self.trusted_parent, hit)
+        self.assertIn("issuer_cache_miss", content)
+        self.assertIn("issuer_cache_hit", content)
+        self.assertIn('"source": "memory"', content)
+        self.assertIn('"stage": "before_network"', content)
 
 
 if __name__ == "__main__":
