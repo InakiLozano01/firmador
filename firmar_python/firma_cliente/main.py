@@ -500,7 +500,7 @@ def run_tray_icon():
         image = Image.new('RGB', (64, 64), color = 'red')
 
     menu = (MenuItem('Salir de Tuquito', on_quit_app),)
-    tray_title = f"Tuquito Autenticador (Puerto: {flask_port})"
+    tray_title = f"Tuquito (Puerto: {flask_port})"
     icon = pystray.Icon("tuquito_authenticator", image, tray_title, menu)
     icon.run(setup_tray)
 
