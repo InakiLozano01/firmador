@@ -19,7 +19,7 @@ exe = EXE(
     pyz,
     a.scripts,
     [],
-    name='Tuquito-v2_2',
+    name='Tuquito-v3_0',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -44,5 +44,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='Tuquito-v2_2',
+    name='Tuquito-v3_0',
 )

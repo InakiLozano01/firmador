@@ -1,10 +1,10 @@
 [Setup]
 AppName=Tuquito
-AppVersion=2.4
+AppVersion=3.0
 DefaultDirName={autopf32}\Tuquito
 DefaultGroupName=Tuquito
 OutputDir=.
-OutputBaseFilename=TuquitoInstaller2_2_console
+OutputBaseFilename=TuquitoInstaller3_0_console
 Compression=lzma2
 SolidCompression=yes
 DisableWelcomePage=no
@@ -24,16 +24,16 @@ es.ButtonCancel=Cancelar
 es.ButtonFinish=Finalizar
 
 [Files]
-Source: ".\Tuquito-v2_2_console\*"; DestDir: "{autopf32}\Tuquito"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: ".\Tuquito-v3_0_console\*"; DestDir: "{autopf32}\Tuquito"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: ".\token_lib.json"; DestDir: "{autopf32}\Tuquito"; Flags: ignoreversion
 
 [Icons]
-Name: "{commonprograms}\Tuquito"; Filename: "{autopf32}\Tuquito\Tuquito-v2_2_console.exe"
-Name: "{commondesktop}\Tuquito"; Filename: "{autopf32}\Tuquito\Tuquito-v2_2_console.exe"
+Name: "{commonprograms}\Tuquito"; Filename: "{autopf32}\Tuquito\Tuquito-v3_0_console.exe"
+Name: "{commondesktop}\Tuquito"; Filename: "{autopf32}\Tuquito\Tuquito-v3_0_console.exe"
 
 [Registry]
 ; Add to Windows Startup for all users
-Root: HKLM; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Tuquito"; ValueData: "{autopf32}\Tuquito\Tuquito-v2_2_console.exe"; Flags: uninsdeletevalue
+Root: HKLM; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Tuquito"; ValueData: "{autopf32}\Tuquito\Tuquito-v3_0_console.exe"; Flags: uninsdeletevalue
 
 [Run]
-Filename: "{autopf32}\Tuquito\Tuquito-v2_2_console.exe"; Description: "Iniciar Tuquito"; Flags: nowait postinstall
+Filename: "{autopf32}\Tuquito\Tuquito-v3_0_console.exe"; Description: "Iniciar Tuquito"; Flags: nowait postinstall

@@ -31,8 +31,8 @@ if errorlevel 1 (
 
 echo .
 echo Eliminando archivos temporales...
-rmdir /s /q ".\instalador\Tuquito-v2_2_console"
-rmdir /s /q ".\instalador\Tuquito-v2_2"
+rmdir /s /q ".\instalador\Tuquito-v3_0_console"
+rmdir /s /q ".\instalador\Tuquito-v3_0"
 
 
 echo.
