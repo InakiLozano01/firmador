@@ -20,3 +20,4 @@ firmar_python/firma_cliente/instalador/TuquitoInstaller*/
 /env/*.env
 /dashboard/.next
 /dashboard/node_modules
+issuer_cache
