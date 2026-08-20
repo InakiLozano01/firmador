@@ -214,15 +214,6 @@ def get_pin_from_user(mode, caller_origin=None) -> str | None:
         entry_pin.pack(side="left", pady=10)
         # entry_pin.focus_set()  # Commented out - will set focus later
 
-        origin_text = caller_origin or "cliente local sin cabecera Origin"
-        origin_label = tk.Label(
-            pinwindow,
-            text=f"Solicitud de firma: {origin_text}",
-            font=("Arial", 9),
-            wraplength=470,
-        )
-        origin_label.pack(pady=(0, 5))
-
         button_frame = tk.Frame(pinwindow)
         button_frame.pack(pady=10)
         style = Style()
