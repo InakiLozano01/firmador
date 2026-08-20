@@ -21,7 +21,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='Tuquito-v2_2_console',
+    name='Tuquito-v3_0_console',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -46,5 +46,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='Tuquito-v2_2_console',
+    name='Tuquito-v3_0_console',
 )

@@ -15,10 +15,8 @@ actions-runner
 .cursorrules
 __pycache__/
 *.exe
-firmar_python/firma_cliente/instalador/Tuquito-v2_2_console/
-firmar_python/firma_cliente/instalador/Tuquito-v2_2/
-firmar_python/firma_cliente/instalador/TuquitoInstaller2_2_console.exe
-firmar_python/firma_cliente/instalador/TuquitoInstaller2_2.exe
+firmar_python/firma_cliente/instalador/Tuquito-v*/
+firmar_python/firma_cliente/instalador/TuquitoInstaller*/
 /env/*.env
 /dashboard/.next
 /dashboard/node_modules
