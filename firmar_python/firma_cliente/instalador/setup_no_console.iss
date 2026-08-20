@@ -37,6 +37,3 @@ Root: HKLM; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 
 [Run]
 Filename: "{autopf32}\Tuquito\Tuquito-v2_2.exe"; Description: "Iniciar Tuquito"; Flags: nowait postinstall
-
-[Dirs]
-Name: "{app}"; Permissions: users-modify

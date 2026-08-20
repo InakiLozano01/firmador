@@ -7,12 +7,13 @@ from base64 import b64decode, b64encode
 import os
 import re
 import sys
+import time
 from requests import get, post, exceptions as requests_exceptions # Explicit import for requests exceptions
 import threading
-import PyKCS11
 from cryptography import x509
 from cryptography.x509.oid import ExtensionOID, AuthorityInformationAccessOID
 from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import dsa, ec, ed25519, ed448, padding, rsa
 from flask import jsonify
 
 from client_env import load_client_dotenv
@@ -43,6 +44,11 @@ class IssuerCertificateFetchError(CertificateError):
             full_message += f" Detalles: {str(original_exception)}"
         super().__init__(full_message, 500)
 
+
+class IssuerChainTimeoutError(CertificateError):
+    def __init__(self, message="Se agotó el tiempo para construir la cadena de certificados."):
+        super().__init__(message, 504)
+
 class CertificateParsingError(CertificateError):
     """Error when parsing certificate data (DER/PEM)."""
     def __init__(self, message="Error al parsear el certificado.", original_exception=None):
@@ -50,28 +56,6 @@ class CertificateParsingError(CertificateError):
         if original_exception:
             full_message += f" Detalles: {str(original_exception)}"
         super().__init__(full_message, 500)
-
-class PKCS11LoadError(CertificateError):
-    """Error when loading the PKCS#11 library."""
-    def __init__(self, message="Error al cargar la biblioteca PKCS#11.", original_exception=None):
-        full_message = message
-        if original_exception:
-            full_message += f" Detalles: {str(original_exception)}"
-        super().__init__(full_message, 500)
-
-class TokenNotFoundError(CertificateError):
-    """Error when no PKCS#11 tokens are found."""
-    def __init__(self, message="No se encontraron tokens."):
-        super().__init__(message, 404)
-
-class TokenLoginError(CertificateError):
-    """Error during token session opening or login."""
-    def __init__(self, message="Error al abrir sesión o iniciar sesión en el token.", original_exception=None, error_type=None):
-        full_message = message
-        if original_exception:
-            full_message += f" Detalles: {str(original_exception)}"
-        super().__init__(full_message, 500)
-        self.error_type = error_type # e.g., "BAD_PIN"
 
 ##################################################
 ###          Certificate Functions             ###
@@ -84,7 +68,8 @@ _issuer_cert_cache_lock = threading.Lock()
 
 def _client_base_dir() -> str:
     if getattr(sys, "frozen", False):
-        return os.path.dirname(sys.executable)
+        user_config_root = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+        return os.path.join(user_config_root, "Tuquito")
     return os.path.dirname(os.path.abspath(__file__))
 
 
@@ -198,10 +183,79 @@ def _authority_key_extensions_consistent(lower: x509.Certificate, candidate_pare
 
 
 def _issuer_dn_matches_parent_candidate(lower: x509.Certificate, candidate_parent: x509.Certificate) -> bool:
-    return candidate_parent.subject == lower.issuer and _authority_key_extensions_consistent(lower, candidate_parent)
+    if candidate_parent.subject != lower.issuer:
+        return False
+    if not _authority_key_extensions_consistent(lower, candidate_parent):
+        return False
+
+    try:
+        basic_constraints = candidate_parent.extensions.get_extension_for_oid(
+            ExtensionOID.BASIC_CONSTRAINTS
+        ).value
+        if not basic_constraints.ca:
+            return False
+    except x509.ExtensionNotFound:
+        return False
+
+    try:
+        key_usage = candidate_parent.extensions.get_extension_for_oid(
+            ExtensionOID.KEY_USAGE
+        ).value
+        if not key_usage.key_cert_sign:
+            return False
+    except x509.ExtensionNotFound:
+        pass
+
+    public_key = candidate_parent.public_key()
+    try:
+        if isinstance(public_key, rsa.RSAPublicKey):
+            algorithm_parameters = getattr(lower, "signature_algorithm_parameters", None)
+            signature_padding = (
+                algorithm_parameters
+                if isinstance(algorithm_parameters, padding.AsymmetricPadding)
+                else padding.PKCS1v15()
+            )
+            public_key.verify(
+                lower.signature,
+                lower.tbs_certificate_bytes,
+                signature_padding,
+                lower.signature_hash_algorithm,
+            )
+        elif isinstance(public_key, ec.EllipticCurvePublicKey):
+            public_key.verify(
+                lower.signature,
+                lower.tbs_certificate_bytes,
+                ec.ECDSA(lower.signature_hash_algorithm),
+            )
+        elif isinstance(public_key, dsa.DSAPublicKey):
+            public_key.verify(
+                lower.signature,
+                lower.tbs_certificate_bytes,
+                lower.signature_hash_algorithm,
+            )
+        elif isinstance(public_key, (ed25519.Ed25519PublicKey, ed448.Ed448PublicKey)):
+            public_key.verify(lower.signature, lower.tbs_certificate_bytes)
+        else:
+            return False
+    except Exception:
+        return False
+    return True
 
 
-def _fetch_issuer_from_service(token_key: str | None, lower_cert: x509.Certificate) -> x509.Certificate | None:
+def _network_timeout(deadline: float | None, maximum: float) -> float:
+    if deadline is None:
+        return maximum
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise IssuerChainTimeoutError()
+    return max(0.1, min(maximum, remaining))
+
+
+def _fetch_issuer_from_service(
+    token_key: str | None,
+    lower_cert: x509.Certificate,
+    deadline: float | None = None,
+) -> x509.Certificate | None:
     url = os.environ.get("TUQUITO_ISSUER_SERVICE_URL", "").strip()
     if not url:
         return None
@@ -210,7 +264,7 @@ def _fetch_issuer_from_service(token_key: str | None, lower_cert: x509.Certifica
         response = post(
             url,
             json={"childCertificate": child_b64},
-            timeout=15,
+            timeout=_network_timeout(deadline, 15),
             headers={"Content-Type": "application/json"},
         )
     except requests_exceptions.RequestException as e_req:
@@ -252,14 +306,22 @@ def _fetch_issuer_from_service(token_key: str | None, lower_cert: x509.Certifica
     return issuer
 
 
-def _resolve_issuer_fallback(token_key: str | None, lower_cert: x509.Certificate) -> x509.Certificate | None:
+def _resolve_issuer_fallback(
+    token_key: str | None,
+    lower_cert: x509.Certificate,
+    deadline: float | None = None,
+) -> x509.Certificate | None:
     cached = _load_issuer_from_cache(token_key, lower_cert)
     if cached:
         return cached
-    return _fetch_issuer_from_service(token_key, lower_cert)
+    return _fetch_issuer_from_service(token_key, lower_cert, deadline)
 
 
-def get_issuer_cert(cert: x509.Certificate, token_key: str | None = None) -> x509.Certificate:
+def get_issuer_cert(
+    cert: x509.Certificate,
+    token_key: str | None = None,
+    deadline: float | None = None,
+) -> x509.Certificate:
     """
     Obtiene el certificado emisor de un certificado dado utilizando la extensión AIA.
     Intenta todas las URLs de CA_ISSUERS disponibles como fallback.
@@ -268,38 +330,51 @@ def get_issuer_cert(cert: x509.Certificate, token_key: str | None = None) -> x50
     Devuelve un objeto x509.Certificate o levanta una CertificateError.
     """
     try:
+        cached = _load_issuer_from_cache(token_key, cert)
+        if cached:
+            return cached
+
         aia_ext = cert.extensions.get_extension_for_oid(ExtensionOID.AUTHORITY_INFORMATION_ACCESS)
-        aia = aia_ext.value 
-        
+        aia = aia_ext.value
+
         # Recopilar todas las URLs de CA_ISSUERS
         issuer_urls = []
         for access_description in aia:
             if access_description.access_method == AuthorityInformationAccessOID.CA_ISSUERS:
                 issuer_urls.append(access_description.access_location.value)
-        
+
         if not issuer_urls:
-            fallback = _resolve_issuer_fallback(token_key, cert)
+            fallback = _resolve_issuer_fallback(token_key, cert, deadline)
             if fallback:
                 return fallback
             raise AIAExtensionNotFoundError("Descriptor CA_ISSUERS no encontrado en la extensión AIA.")
-        
+
         # Intentar cada URL como fallback
         last_error = None
         for issuer_url in issuer_urls:
             print(f"Obteniendo certificado del emisor desde: {issuer_url}")
             try:
-                response = get(issuer_url, timeout=10) 
-                response.raise_for_status() 
-                
+                response = get(
+                    issuer_url,
+                    timeout=_network_timeout(deadline, 10),
+                )
+                response.raise_for_status()
+
                 try:
                     issuer = x509.load_der_x509_certificate(response.content)
+                    if not _issuer_dn_matches_parent_candidate(cert, issuer):
+                        print(f"El certificado obtenido desde {issuer_url} no es un emisor válido.")
+                        continue
                     if token_key:
                         _store_issuer_cache(token_key, cert, issuer.public_bytes(serialization.Encoding.DER))
                     return issuer
-                except ValueError: 
+                except ValueError:
                     print("Error al parsear formato DER, intentando PEM...")
                     try:
                         issuer = x509.load_pem_x509_certificate(response.content)
+                        if not _issuer_dn_matches_parent_candidate(cert, issuer):
+                            print(f"El certificado obtenido desde {issuer_url} no es un emisor válido.")
+                            continue
                         if token_key:
                             _store_issuer_cache(token_key, cert, issuer.public_bytes(serialization.Encoding.DER))
                         return issuer
@@ -311,133 +386,71 @@ def get_issuer_cert(cert: x509.Certificate, token_key: str | None = None) -> x50
                 last_error = IssuerCertificateFetchError(f"Error de red al obtener certificado desde {issuer_url}.", e_req)
                 print(f"Error de red desde {issuer_url}: {str(e_req)}")
                 continue  # Intentar siguiente URL
-        
+
         # Si llegamos aquí, todas las URLs fallaron: caché (memoria/disco) y servicio remoto antes del error
-        fallback = _resolve_issuer_fallback(token_key, cert)
+        fallback = _resolve_issuer_fallback(token_key, cert, deadline)
         if fallback:
             return fallback
         if last_error:
             raise last_error
         raise IssuerCertificateFetchError("No se pudo obtener el certificado del emisor desde ninguna URL disponible.")
-        
+
     except x509.ExtensionNotFound:
-        fallback = _resolve_issuer_fallback(token_key, cert)
+        fallback = _resolve_issuer_fallback(token_key, cert, deadline)
         if fallback:
             return fallback
         raise AIAExtensionNotFoundError("Extensión AIA no encontrada en el certificado.")
     except CertificateError:
         raise  # Re-raise our custom errors as-is
-    except Exception as e: 
+    except Exception as e:
         raise IssuerCertificateFetchError(f"Error inesperado al procesar AIA para obtener el emisor: {str(e)}", e) from e
 
-def get_certificates_from_token(lib_path: str, pin: str) -> tuple[list[tuple[x509.Certificate, bytes]], PyKCS11.Session, x509.Name | None]:
-    """
-    Obtiene certificados de un token PKCS#11.
-    Devuelve una tupla (lista_de_cert_data, sesión, subject_del_primer_certificado) o levanta una CertificateError.
-    La sesión devuelta DEBE ser gestionada (logout/close) por el llamador.
-    """
-    pkcs11 = PyKCS11.PyKCS11Lib()
-    try:
-        print(f"Cargando biblioteca PKCS#11: {lib_path}")
-        pkcs11.load(lib_path)
-    except PyKCS11.PyKCS11Error as e_pkcs_load: 
-        raise PKCS11LoadError(original_exception=e_pkcs_load) from e_pkcs_load
-    except Exception as e_load: 
-        raise PKCS11LoadError(original_exception=e_load) from e_load
-
-    slots = pkcs11.getSlotList(tokenPresent=True)
-    if not slots:
-        raise TokenNotFoundError()
-
-    session = None
-    try:
-        session = pkcs11.openSession(slots[0], PyKCS11.CKF_SERIAL_SESSION | PyKCS11.CKF_RW_SESSION)
-        session.login(pin)
-    except PyKCS11.PyKCS11Error as e_pkcs_session:
-        error_type = None
-        if hasattr(e_pkcs_session, 'rc'):
-            if e_pkcs_session.rc == PyKCS11.CKR_PIN_INCORRECT:
-                error_type = "BAD_PIN"
-            elif e_pkcs_session.rc == PyKCS11.CKR_PIN_LOCKED:
-                error_type = "PIN_LOCKED"
-        if session and hasattr(session, 'is_valid') and not session.is_valid: 
-            try:
-                session.closeSession() 
-            except PyKCS11.PyKCS11Error:
-                print("Error al intentar cerrar sesión PKCS#11 ya inválida.")
-        raise TokenLoginError(original_exception=e_pkcs_session, error_type=error_type) from e_pkcs_session
-    except Exception as e_session: 
-        if session and hasattr(session, 'is_valid') and not session.is_valid:
-            try:
-                session.closeSession()
-            except PyKCS11.PyKCS11Error:
-                print("Error al intentar cerrar sesión PKCS#11 ya inválida durante excepción genérica.")
-        raise TokenLoginError(original_exception=e_session) from e_session
-
-    cert_data_list = [] 
-    first_cert_subject = None
-
-    try:
-        cert_template = [(PyKCS11.CKA_CLASS, PyKCS11.CKO_CERTIFICATE)]
-        cert_attributes_to_get = [PyKCS11.CKA_VALUE, PyKCS11.CKA_SUBJECT]
-
-        for cert_handle in session.findObjects(cert_template):
-            try:
-                retrieved_attrs = session.getAttributeValue(cert_handle, cert_attributes_to_get)
-                cert_der = bytes(retrieved_attrs[0]) 
-                
-                cert = x509.load_der_x509_certificate(cert_der)
-                print(f"Certificado encontrado en el token: {cert.subject}")
-                cert_data_list.append((cert, cert_der))
-                
-                if not first_cert_subject:
-                    first_cert_subject = cert.subject 
-            except PyKCS11.PyKCS11Error as e_attr:
-                print(f"Error obteniendo atributos para un objeto de certificado en el token: {e_attr}")
-            except ValueError as e_parse: 
-                print(f"Error parseando un certificado DER desde el token: {e_parse}")
-
-        if not cert_data_list:
-            print("No se encontraron certificados en el token.")
-    except PyKCS11.PyKCS11Error as e_find:
-        raise CertificateError(f"Error procesando certificados desde el token: {str(e_find)}", 500) from e_find
-    
-    return cert_data_list, session, first_cert_subject
-
-def get_full_chain(cert: x509.Certificate, cert_der: bytes, token_key: str | None = None):
+def get_full_chain(
+    cert: x509.Certificate,
+    cert_der: bytes,
+    token_key: str | None = None,
+    max_duration_seconds: float = 20,
+):
     """
     Construye la cadena de certificados completa.
     token_key: identificador estable del token (p. ej. ATR en hex) para caché de emisores.
-    Devuelve una tupla (lista_de_cert_der, http_status_code) o 
+    Devuelve una tupla (lista_de_cert_der, http_status_code) o
     (respuesta_jsonify_de_error, http_status_code_de_error).
     """
     chain = [cert_der]
     current_cert = cert
-    max_chain_depth = 10  
+    max_chain_depth = 10
+    deadline = time.monotonic() + max_duration_seconds
 
     try:
         while len(chain) < max_chain_depth:
+            if time.monotonic() >= deadline:
+                raise IssuerChainTimeoutError()
             if current_cert.issuer == current_cert.subject:
                 print("Certificado autofirmado alcanzado. Construcción de cadena completada.")
-                return chain, 200 
+                return chain, 200
 
-            issuer_cert = get_issuer_cert(current_cert, token_key)
+            issuer_cert = get_issuer_cert(
+                current_cert,
+                token_key,
+                deadline=deadline,
+            )
             issuer_cert_der = issuer_cert.public_bytes(serialization.Encoding.DER)
 
             if issuer_cert_der in chain:
                 print("Certificado del emisor ya está en la cadena (bucle detectado). Finalizando cadena.")
-                return chain, 200 
-            
+                return chain, 200
+
             chain.append(issuer_cert_der)
             print(f"Certificado del emisor encontrado y añadido: {issuer_cert.subject}")
             current_cert = issuer_cert
-        
+
         print(f"Construcción de cadena detenida: profundidad máxima de cadena ({max_chain_depth}) alcanzada.")
         return jsonify({"status": False, "message": f"No se pudo construir la cadena completa (límite de profundidad {max_chain_depth} alcanzado)."}), 500
-    except CertificateError as e: 
+    except CertificateError as e:
         print(f"Error construyendo la cadena de certificados: {e.message} (Código: {e.status_code})")
         return jsonify({"status": False, "message": e.message}), e.status_code
-    except Exception as e_unhandled: 
+    except Exception as e_unhandled:
         error_message = f"Error inesperado y no controlado en la construcción de la cadena: {str(e_unhandled)}"
         print(error_message)
         return jsonify({"status": False, "message": error_message}), 500

@@ -3,7 +3,6 @@ from tkinter import filedialog, messagebox
 from tkinter.ttk import Button, Style
 import os
 from PIL import Image, ImageTk
-import time
 import re
 
 def select_token_slot(token_info, result, mode):
@@ -25,8 +24,8 @@ def select_token_slot(token_info, result, mode):
     windows_base_height = 100
     button_height = 75
     total_height = windows_base_height + len(token_info) * button_height
-    
-    
+
+
     token_window = tk.Toplevel(mainwindow)
     token_window.title("Ventana de selección de Token")
     token_window.geometry(f"500x{total_height}")
@@ -39,7 +38,7 @@ def select_token_slot(token_info, result, mode):
             # Assuming interfaz.py is in firma_cliente, so ./images/ is firma_cliente/images/
             icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "images", "app.ico")
             if not os.path.exists(icon_path): # Fallback if not directly in images subdir of script
-                icon_path = "./images/app.ico" 
+                icon_path = "./images/app.ico"
         else:
             # For EXE mode, __file__ is where the script is (possibly temp path)
             # We assume 'images' folder is a subdirectory relative to the script/exe location
@@ -90,7 +89,7 @@ def select_token_slot(token_info, result, mode):
         else:
             # Fallback: assume icon is directly in the exe_dir (e.g. bundled at root if not in 'images')
             icon_file_path = os.path.join(exe_dir, icon_file_name)
-    
+
     if os.path.exists(icon_file_path):
         try:
             icon = tk.PhotoImage(file=icon_file_path)
@@ -116,18 +115,17 @@ def select_token_slot(token_info, result, mode):
     mainwindow.destroy()
 
 def select_library_file() -> str | None:
-    """ 
+    """
     Opens a dialog to select a DLL library file.
     Returns the selected file path as a string, or None if cancelled or an error occurs.
-    """ 
-    # time.sleep(1) # Consider removing if not strictly necessary
+    """
     # Create a root window temporarily if one doesn't exist, then withdraw
     # This is often needed for filedialog to work correctly if no other Tk windows are active.
     root = None
     try:
         # Check if a default root window exists from a previous Tkinter call
         # This is a bit of a heuristic; a more robust solution involves managing a single Tk root.
-        if not tk._default_root: 
+        if not tk._default_root:
             root = tk.Tk()
             # Set window icon for the temporary root
             try:
@@ -146,10 +144,10 @@ def select_library_file() -> str | None:
             except Exception as e:
                 print(f"Error al establecer el icono de la ventana para select_library_file: {e}")
             root.withdraw() # Hide it
-        
+
         file_path = filedialog.askopenfilename(
-            initialdir="C:\\Windows\\System32\\", 
-            title="Seleccione la biblioteca DLL del token", 
+            initialdir="C:\\Windows\\System32\\",
+            title="Seleccione la biblioteca DLL del token",
             filetypes=[("DLL files", "*.dll")]
         )
         return file_path if file_path else None # Return None if dialog is cancelled (empty string)
@@ -163,14 +161,13 @@ def select_library_file() -> str | None:
         if root: # Destroy the temporary root if we created it
             root.destroy()
 
-def get_pin_from_user(mode) -> str | None:
+def get_pin_from_user(mode, caller_origin=None) -> str | None:
     """
     Displays a dialog to get the user's PIN.
     Returns the PIN string if entered, or None if cancelled or an error occurs during dialog setup.
     """
     global getpin # Still using global for simplicity within this function's Tkinter callbacks
-    getpin = None 
-    # time.sleep(1) # Consider removing
+    getpin = None
 
     pinwindow = None # Initialize for potential error before assignment
     try:
@@ -181,14 +178,14 @@ def get_pin_from_user(mode) -> str | None:
         try:
             if mode == 'python':
                 icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "images", "app.ico")
-                if not os.path.exists(icon_path): 
-                    icon_path = "./images/app.ico" 
+                if not os.path.exists(icon_path):
+                    icon_path = "./images/app.ico"
             else:
                 exe_dir = os.path.dirname(os.path.abspath(__file__))
                 icon_path = os.path.join(exe_dir, "images", "app.ico")
                 if not os.path.exists(icon_path):
                      icon_path = os.path.join(exe_dir, "app.ico")
-            
+
             if os.path.exists(icon_path):
                 pinwindow.iconbitmap(icon_path)
             else:
@@ -196,7 +193,7 @@ def get_pin_from_user(mode) -> str | None:
         except Exception as e:
             print(f"Error al establecer el icono de la ventana para get_pin_from_user: {e}")
 
-        pinwindow.geometry("500x175") # Adjusted height slightly for better fit
+        pinwindow.geometry("500x215")
         pinwindow.resizable(False, False)
         pinwindow.grab_set()
 
@@ -216,6 +213,15 @@ def get_pin_from_user(mode) -> str | None:
         entry_pin = tk.Entry(pin_frame, show="*", width=20, font=("Arial", 14)) # Changed show to *
         entry_pin.pack(side="left", pady=10)
         # entry_pin.focus_set()  # Commented out - will set focus later
+
+        origin_text = caller_origin or "cliente local sin cabecera Origin"
+        origin_label = tk.Label(
+            pinwindow,
+            text=f"Solicitud de firma: {origin_text}",
+            font=("Arial", 9),
+            wraplength=470,
+        )
+        origin_label.pack(pady=(0, 5))
 
         button_frame = tk.Frame(pinwindow)
         button_frame.pack(pady=10)
@@ -243,7 +249,7 @@ def get_pin_from_user(mode) -> str | None:
 
         iconaceptar = None
         iconcancelar = None
-        
+
         try:
             path_aceptar = os.path.join(base_path_for_images, "aceptar.png")
             path_cancelar = os.path.join(base_path_for_images, "cancelar.png")
@@ -261,7 +267,7 @@ def get_pin_from_user(mode) -> str | None:
                 iconcancelar = ImageTk.PhotoImage(resized_cancelar)
             else:
                 print(f"Warning: Icon 'cancelar.png' not found at {path_cancelar}.")
-        
+
         except Exception as e:
             print(f"Error loading or processing button icons: {e}. Ensure images are valid and in the correct location.")
             # iconaceptar and iconcancelar will remain None, allowing buttons to be created without icons
@@ -320,14 +326,13 @@ def select_certificate(certificates, result, mode):
         result.append(index)
         cert_window.destroy()
 
-    time.sleep(1)
     certs = tk.Tk()
     certs.withdraw()  # Hide the root window
 
     windows_base_height = 100
     button_height = 75
     total_height = windows_base_height + len(certificates) * button_height
-        
+
     cert_window = tk.Toplevel(certs)
     cert_window.title("Ventana de selección de certificado")
 
@@ -342,7 +347,7 @@ def select_certificate(certificates, result, mode):
             icon_path = os.path.join(exe_dir, "images", "app.ico")
             if not os.path.exists(icon_path):
                 icon_path = os.path.join(exe_dir, "app.ico")
-        
+
         if os.path.exists(icon_path):
             cert_window.iconbitmap(icon_path)
         else:
@@ -391,7 +396,7 @@ def select_certificate(certificates, result, mode):
             # Fallback: default to 'images' subdirectory path.
             # Loading attempt below will print a warning if not found.
             image_path = path_in_images_subdir
-            
+
     if os.path.exists(image_path):
         try:
             original_image = Image.open(image_path)
@@ -411,7 +416,7 @@ def select_certificate(certificates, result, mode):
             cuil = "N/A"
             cn = "N/A"
             cuil_extracted_from_cn = False # Initialize here
-            
+
             # Attempt to extract CUIL (assuming it's in a serialNumber or a specific OID)
             # Example OID for CUIL in Argentina: 2.5.4.5 (serialNumber)
             # Or sometimes it might be part of CN or other attributes.
@@ -431,7 +436,7 @@ def select_certificate(certificates, result, mode):
                             cuil_extracted_from_cn = True # Mark that CUIL was found in CN
                     if cn == "N/A": # Take the first CN found
                         cn = cn_part
-            
+
             # If CN was not explicitly found but CUIL was, CN might be the remaining part or a specific field
             # For simplicity, if CN is still N/A, we might try to get the first CN attribute if present
             if cn == "N/A":
@@ -439,7 +444,7 @@ def select_certificate(certificates, result, mode):
                     if 'CN=' in part:
                         cn = part.split('=')[-1]
                         break
-            
+
             # Fallback if CUIL is still N/A but was found in CN and not set above
             if cuil == "N/A" and cuil_extracted_from_cn:
                  for part in parts:
@@ -477,7 +482,7 @@ def select_certificate(certificates, result, mode):
         cert_window.bind('<Escape>', lambda event: cert_window.destroy())
         cert_window.wait_window()
         certs.destroy()
-    
+
     except Exception as e: # Catch more specific Exception
         print(f"Error en la ventana de selección de certificado: {str(e)}")
         if 'certs' in locals() and certs.winfo_exists():
@@ -502,7 +507,7 @@ def show_alert(message, callback=None):
             print(f"Icono 'app.ico' no encontrado en {icon_path_script_relative} ni {icon_path_cwd_relative} para show_alert")
     except Exception as e:
         print(f"Error al establecer el icono de la ventana para show_alert: {e}")
-    
+
     puerto_uso.withdraw()
     messagebox.showwarning("Alerta", message)
     puerto_uso.destroy()

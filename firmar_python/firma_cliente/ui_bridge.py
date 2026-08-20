@@ -7,6 +7,7 @@ platforms because it uses JSON instead of pickle for the payload.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from typing import Any
@@ -21,6 +22,9 @@ from pathlib import Path
 #   the snippet that imports and executes ui_helper.
 
 _IS_FROZEN = getattr(sys, "frozen", False)
+DEFAULT_UI_TIMEOUT_SECONDS = float(
+    os.environ.get("TUQUITO_UI_TIMEOUT_SECONDS", "300")
+)
 
 if _IS_FROZEN:
     # Launch the same executable with a sentinel argument so main.py
@@ -44,7 +48,7 @@ def run_ui(func_name: str, *args: Any, timeout: int | None = None) -> Any:  # no
         Positional arguments that will be JSON-serialised and passed to the
         helper process.
     timeout
-        Seconds to wait for completion. ``None`` means wait forever.
+        Seconds to wait for completion. ``None`` uses the configured default.
     Returns
     -------
     The deserialised JSON object printed by the helper, or ``None`` on error.
@@ -57,7 +61,7 @@ def run_ui(func_name: str, *args: Any, timeout: int | None = None) -> Any:  # no
             _UI_CMD_BASE + [func_name, payload],
             capture_output=True,
             text=True,
-            timeout=timeout,
+            timeout=DEFAULT_UI_TIMEOUT_SECONDS if timeout is None else timeout,
             check=False,
         )
     except Exception as exc:  # pragma: no cover – subprocess creation failed
@@ -71,10 +75,18 @@ def run_ui(func_name: str, *args: Any, timeout: int | None = None) -> Any:  # no
         return None
 
     try:
-        return json.loads(proc.stdout.strip()) if proc.stdout else None
+        lines = [line for line in proc.stdout.splitlines() if line.strip()]
+        if not lines:
+            return None
+        if len(lines) > 1:
+            print(
+                f"run_ui: ui_helper diagnostics for {func_name}:\n"
+                + "\n".join(lines[:-1])
+            )
+        return json.loads(lines[-1])
     except json.JSONDecodeError:
         print(
             "run_ui: could not decode JSON from ui_helper output "
             f"for {func_name}: {proc.stdout}"
         )
-        return None 
+        return None

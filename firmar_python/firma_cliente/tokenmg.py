@@ -3,6 +3,7 @@
 ##################################################
 
 import json
+import os
 import sys
 from os import path
 from smartcard.System import readers
@@ -10,15 +11,16 @@ from smartcard.Exceptions import NoCardException
 
 # Ruta al archivo JSON que guarda el mapeo de drivers de tokens
 if getattr(sys, 'frozen', False):
-    # Path to the directory containing the executable
-    # when running as a bundled app (e.g., PyInstaller)
     BASE_DIR = path.dirname(sys.executable)
+    user_config_root = os.environ.get("LOCALAPPDATA") or path.expanduser("~")
+    USER_CONFIG_DIR = path.join(user_config_root, "Tuquito")
 else:
-    # Path to the directory containing this script
-    # when running as a normal .py script
     BASE_DIR = path.dirname(path.abspath(__file__))
+    USER_CONFIG_DIR = BASE_DIR
 
-TOKEN_LIB_FILE = path.join(BASE_DIR, "token_lib.json")
+BUNDLED_TOKEN_LIB_FILE = path.join(BASE_DIR, "token_lib.json")
+TOKEN_LIB_FILE = path.join(USER_CONFIG_DIR, "token_lib.json")
+TOKEN_LIBRARY_EXTENSIONS = {".dll", ".so", ".dylib"}
 
 ##################################################
 ###        Custom Token Exceptions             ###
@@ -53,31 +55,52 @@ class TokenATRReadError(SmartcardReaderError):
 
 class TokenIdError(TokenManagementError):
     """Error when generating a unique ID from token info."""
-    pass 
+    pass
 
 ##################################################
 ###       Token Management Functions           ###
 ##################################################
 
+
+def is_token_library_path_usable(library_path: str | None) -> bool:
+    if not isinstance(library_path, str) or not library_path.strip():
+        return False
+    normalized = path.abspath(library_path.strip())
+    extension = path.splitext(normalized)[1].lower()
+    return extension in TOKEN_LIBRARY_EXTENSIONS and path.isfile(normalized)
+
+
 def load_token_library_mapping() -> dict:
     """Loads the token library mapping from JSON file. Raises TokenMappingError on failure."""
     try:
-        if path.exists(TOKEN_LIB_FILE):
-            with open(TOKEN_LIB_FILE, 'r') as file:
-                return json.load(file)
+        candidates = [TOKEN_LIB_FILE]
+        if BUNDLED_TOKEN_LIB_FILE != TOKEN_LIB_FILE:
+            candidates.append(BUNDLED_TOKEN_LIB_FILE)
+        for candidate in candidates:
+            if path.exists(candidate):
+                with open(candidate, 'r', encoding='utf-8') as file:
+                    return json.load(file)
         return {} # Return empty dict if file doesn't exist (considered success)
     except (json.JSONDecodeError, ValueError, IOError) as e:
         raise TokenMappingError("Error al cargar el mapeo de drivers de tokens.", original_exception=e) from e
 
 def save_token_library_mapping(mapping: dict):
     """Saves the token library mapping to a JSON file. Raises TokenMappingError on failure."""
+    temporary_file = f"{TOKEN_LIB_FILE}.tmp"
     try:
-        with open(TOKEN_LIB_FILE, 'w') as file:
+        os.makedirs(path.dirname(TOKEN_LIB_FILE), exist_ok=True)
+        with open(temporary_file, 'w', encoding='utf-8') as file:
             json.dump(mapping, file)
-        # No explicit return needed for success, or could return True
+            file.flush()
+            os.fsync(file.fileno())
+        os.replace(temporary_file, TOKEN_LIB_FILE)
     except (IOError, TypeError) as e: # TypeError if mapping is not serializable
+        try:
+            os.remove(temporary_file)
+        except OSError:
+            pass
         raise TokenMappingError("Error al guardar el mapeo de drivers de tokens.", original_exception=e) from e
-    
+
 def list_smartcard_readers_internal() -> list:
     """Lists available smartcard readers. Raises SmartcardReaderError on failure."""
     # Renamed to avoid direct use from routes without error handling in main.py
@@ -85,7 +108,7 @@ def list_smartcard_readers_internal() -> list:
         return readers()
     except Exception as e: # smartcard.System.readers() can throw various exceptions
         raise SmartcardReaderError("Error al listar los lectores de tarjetas.", original_exception=e) from e
-    
+
 def list_tokens_internal() -> list:
     """Lists connected tokens with their ATRs. Raises SmartcardReaderError or NoSmartcardFoundError."""
     # Renamed to avoid direct use from routes without error handling in main.py
@@ -95,31 +118,45 @@ def list_tokens_internal() -> list:
     # unless caught here. For now, let it propagate to be handled by the route.
     reader_list = list_smartcard_readers_internal()
     print(f"Reader list: {reader_list}")
-    
+
     if not reader_list: # Handle case where no readers are returned
         # This might not be an error per se, but an empty list of tokens.
         # Depending on desired behavior, could raise an error or return empty.
         # For now, consistent with original, it would lead to empty token_info_list.
         pass
 
+    last_reader_error = None
     for reader in reader_list:
+        connection = None
         try:
             connection = reader.createConnection()
             connection.connect()
             atr = connection.getATR() # atr is a list of integers
             token_info_list.append({"reader": reader.name, "ATR": atr})
-            # Ensure connection is closed if not used further here.
-            # The smartcard library examples often show explicit disconnect.
-            connection.disconnect()
-        except NoCardException as e:
-            # This is a specific, often expected, scenario for a single reader
-            # If multiple readers, one empty shouldn't stop others usually.
-            # For now, if ANY reader has NoCardException, we raise and stop as per original logic.
-            # To list all available cards and skip empty readers, the loop structure would change.
-            raise NoSmartcardFoundError(original_exception=e) from e
+        except NoCardException:
+            # Empty readers are expected on workstations with multiple devices.
+            # Continue so a token in a later reader remains discoverable.
+            continue
         except Exception as e: # Other errors during connection or ATR fetching for a specific reader
-            # Similar to NoCardException, this stops the process for all readers.
-            raise TokenATRReadError(f"Error al obtener la información de la tarjeta del lector {reader.name}.", original_exception=e) from e
+            last_reader_error = (reader.name, e)
+            continue
+        finally:
+            if connection is not None:
+                try:
+                    connection.disconnect()
+                except Exception:
+                    pass
+
+    if token_info_list:
+        return token_info_list
+    if last_reader_error:
+        reader_name, error = last_reader_error
+        raise TokenATRReadError(
+            f"Error al obtener la información de la tarjeta del lector {reader_name}.",
+            original_exception=error,
+        ) from error
+    if reader_list:
+        raise NoSmartcardFoundError()
     return token_info_list
 
 def get_token_unique_id_internal(token_info: dict) -> tuple[str, str]:

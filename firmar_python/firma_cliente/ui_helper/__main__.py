@@ -57,12 +57,13 @@ def main() -> None:
         _print(select_library_file())
 
     elif cmd == "get_pin_from_user":
-        (mode,) = payload
-        _print(get_pin_from_user(mode))
+        mode = payload[0]
+        caller_origin = payload[1] if len(payload) > 1 else None
+        _print(get_pin_from_user(mode, caller_origin))
 
     else:
         _print(None)
 
 
 if __name__ == "__main__":
-    main() 
+    main()

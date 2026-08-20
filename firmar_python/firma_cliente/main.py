@@ -2,21 +2,37 @@
 ###              Imports externos              ###
 ##################################################
 
-import sys, json
+import sys
+
+# Frozen helper processes must branch before importing Flask, PyKCS11, Pillow,
+# or tray dependencies. This keeps each dialog startup lightweight.
+if len(sys.argv) >= 2 and sys.argv[1] == "--ui-helper":
+    sys.argv[:] = ["ui_helper", *sys.argv[2:]]
+    from ui_helper.__main__ import main as _ui_main
+
+    _ui_main()
+    sys.exit(0)
+
+if len(sys.argv) >= 2 and sys.argv[1] == "--pkcs11-worker":
+    from pkcs11_worker import serve_worker
+
+    serve_worker()
+    sys.exit(0)
+
+from base64 import b64decode
 import platform
+from cryptography import x509
 from cryptography.hazmat.primitives import hashes
-from uuid import uuid4
-from flask import Flask, jsonify, request
-from threading import Thread
+from flask import Flask, g, jsonify, request
+from threading import Lock, Thread
 from flask_cors import CORS
+from werkzeug.serving import make_server
 import os
 import pystray
 from pystray import MenuItem
 from PIL import Image
-import psutil
 import re
-import PyKCS11
-import multiprocessing
+import time
 from ui_bridge import run_ui as _run_ui_bridge  # Subprocess-based UI bridge
 
 ##################################################
@@ -24,23 +40,31 @@ from ui_bridge import run_ui as _run_ui_bridge  # Subprocess-based UI bridge
 ##################################################
 
 from tokenmg import (
-    load_token_library_mapping, save_token_library_mapping, 
+    load_token_library_mapping, save_token_library_mapping,
     list_tokens_internal, get_token_unique_id_internal,
-    TokenManagementError, TokenMappingError, SmartcardReaderError, 
+    is_token_library_path_usable,
+    TokenManagementError, TokenMappingError, SmartcardReaderError,
     NoSmartcardFoundError, TokenATRReadError, TokenIdError
 )
 from certificates import (
-    get_certificates_from_token, get_full_chain, cert_to_base64,
-    CertificateError, AIAExtensionNotFoundError, IssuerCertificateFetchError, 
-    CertificateParsingError, PKCS11LoadError, TokenNotFoundError as CertTokenNotFoundError,
-    TokenLoginError as CertTokenLoginError
+    get_full_chain, cert_to_base64,
+    CertificateError, AIAExtensionNotFoundError, IssuerCertificateFetchError,
+    CertificateParsingError,
 )
-from signing import (
-    sign_multiple_data_internal, 
-    SigningError, KeyOrCertificateNotFoundError, PKCS11OperationError, InvalidBase64DataError
+from interfaz import show_alert
+from diagnostics import (
+    close_diagnostics,
+    configure_diagnostics,
+    log_event,
 )
-from interfaz import (
-    select_token_slot, select_library_file, get_pin_from_user, select_certificate, show_alert
+from pkcs11_worker import (
+    PKCS11WorkerClient,
+    PKCS11WorkerError,
+    WorkerTimeoutError,
+)
+from signing_transaction import (
+    SigningTransactionError,
+    SigningTransactionManager,
 )
 
 ##################################################
@@ -54,19 +78,91 @@ CORS(app)
 ###                 Endpoints                  ###
 ##################################################
 
-# Globals - Consider refactoring to pass as state or parameters in a future iteration
-global_pin = None
-global_lib_path = None
-# selected_slot_index is not explicitly used as a global in the provided routes, but declared.
+SIGNING_TRANSACTION_TTL_SECONDS = float(
+    os.environ.get("TUQUITO_SIGNING_TRANSACTION_TTL_SECONDS", "300")
+)
+PKCS11_COMMAND_TIMEOUT_SECONDS = float(
+    os.environ.get("TUQUITO_PKCS11_COMMAND_TIMEOUT_SECONDS", "30")
+)
+CERT_CHAIN_TIMEOUT_SECONDS = float(
+    os.environ.get("TUQUITO_CERT_CHAIN_TIMEOUT_SECONDS", "20")
+)
+MAX_SIGNING_ITEMS = int(
+    os.environ.get("TUQUITO_MAX_SIGNING_ITEMS", "1000")
+)
+MAX_SIGNING_ITEM_CHARS = int(
+    os.environ.get("TUQUITO_MAX_SIGNING_ITEM_CHARS", "1000000")
+)
+MAX_REQUEST_BYTES = int(
+    os.environ.get("TUQUITO_MAX_REQUEST_BYTES", str(16 * 1024 * 1024))
+)
+app.config["MAX_CONTENT_LENGTH"] = MAX_REQUEST_BYTES
+transaction_manager = SigningTransactionManager(
+    ttl_seconds=SIGNING_TRANSACTION_TTL_SECONDS
+)
+certificate_flow_lock = Lock()
+
+
+def _request_origin() -> str | None:
+    origin = request.headers.get("Origin")
+    return origin.strip() if origin and origin.strip() else None
+
+
+def _normalize_token_id(value):
+    if isinstance(value, dict):
+        value = value.get("id")
+    return value if isinstance(value, str) and value else None
+
+
+def _start_phase(phase: str) -> float:
+    log_event("phase_started", phase=phase)
+    return time.monotonic()
+
+
+def _finish_phase(phase: str, started_at: float, **fields) -> None:
+    log_event(
+        "phase_completed",
+        phase=phase,
+        duration_ms=round((time.monotonic() - started_at) * 1000, 1),
+        **fields,
+    )
+
+
+@app.before_request
+def _record_request_start():
+    g.request_started_at = time.monotonic()
+
+
+@app.after_request
+def _record_request_end(response):
+    started_at = getattr(g, "request_started_at", time.monotonic())
+    log_event(
+        "http_request_completed",
+        route=request.path,
+        method=request.method,
+        status_code=response.status_code,
+        duration_ms=round((time.monotonic() - started_at) * 1000, 1),
+        origin_present=bool(_request_origin()),
+    )
+    return response
+
 
 @app.route('/rest/certificates', methods=['GET'])
-def get_certificates_route(): # Renamed to avoid conflict with certificates.py module
-    global global_pin, global_lib_path
-    session = None # Initialize session to None for the finally block
-
+def get_certificates_route():
+    if not certificate_flow_lock.acquire(blocking=False):
+        return jsonify({
+            "status": False,
+            "message": "Ya hay una selección de certificado en curso.",
+        }), 409
+    worker = None
     try:
-        current_file_path = os.path.abspath(__file__)
-        mode = 'exe' if 'temp' in current_file_path.lower() else 'python'
+        if transaction_manager.has_active_transaction():
+            return jsonify({
+                "status": False,
+                "message": "Ya hay una transacción de firma pendiente.",
+            }), 409
+        mode = 'exe' if getattr(sys, "frozen", False) else 'python'
+        caller_origin = _request_origin()
 
         print(f"Mode: {mode}")
 
@@ -78,8 +174,13 @@ def get_certificates_route(): # Renamed to avoid conflict with certificates.py m
             return jsonify({"status": False, "message": e.message}), e.status_code
 
         try:
+            phase_started = _start_phase("token_enumeration")
             token_info_list = list_tokens_internal()
-            print(f"Token info list: {token_info_list}")
+            _finish_phase(
+                "token_enumeration",
+                phase_started,
+                token_count=len(token_info_list),
+            )
             if not token_info_list:
                 return jsonify({"status": False, "message": "No se encontraron tokens o tarjetas en los lectores."}), 404
         except NoSmartcardFoundError as e:
@@ -88,13 +189,17 @@ def get_certificates_route(): # Renamed to avoid conflict with certificates.py m
         except SmartcardReaderError as e:
             print(f"SmartcardReaderError in list_tokens_internal: {e.message}")
             return jsonify({"status": False, "message": e.message}), e.status_code
-        
+
         # -------------------- SELECCIÓN DE TOKEN --------------------
+        phase_started = _start_phase("token_selection_ui")
         selected_slot_index = run_ui('select_token_slot', (token_info_list, mode))
+        _finish_phase("token_selection_ui", phase_started)
         print(f"Selected slot index: {selected_slot_index}")
 
         if selected_slot_index is None:
             return jsonify({"status": False, "message": "No se seleccionó ningún slot de token."}), 400
+        if not isinstance(selected_slot_index, int) or not 0 <= selected_slot_index < len(token_info_list):
+            return jsonify({"status": False, "message": "Selección de token inválida."}), 400
 
         selected_token_info = token_info_list[selected_slot_index]
         print(f"Selected token info: {selected_token_info}")
@@ -105,86 +210,138 @@ def get_certificates_route(): # Renamed to avoid conflict with certificates.py m
             print(f"TokenIdError in get_token_unique_id_internal: {e.message}")
             return jsonify({"status": False, "message": e.message}), e.status_code
 
-        if token_name in token_library_mapping:
-            global_lib_path = token_library_mapping[token_name]
-        else:
-            # select_library_file ahora se ejecuta en proceso separado
+        mapping_key = token_atr_hex.upper()
+        lib_path = None
+        if mapping_key in token_library_mapping:
+            lib_path = token_library_mapping[mapping_key]
+        elif token_name in token_library_mapping:
+            # Backward-compatible read of existing reader-name mappings.
+            lib_path = token_library_mapping[token_name]
+
+        if lib_path and not is_token_library_path_usable(lib_path):
+            token_library_mapping.pop(mapping_key, None)
+            token_library_mapping.pop(token_name, None)
+            lib_path = None
+
+        if lib_path is None:
             chosen_lib_path = run_ui('select_library_file')
             if not chosen_lib_path:
                 return jsonify({"status": False, "message": "No se seleccionó ninguna biblioteca de token o se canceló la selección."}), 400
-            global_lib_path = chosen_lib_path
-            token_library_mapping[token_name] = global_lib_path
+            if not is_token_library_path_usable(chosen_lib_path):
+                return jsonify({
+                    "status": False,
+                    "message": "La biblioteca PKCS#11 seleccionada no existe o no es válida.",
+                }), 400
+            lib_path = chosen_lib_path
+            token_library_mapping[mapping_key] = lib_path
+            token_library_mapping.pop(token_name, None)
             try:
                 save_token_library_mapping(token_library_mapping)
             except TokenMappingError as e:
                 print(f"TokenMappingError in save_token_library_mapping: {e.message}")
                 return jsonify({"status": False, "message": e.message}), e.status_code
-        
-        # get_pin_from_user ahora se ejecuta en proceso separado
-        pin_input = run_ui('get_pin_from_user', (mode,))
+
+        phase_started = _start_phase("pin_entry_ui")
+        pin_input = run_ui('get_pin_from_user', (mode, caller_origin))
+        _finish_phase("pin_entry_ui", phase_started)
         if not pin_input: # Handles both cancellation and dialog setup errors from get_pin_from_user
             return jsonify({"status": False, "message": "Entrada de PIN cancelada o fallida."}), 400
-        global_pin = pin_input
 
         try:
-            certificates, session, subject_name = get_certificates_from_token(global_lib_path, global_pin)
-        except CertTokenLoginError as e:
-            print(f"CertTokenLoginError: {e.message}, Type: {e.error_type if hasattr(e, 'error_type') else 'N/A'}")
-            if hasattr(e, 'error_type') and e.error_type == "BAD_PIN":
+            phase_started = _start_phase("pkcs11_worker_open")
+            worker = PKCS11WorkerClient.start(
+                lib_path,
+                pin_input,
+                selected_token_info["reader"],
+                command_timeout=PKCS11_COMMAND_TIMEOUT_SECONDS,
+            )
+            _finish_phase(
+                "pkcs11_worker_open",
+                phase_started,
+                certificate_count=len(worker.certificates),
+            )
+        except PKCS11WorkerError as e:
+            print(f"PKCS11WorkerError: {e}")
+            if e.error_type == "BAD_PIN":
                 return jsonify({"status": False, "message": "PIN incorrecto."}), 401
-            return jsonify({"status": False, "message": e.message, "error_type": e.error_type if hasattr(e, 'error_type') else None}), e.status_code
-        except (PKCS11LoadError, CertTokenNotFoundError, CertificateError) as e:
-            print(f"Certificate/Token Error in get_certificates_from_token: {e.message}")
-            return jsonify({"status": False, "message": e.message}), e.status_code
-        
+            if e.error_type == "PIN_LOCKED":
+                return jsonify({"status": False, "message": "PIN bloqueado."}), 423
+            status_code = 504 if isinstance(e, WorkerTimeoutError) else 500
+            return jsonify({"status": False, "message": str(e)}), status_code
+
+        certificates = []
+        for certificate_info in worker.certificates:
+            cert_der = b64decode(certificate_info["certificate"], validate=True)
+            cert = x509.load_der_x509_certificate(cert_der)
+            certificates.append((cert, cert_der))
+
         if not certificates:
             return jsonify({"status": False, "message": "No se encontraron certificados en el token."}), 404
 
-        # Prepare serializable certificate information for the UI
-        serializable_certs_info = []
-        for cert, _ in certificates:
-            # Using RFC 4514 string representation of the subject, which is picklable
-            # Alternatively, extract specific fields into a dictionary
-            subject_str = cert.subject.rfc4514_string()
-            serializable_certs_info.append(subject_str)
+        serializable_certs_info = [
+            certificate_info["subject"]
+            for certificate_info in worker.certificates
+        ]
 
+        phase_started = _start_phase("certificate_selection_ui")
         selected_index = run_ui('select_certificate', (serializable_certs_info, mode))
+        _finish_phase("certificate_selection_ui", phase_started)
 
         if selected_index is None:
             return jsonify({"status": False, "message": "No se seleccionó ningún certificado."}), 400
-        
+        if not isinstance(selected_index, int) or not 0 <= selected_index < len(certificates):
+            return jsonify({"status": False, "message": "Selección de certificado inválida."}), 400
+
+        worker.select_certificate(selected_index)
         user_selected_cert, user_selected_cert_der = certificates[selected_index]
 
         try:
+            phase_started = _start_phase("certificate_chain")
             chain_result, chain_status_code = get_full_chain(
-                user_selected_cert, user_selected_cert_der, token_atr_hex
+                user_selected_cert,
+                user_selected_cert_der,
+                token_atr_hex,
+                max_duration_seconds=CERT_CHAIN_TIMEOUT_SECONDS,
+            )
+            _finish_phase(
+                "certificate_chain",
+                phase_started,
+                chain_status_code=chain_status_code,
             )
             if chain_status_code != 200:
                 print(f"Error from get_full_chain (status {chain_status_code})")
-                return chain_result, chain_status_code 
+                return chain_result, chain_status_code
             chain_base64 = [cert_to_base64(c) for c in chain_result]
         except Exception as e:
             print(f"Unexpected error during get_full_chain or processing: {str(e)}")
             return jsonify({"status": False, "message": f"Error inesperado al obtener la cadena de certificados: {str(e)}"}), 500
 
         cuil_t = '0'
-        if subject_name:
+        if user_selected_cert.subject:
             try:
-                match = re.search(r'SERIALNUMBER=(?:CUIL|CUIT) (\d+)', str(subject_name).upper())
+                selected_subject = user_selected_cert.subject.rfc4514_string()
+                match = re.search(r'SERIALNUMBER=(?:CUIL|CUIT) (\d+)', selected_subject.upper())
                 if not match:
-                    match = re.search(r'CN=[^,]*?(?:CUIL|CUIT)[^0-9]*(\d+)', str(subject_name).upper())
+                    match = re.search(r'CN=[^,]*?(?:CUIL|CUIT)[^0-9]*(\d+)', selected_subject.upper())
                 if not match:
-                    match = re.search(r'(?:CUIL|CUIT)[^0-9]*(\d+)', str(subject_name).upper())
+                    match = re.search(r'(?:CUIL|CUIT)[^0-9]*(\d+)', selected_subject.upper())
                 cuil_t = match.group(1) if match else '0'
             except Exception as e_cuil:
                 print(f"Error extracting CUIL: {e_cuil}")
                 cuil_t = '0'
 
+        key_id = user_selected_cert.fingerprint(hashes.SHA256()).hex().upper()
+        token_id = transaction_manager.create(
+            worker=worker,
+            origin=caller_origin,
+            key_id=key_id,
+        )
+        worker = None
         response_data = {
             "status": True,
             "response": {
-                "tokenId": {"id": str(uuid4())},
-                "keyId": user_selected_cert.fingerprint(hashes.SHA256()).hex().upper(),
+                "tokenId": {"id": token_id},
+                "keyId": key_id,
                 "certificate": cert_to_base64(user_selected_cert_der),
                 "certificateChain": chain_base64,
                 "CUIL": cuil_t,
@@ -201,105 +358,113 @@ def get_certificates_route(): # Renamed to avoid conflict with certificates.py m
         }
         return jsonify(response_data), 200
 
-    except PyKCS11.PyKCS11Error as e:
-        print(f"Unhandled PyKCS11Error in /rest/certificates: {str(e)}")
-        return jsonify({"status": False, "message": f"Error de PKCS#11: {str(e)}"}), 500
+    except SigningTransactionError as e:
+        return jsonify({"status": False, "message": str(e)}), e.status_code
     except Exception as e:
         print(f"Unexpected error in /rest/certificates: {str(e)}")
         import traceback
         traceback.print_exc()
         return jsonify({"status": False, "message": f"Error inesperado en la obtención de certificados: {str(e)}"}), 500
     finally:
-        if session:
-            try:
-                session.logout()
-                session.closeSession()
-                print("PKCS#11 session logged out and closed in /rest/certificates.")
-            except PyKCS11.PyKCS11Error as pkcs_e:
-                print(f"Error during PKCS#11 session cleanup in /rest/certificates: {pkcs_e}")
+        if worker is not None:
+            worker.close()
+        certificate_flow_lock.release()
 
 @app.route('/rest/sign', methods=['POST'])
 def get_signatures_route():
-    global global_pin, global_lib_path
-    session = None
-
     try:
         data = request.get_json()
         if not data or 'dataToSign' not in data:
             return jsonify({"status": False, "message": "No se recibieron datos para firmar."}), 400
-        
+
         data_to_sign_list = data['dataToSign']
         if not data_to_sign_list or not isinstance(data_to_sign_list, list) or not all(isinstance(item, str) for item in data_to_sign_list):
             return jsonify({"status": False, "message": "Formato de datos para firmar incorrecto o lista vacía."}), 400
-        
-        if not global_lib_path or not global_pin:
-            return jsonify({"status": False, "message": "Configuración de token (PIN o librería) no establecida. Por favor, obtenga los certificados primero."}), 400
+        if len(data_to_sign_list) > MAX_SIGNING_ITEMS:
+            return jsonify({
+                "status": False,
+                "message": "La cantidad de elementos a firmar supera el límite permitido.",
+            }), 413
+        if any(len(item) > MAX_SIGNING_ITEM_CHARS for item in data_to_sign_list):
+            return jsonify({
+                "status": False,
+                "message": "Un elemento a firmar supera el tamaño permitido.",
+            }), 413
 
-        try:
-            _certificates, session, _subject_name = get_certificates_from_token(global_lib_path, global_pin)
-            if not _certificates:
-                return jsonify({"status": False, "message": "No se pudo obtener la información del certificado para firmar."}), 404
-        except CertTokenLoginError as e:
-            print(f"CertTokenLoginError in /rest/sign: {e.message}")
-            if hasattr(e, 'error_type') and e.error_type == "BAD_PIN":
-                return jsonify({"status": False, "message": "PIN incorrecto."}), 401
-            return jsonify({"status": False, "message": e.message, "error_type": e.error_type if hasattr(e, 'error_type') else None}), e.status_code
-        except (PKCS11LoadError, CertTokenNotFoundError, CertificateError) as e:
-            print(f"Certificate/Token Error in /rest/sign: {e.message}")
-            return jsonify({"status": False, "message": e.message}), e.status_code
+        token_id = _normalize_token_id(data.get("tokenId"))
+        key_id = data.get("keyId")
+        if not token_id or not isinstance(key_id, str) or not key_id:
+            return jsonify({
+                "status": False,
+                "message": "tokenId y keyId son obligatorios para firmar.",
+            }), 400
 
-        try:
-            signatures = sign_multiple_data_internal(session, data_to_sign_list)
-        except (KeyOrCertificateNotFoundError, PKCS11OperationError, InvalidBase64DataError, SigningError) as e:
-            print(f"Signing Error in /rest/sign: {e.message}")
-            return jsonify({"status": False, "message": e.message}), e.status_code
-        
+        phase_started = _start_phase("pkcs11_batch_sign")
+        signatures = transaction_manager.consume(
+            token_id=token_id,
+            key_id=key_id,
+            origin=_request_origin(),
+            data_to_sign=data_to_sign_list,
+        )
+        _finish_phase(
+            "pkcs11_batch_sign",
+            phase_started,
+            item_count=len(data_to_sign_list),
+        )
+
         response_data = {
             "status": True,
             "response": {"signatures": signatures}
         }
         return jsonify(response_data), 200
-    
-    except PyKCS11.PyKCS11Error as e:
-        print(f"Unhandled PyKCS11Error in /rest/sign: {str(e)}")
-        return jsonify({"status": False, "message": f"Error de PKCS#11 al firmar: {str(e)}"}), 500
+
+    except SigningTransactionError as e:
+        return jsonify({"status": False, "message": str(e)}), e.status_code
+    except PKCS11WorkerError as e:
+        status_code = 504 if isinstance(e, WorkerTimeoutError) else 500
+        return jsonify({"status": False, "message": str(e)}), status_code
     except Exception as e:
         print(f"Unexpected error in /rest/sign: {str(e)}")
         import traceback
         traceback.print_exc()
         return jsonify({"status": False, "message": f"Error inesperado al firmar: {str(e)}"}), 500
-    finally:
-        if session:
-            try:
-                session.logout()
-                session.closeSession()
-                print("PKCS#11 session logged out and closed in /rest/sign.")
-            except PyKCS11.PyKCS11Error as pkcs_e:
-                print(f"Error during PKCS#11 session cleanup in /rest/sign: {pkcs_e}")
 
 @app.route('/test', methods=['GET', 'POST'])
 def test_route():
     return jsonify({"status": "success", "message": "Test route"}), 200
-    
-def is_port_in_use(port):
-    for conn in psutil.net_connections():
-        if conn.laddr is not None and conn.laddr.port == port and conn.status == psutil.CONN_LISTEN:
-            return True
-    return False
+
 
 flask_port = 5000
+flask_server = None
 
-def run_flask_app():
-    global port
-    port = 5000
-    if is_port_in_use(port):
-        show_alert(f"El puerto {port} esta en uso. Saliendo de la aplicacion.")
-        os._exit(0)
-    app.run(host='127.0.0.1', port=port, threaded=True, use_reloader=False)
+
+class SignerStartupError(Exception):
+    pass
+
+
+def create_flask_server(server_factory=make_server):
+    """Bind the port synchronously so startup cannot silently fail in a thread."""
+    try:
+        return server_factory(
+            '127.0.0.1',
+            flask_port,
+            app,
+            threaded=True,
+        )
+    except (OSError, SystemExit) as exc:
+        raise SignerStartupError(
+            f"No se pudo iniciar Tuquito en el puerto {flask_port}: {exc}"
+        ) from exc
 
 
 def on_quit_app(icon):
+    global flask_server
     print("Saliendo de la aplicación Tuquito...")
+    transaction_manager.discard_all()
+    if flask_server is not None:
+        flask_server.shutdown()
+        flask_server = None
+    close_diagnostics()
     icon.stop()
     os._exit(0)
 
@@ -322,7 +487,7 @@ def run_tray_icon():
         image = Image.open(image_path)
     except FileNotFoundError:
         print(f"Icono no encontrado en {image_path}. Usando placeholder.")
-        image = Image.new('RGB', (64, 64), color = 'red') 
+        image = Image.new('RGB', (64, 64), color = 'red')
 
     menu = (MenuItem('Salir de Tuquito', on_quit_app),)
     tray_title = f"Tuquito Autenticador (Puerto: {flask_port})"
@@ -342,35 +507,19 @@ def run_ui(func_name: str, args: tuple = ()):  # noqa: D401
         args = (args,)
     return _run_ui_bridge(func_name, *args)
 
-# --- Sentinel for helper mode -------------------------------------------------
-# If the executable is invoked with the first argument '--ui-helper', run the
-# Tk helper dispatcher and exit.  This prevents a second Flask instance from
-# starting when the packaged EXE is reused to spawn the UI subprocesses.
-
-if len(sys.argv) >= 2 and sys.argv[1] == "--ui-helper":
-    # Remove sentinel so ui_helper sees the expected argv layout
-    helper_argv = ["ui_helper", *sys.argv[2:]]
-    sys.argv[:] = helper_argv
-    from ui_helper.__main__ import main as _ui_main  # pylint: disable=import-error
-
-    _ui_main()
-    sys.exit(0)
-
 if __name__ == "__main__":
-    # Ensure 'spawn' start method for multiprocessing, critical for GUI and avoiding re-runs.
-    # This should be called before any other multiprocessing objects (Queue, Process) are created.
-    # 'force=True' ensures it's set even if a context was implicitly started, though ideally, this is the first call.
+    configure_diagnostics()
+    log_event("application_starting", port=flask_port)
     try:
-        multiprocessing.set_start_method('spawn', force=True)
-    except RuntimeError as e:
-        print(f"Could not set multiprocessing start method to 'spawn': {e}. This might lead to issues if it was already set differently or used.")
-        # Depending on the strictness required, you might choose to exit or continue with caution.
+        flask_server = create_flask_server()
+    except SignerStartupError as exc:
+        log_event("application_start_failed", error_type=type(exc).__name__)
+        show_alert(str(exc))
+        close_diagnostics()
+        sys.exit(1)
 
-    flask_thread = Thread(target=run_flask_app, daemon=True)
+    flask_thread = Thread(target=flask_server.serve_forever, daemon=True)
     flask_thread.start()
-
-    import time
-    time.sleep(1) 
 
     tray_icon_thread = Thread(target=run_tray_icon, daemon=True)
     tray_icon_thread.start()
