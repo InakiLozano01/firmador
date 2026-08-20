@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any
@@ -53,6 +54,12 @@ def configure_diagnostics(
         "%(asctime)s %(levelname)s %(message)s"
     ))
     logger.addHandler(handler)
+    if sys.stderr is not None:
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(logging.Formatter(
+            "%(asctime)s %(levelname)s %(message)s"
+        ))
+        logger.addHandler(console_handler)
     return str(log_path)
 
 

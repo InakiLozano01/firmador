@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import threading
 import time
 from dataclasses import dataclass
@@ -46,6 +47,7 @@ class _SigningTransaction:
     key_id: str
     expires_at: float
     timer: Any | None = None
+    certificate_response: dict[str, Any] | None = None
 
 
 class SigningTransactionManager:
@@ -97,6 +99,30 @@ class SigningTransactionManager:
     def has_active_transaction(self) -> bool:
         with self._lock:
             return bool(self._transactions)
+
+    def cache_certificate_response(
+        self,
+        token_id: str,
+        certificate_response: dict[str, Any],
+    ) -> None:
+        with self._lock:
+            transaction = self._transactions.get(token_id)
+            if transaction is None:
+                raise TransactionNotFoundError("Signing transaction not found.")
+            transaction.certificate_response = copy.deepcopy(certificate_response)
+
+    def get_active_certificate_response(
+        self,
+        origin: str | None,
+    ) -> dict[str, Any] | None:
+        with self._lock:
+            for transaction in self._transactions.values():
+                if (
+                    transaction.origin == origin
+                    and transaction.certificate_response is not None
+                ):
+                    return copy.deepcopy(transaction.certificate_response)
+        return None
 
     def _expire(self, token_id: str) -> None:
         with self._lock:

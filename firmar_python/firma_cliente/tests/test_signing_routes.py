@@ -203,6 +203,26 @@ class SigningRouteTests(unittest.TestCase):
 
         self.assertEqual(409, response.status_code)
 
+    def test_duplicate_certificate_request_from_same_origin_reuses_transaction(self):
+        worker = FakeWorker(self.certificate_der)
+        origin = "https://dynamic.example"
+
+        first_response, _ = self._open_transaction(worker, origin)
+
+        with patch.object(
+            self.main,
+            "run_ui",
+            side_effect=AssertionError("duplicate request must not reopen the UI"),
+        ):
+            duplicate_response = self.main.app.test_client().get(
+                "/rest/certificates",
+                headers={"Origin": origin},
+            )
+
+        self.assertEqual(200, first_response.status_code)
+        self.assertEqual(200, duplicate_response.status_code)
+        self.assertEqual(first_response.get_json(), duplicate_response.get_json())
+
     def test_oversized_batch_is_rejected_without_consuming_transaction(self):
         worker = FakeWorker(self.certificate_der)
         origin = "https://dynamic.example"

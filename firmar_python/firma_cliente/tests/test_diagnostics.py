@@ -1,7 +1,9 @@
 import importlib
+import io
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stderr
 from pathlib import Path
 
 
@@ -37,6 +39,32 @@ class DiagnosticsTests(unittest.TestCase):
         self.assertNotIn("1234", content)
         self.assertNotIn("secret-payload", content)
         self.assertIn("[REDACTED]", content)
+
+    def test_console_mode_writes_sanitized_events_to_stderr(self):
+        diagnostics = importlib.import_module("diagnostics")
+        console = io.StringIO()
+
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            redirect_stderr(console),
+        ):
+            diagnostics.configure_diagnostics(
+                log_dir=directory,
+                force=True,
+            )
+            diagnostics.log_event(
+                "application_listening",
+                port=5000,
+                pin="1234",
+            )
+            diagnostics.flush_diagnostics()
+            diagnostics.close_diagnostics()
+
+        output = console.getvalue()
+        self.assertIn("application_listening", output)
+        self.assertIn('"port": 5000', output)
+        self.assertNotIn("1234", output)
+        self.assertIn("[REDACTED]", output)
 
 
 if __name__ == "__main__":

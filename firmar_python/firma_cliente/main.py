@@ -156,13 +156,22 @@ def get_certificates_route():
         }), 409
     worker = None
     try:
+        caller_origin = _request_origin()
+        active_response = transaction_manager.get_active_certificate_response(
+            caller_origin
+        )
+        if active_response is not None:
+            log_event(
+                "certificate_request_reused",
+                origin_present=bool(caller_origin),
+            )
+            return jsonify(active_response), 200
         if transaction_manager.has_active_transaction():
             return jsonify({
                 "status": False,
                 "message": "Ya hay una transacción de firma pendiente.",
             }), 409
         mode = 'exe' if getattr(sys, "frozen", False) else 'python'
-        caller_origin = _request_origin()
 
         print(f"Mode: {mode}")
 
@@ -356,6 +365,7 @@ def get_certificates_route():
                 "TuquitoVersion": "2.4"
             }
         }
+        transaction_manager.cache_certificate_response(token_id, response_data)
         return jsonify(response_data), 200
 
     except SigningTransactionError as e:
@@ -508,8 +518,12 @@ def run_ui(func_name: str, args: tuple = ()):  # noqa: D401
     return _run_ui_bridge(func_name, *args)
 
 if __name__ == "__main__":
-    configure_diagnostics()
-    log_event("application_starting", port=flask_port)
+    diagnostics_log_path = configure_diagnostics()
+    log_event(
+        "application_starting",
+        port=flask_port,
+        diagnostics_log_path=diagnostics_log_path,
+    )
     try:
         flask_server = create_flask_server()
     except SignerStartupError as exc:
@@ -520,6 +534,11 @@ if __name__ == "__main__":
 
     flask_thread = Thread(target=flask_server.serve_forever, daemon=True)
     flask_thread.start()
+    log_event(
+        "application_listening",
+        host="127.0.0.1",
+        port=flask_port,
+    )
 
     tray_icon_thread = Thread(target=run_tray_icon, daemon=True)
     tray_icon_thread.start()
