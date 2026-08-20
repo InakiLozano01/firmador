@@ -124,6 +124,23 @@ class SigningTransactionManager:
                     return copy.deepcopy(transaction.certificate_response)
         return None
 
+    def get_active_binding(
+        self,
+        origin: str | None,
+    ) -> tuple[str, str, str | None] | None:
+        with self._lock:
+            for token_id, transaction in self._transactions.items():
+                if transaction.origin == origin:
+                    return token_id, transaction.key_id, transaction.origin
+        return None
+
+    def get_single_active_binding(self) -> tuple[str, str, str | None] | None:
+        with self._lock:
+            if len(self._transactions) != 1:
+                return None
+            token_id, transaction = next(iter(self._transactions.items()))
+            return token_id, transaction.key_id, transaction.origin
+
     def _expire(self, token_id: str) -> None:
         with self._lock:
             transaction = self._transactions.pop(token_id, None)

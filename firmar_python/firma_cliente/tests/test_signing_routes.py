@@ -119,6 +119,71 @@ class SigningRouteTests(unittest.TestCase):
             )
         return response, ui_calls
 
+    def test_tapir_sign_without_token_and_key_uses_active_transaction(self):
+        worker = FakeWorker(self.certificate_der)
+        origin = "https://tapir.example"
+        certificate_response, _ = self._open_transaction(worker, origin)
+        self.assertEqual(200, certificate_response.status_code)
+
+        response = self.main.app.test_client().post(
+            "/rest/sign",
+            json={"dataToSign": ["cGF5bG9hZA=="]},
+            headers={"Origin": origin},
+        )
+
+        self.assertEqual(200, response.status_code)
+        self.assertEqual(["signed-value"], response.get_json()["response"]["signatures"])
+        self.assertEqual([["cGF5bG9hZA=="]], worker.sign_calls)
+        self.assertEqual(1, worker.close_count)
+
+    def test_tapir_sign_without_origin_uses_single_active_transaction(self):
+        worker = FakeWorker(self.certificate_der)
+        origin = "https://tapir.example"
+        certificate_response, _ = self._open_transaction(worker, origin)
+        self.assertEqual(200, certificate_response.status_code)
+
+        response = self.main.app.test_client().post(
+            "/rest/sign",
+            json={"dataToSign": ["cGF5bG9hZA=="]},
+        )
+
+        self.assertEqual(200, response.status_code)
+        self.assertEqual(["signed-value"], response.get_json()["response"]["signatures"])
+        self.assertEqual(1, worker.close_count)
+
+    def test_sign_without_token_and_key_rejects_different_origin(self):
+        worker = FakeWorker(self.certificate_der)
+        trusted_origin = "https://tapir.example"
+        certificate_response, _ = self._open_transaction(worker, trusted_origin)
+        self.assertEqual(200, certificate_response.status_code)
+
+        rejected = self.main.app.test_client().post(
+            "/rest/sign",
+            json={"dataToSign": ["cGF5bG9hZA=="]},
+            headers={"Origin": "https://evil.example"},
+        )
+        accepted = self.main.app.test_client().post(
+            "/rest/sign",
+            json={"dataToSign": ["cGF5bG9hZA=="]},
+            headers={"Origin": trusted_origin},
+        )
+
+        self.assertEqual(403, rejected.status_code)
+        self.assertEqual(200, accepted.status_code)
+        self.assertEqual(1, len(worker.sign_calls))
+
+    def test_sign_without_token_and_key_rejects_when_no_transaction(self):
+        response = self.main.app.test_client().post(
+            "/rest/sign",
+            json={"dataToSign": ["cGF5bG9hZA=="]},
+        )
+
+        self.assertEqual(400, response.status_code)
+        self.assertEqual(
+            "tokenId y keyId son obligatorios para firmar.",
+            response.get_json()["message"],
+        )
+
     def test_one_pin_transaction_signs_one_batch_then_is_consumed(self):
         worker = FakeWorker(self.certificate_der)
         origin = "https://dynamic.example"

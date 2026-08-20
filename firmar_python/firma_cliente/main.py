@@ -109,10 +109,33 @@ def _request_origin() -> str | None:
     return origin.strip() if origin and origin.strip() else None
 
 
-def _normalize_token_id(value):
+def _normalize_id(value):
     if isinstance(value, dict):
         value = value.get("id")
     return value if isinstance(value, str) and value else None
+
+
+def _resolve_signing_binding(token_id, key_id, caller_origin):
+    if token_id and key_id:
+        return token_id, key_id, caller_origin, None
+
+    binding = transaction_manager.get_active_binding(caller_origin)
+    consume_origin = caller_origin
+    if binding is None and caller_origin is None:
+        binding = transaction_manager.get_single_active_binding()
+        if binding is not None:
+            consume_origin = binding[2]
+    if binding is None:
+        if transaction_manager.has_active_transaction():
+            return None, None, caller_origin, (
+                403,
+                "Signing transaction belongs to a different origin.",
+            )
+        return None, None, caller_origin, (
+            400,
+            "tokenId y keyId son obligatorios para firmar.",
+        )
+    return token_id or binding[0], key_id or binding[1], consume_origin, None
 
 
 def _start_phase(phase: str) -> float:
@@ -425,19 +448,20 @@ def get_signatures_route():
                 "message": "Un elemento a firmar supera el tamaño permitido.",
             }), 413
 
-        token_id = _normalize_token_id(data.get("tokenId"))
-        key_id = data.get("keyId")
-        if not token_id or not isinstance(key_id, str) or not key_id:
-            return jsonify({
-                "status": False,
-                "message": "tokenId y keyId son obligatorios para firmar.",
-            }), 400
+        token_id, key_id, consume_origin, binding_error = _resolve_signing_binding(
+            _normalize_id(data.get("tokenId")),
+            _normalize_id(data.get("keyId")),
+            _request_origin(),
+        )
+        if binding_error is not None:
+            status_code, message = binding_error
+            return jsonify({"status": False, "message": message}), status_code
 
         phase_started = _start_phase("pkcs11_batch_sign")
         signatures = transaction_manager.consume(
             token_id=token_id,
             key_id=key_id,
-            origin=_request_origin(),
+            origin=consume_origin,
             data_to_sign=data_to_sign_list,
         )
         _finish_phase(

@@ -161,6 +161,21 @@ class SigningTransactionManagerTests(unittest.TestCase):
         with self.assertRaises(module.TransactionNotFoundError):
             manager.consume(token_id, "KEY", None, ["payload"])
 
+    def test_active_binding_matches_origin_and_single_transaction(self):
+        module = load_transaction_module()
+        worker = FakeWorker()
+        manager = module.SigningTransactionManager(ttl_seconds=300)
+        token_id = manager.create(worker, "https://tapir.example", "KEY")
+
+        matched = manager.get_active_binding("https://tapir.example")
+        mismatched = manager.get_active_binding("https://evil.example")
+        single = manager.get_single_active_binding()
+
+        self.assertEqual((token_id, "KEY", "https://tapir.example"), matched)
+        self.assertIsNone(mismatched)
+        self.assertEqual((token_id, "KEY", "https://tapir.example"), single)
+        manager.discard(token_id)
+
     def test_rejects_second_active_transaction(self):
         module = load_transaction_module()
         first_worker = FakeWorker()
