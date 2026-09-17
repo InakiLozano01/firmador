@@ -103,5 +103,7 @@ class Settings:
     OBS_RUNTIME_HEARTBEAT_SECONDS = _get_int_env('OBS_RUNTIME_HEARTBEAT_SECONDS', 10)
     OBS_PAYLOAD_REVEAL_ROLE = _get_str_env('OBS_PAYLOAD_REVEAL_ROLE', 'admin')
 
+    FIRMA_EXTERNA_API_KEY = _get_str_env('FIRMA_EXTERNA_API_KEY')
+
 
 settings = Settings()

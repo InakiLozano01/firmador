@@ -31,6 +31,7 @@ from app.services.signing_context_store import (
     SigningContextUnavailableError,
     signing_context_store,
 )
+from app.utils.pdf_fields import list_pdf_field_names
 from app.utils.db import (
     get_number_and_date_then_close,
     get_number_and_date_then_close_project,
@@ -145,12 +146,14 @@ class SignaturesService:
         return hashlib.sha256(base64.b64decode(finalpdf)).hexdigest()
 
     @staticmethod
-    def _error_payload(*, id_doc=None, id_exp=None, message: str, details: Optional[str] = None):
+    def _error_payload(*, id_doc=None, id_exp=None, id_documento=None, message: str, details: Optional[str] = None):
         payload = {"message": message}
         if id_doc is not None:
             payload["idDocFailed"] = id_doc
         if id_exp is not None:
             payload["idExpFailed"] = id_exp
+        if id_documento is not None:
+            payload["id_documento"] = id_documento
         if details:
             payload["details"] = details
         return payload
@@ -701,6 +704,66 @@ class SignaturesService:
         finally:
             self._close_db_connection(transaction_conn)
             self._release_entity_lock(entity_lock)
+
+    def sign_documento_externo_electronico(self, pdf):
+        id_documento = pdf.get("id_documento")
+        try:
+            es_op = pdf.get("es_op")
+            if es_op is True:
+                return id_documento, self._error_payload(
+                    id_documento=id_documento,
+                    message="Una Orden de Pago no usa Campo de Firma.",
+                ), None
+            if es_op is not False:
+                return id_documento, self._error_payload(
+                    id_documento=id_documento,
+                    message="Falta es_op.",
+                ), None
+            if not pdf.get("id_firmante"):
+                return id_documento, self._error_payload(
+                    id_documento=id_documento,
+                    message="Falta id_firmante.",
+                ), None
+
+            field_id = pdf.get("firma_lugar")
+            if not field_id:
+                return id_documento, self._error_payload(
+                    id_documento=id_documento,
+                    message="Falta el Campo de Firma (firma_lugar).",
+                ), None
+
+            pdf_b64 = pdf["pdf"]
+            field_names = list_pdf_field_names(pdf_b64)
+            if field_id not in field_names:
+                return id_documento, self._error_payload(
+                    id_documento=id_documento,
+                    message=f"El Campo de Firma '{field_id}' no existe en el PDF.",
+                ), None
+
+            name = pdf["firma_nombre"]
+            stamp = pdf["firma_sello"]
+            area = pdf["firma_area"]
+            timestamp_ms = int(tiempo.time() * 1000)
+            datetimesigned = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+            execution = self.build_execution_context(timestamp_ms, datetimesigned, False)
+            document_context = self._build_document_context(pdf_b64, execution)
+            role = f"{name}, {stamp}, {area}"
+            signed_pdf = self.sign_own_pdf(
+                pdf_b64,
+                False,
+                field_id,
+                stamp,
+                area,
+                name,
+                document_context,
+                role,
+            )
+            return id_documento, None, signed_pdf
+        except Exception as exc:
+            return id_documento, self._error_payload(
+                id_documento=id_documento,
+                message=str(exc),
+            ), None
 
     def end_signature_pdf(self, pdfs, certificates):
         error = None

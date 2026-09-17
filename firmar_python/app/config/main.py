@@ -4,6 +4,7 @@ from app.config.settings import settings
 from app.config.state import app_state
 from app.routes.issuer_resolve_route import register_issuer_resolve_routes
 from app.routes.routes import register_routes
+from app.routes.documento_externo import register_documento_externo_routes
 from app.services.observability import install_observability_logging
 from app.utils.saving import recover_pending_repairs
 
@@ -26,6 +27,7 @@ def create_app():
         
         # Register routes
         register_routes(app)
+        register_documento_externo_routes(app)
         register_issuer_resolve_routes(app)
         logger.info('Routes registered successfully')
         recovered_repairs = recover_pending_repairs()
