@@ -7,6 +7,7 @@ import time as tiempo
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 from PyPDF2 import PdfReader
 from cryptography import x509
@@ -18,9 +19,14 @@ from app.services.dss.close_pdf import close_pdf
 from app.services.dss.dss_json import get_data_to_sign_tapir_jades, sign_document_tapir_jades
 from app.services.dss.dss_pdf import (
     get_data_to_sign_certificate as _dss_get_data_certificate,
-    get_data_to_sign_token,
+    get_data_to_sign_token as _dss_get_data_token,
     sign_document_certificate as _dss_sign_certificate,
-    sign_document_token,
+    sign_document_token as _dss_sign_token,
+)
+from app.services.externo_context import (
+    build_externo_fingerprint,
+    externo_context_store,
+    lock_entity_id,
 )
 from app.services.dss.placement import get_data_to_sign_with_placement, sign_document_with_placement
 from app.services.local_certs import get_certificate_from_local, get_signature_value_own
@@ -130,6 +136,93 @@ def sign_document_certificate(
         height=height,
         page=page,
     )
+
+
+def get_data_to_sign_token(
+    pdf,
+    certificates,
+    current_time,
+    field_id,
+    stamp,
+    encoded_image,
+    page_count=None,
+    origin_x=None,
+    origin_y=None,
+    width=None,
+    height=None,
+    page=None,
+):
+    if not _has_signature_placement(origin_x, origin_y, width, height, page):
+        return _dss_get_data_token(
+            pdf, certificates, current_time, field_id, stamp, encoded_image, page_count
+        )
+    return get_data_to_sign_with_placement(
+        pdf,
+        certificates,
+        current_time,
+        field_id,
+        stamp,
+        encoded_image,
+        page_count,
+        origin_x=origin_x,
+        origin_y=origin_y,
+        width=width,
+        height=height,
+        page=page,
+    )
+
+
+def sign_document_token(
+    pdf,
+    signature_value,
+    certificates,
+    current_time,
+    field_id,
+    stamp,
+    encoded_image,
+    page_count=None,
+    origin_x=None,
+    origin_y=None,
+    width=None,
+    height=None,
+    page=None,
+):
+    if not _has_signature_placement(origin_x, origin_y, width, height, page):
+        return _dss_sign_token(
+            pdf,
+            signature_value,
+            certificates,
+            current_time,
+            field_id,
+            stamp,
+            encoded_image,
+            page_count,
+        )
+    return sign_document_with_placement(
+        pdf,
+        signature_value,
+        certificates,
+        current_time,
+        field_id,
+        stamp,
+        encoded_image,
+        page_count,
+        origin_x=origin_x,
+        origin_y=origin_y,
+        width=width,
+        height=height,
+        page=page,
+    )
+
+
+TUCUMAN_TZ = ZoneInfo("America/Argentina/Tucuman")
+
+
+def tucuman_clock(timestamp_ms=None):
+    if timestamp_ms is None:
+        timestamp_ms = int(tiempo.time() * 1000)
+    signed_at = datetime.fromtimestamp(timestamp_ms / 1000, tz=TUCUMAN_TZ)
+    return int(timestamp_ms), signed_at.strftime("%d/%m/%Y %H:%M:%S")
 
 
 class RepairRequiredError(signature_exc.SignatureProcessError):
@@ -788,81 +881,132 @@ class SignaturesService:
             self._close_db_connection(transaction_conn)
             self._release_entity_lock(entity_lock)
 
+    def _prepare_documento_externo(self, pdf):
+        id_documento = pdf.get("id_documento")
+        es_op = pdf.get("es_op")
+        if es_op is not True and es_op is not False:
+            return None, self._error_payload(
+                id_documento=id_documento,
+                message="Falta es_op.",
+            )
+        if not pdf.get("id_firmante"):
+            return None, self._error_payload(
+                id_documento=id_documento,
+                message="Falta id_firmante.",
+            )
+
+        pdf_b64 = pdf["pdf"]
+        signature_placement = None
+        if es_op is True:
+            if "firma_lugar" in pdf:
+                return None, self._error_payload(
+                    id_documento=id_documento,
+                    message="Una Orden de Pago no admite Campo de Firma (firma_lugar).",
+                )
+            markers = find_marcadores_trib(pdf_b64)
+            if len(markers) == 0:
+                return None, self._error_payload(
+                    id_documento=id_documento,
+                    message="Falta el Marcador TRIB.",
+                )
+            if len(markers) > 1:
+                return None, self._error_payload(
+                    id_documento=id_documento,
+                    message="Hay más de un Marcador TRIB.",
+                )
+            marker = markers[0]
+            field_id = ""
+            ancla = "OP"
+            signature_placement = {
+                "origin_x": marker.origin_x,
+                "origin_y": marker.origin_y,
+                "width": marker.width,
+                "height": marker.height,
+                "page": marker.page,
+            }
+        else:
+            field_id = pdf.get("firma_lugar")
+            if not field_id:
+                return None, self._error_payload(
+                    id_documento=id_documento,
+                    message="Falta el Campo de Firma (firma_lugar).",
+                )
+            field_names = list_pdf_field_names(pdf_b64)
+            if field_id not in field_names:
+                return None, self._error_payload(
+                    id_documento=id_documento,
+                    message=f"El Campo de Firma '{field_id}' no existe en el PDF.",
+                )
+            ancla = field_id
+
+        prepared = {
+            "id_documento": id_documento,
+            "id_firmante": pdf.get("id_firmante"),
+            "pdf_b64": pdf_b64,
+            "field_id": field_id,
+            "ancla": ancla,
+            "signature_placement": signature_placement,
+            "name": pdf["firma_nombre"],
+            "stamp": pdf["firma_sello"],
+            "area": pdf["firma_area"],
+        }
+        return prepared, None
+
+    def _externo_busy_error(self, id_documento):
+        return self._error_payload(
+            id_documento=id_documento,
+            message="Existe otra firma en curso para este documento.",
+        )
+
+    def _externo_token_image(self, prepared, execution, *, mode):
+        return self._build_signature_image(
+            stamp_text=f"{prepared['stamp']}\n{prepared['area']}\n{execution.datetimesigned}",
+            encoded_image_data=app_state.encoded_image.get("data")
+            if isinstance(app_state.encoded_image, dict)
+            else app_state.encoded_image,
+            mode=mode,
+            usuario=f"{prepared['name']}",
+            label_signed_by="Firmado digitalmente por",
+        )
+
+    def _externo_dss_kwargs(self, prepared):
+        placement = prepared.get("signature_placement") or {}
+        return {
+            "origin_x": placement.get("origin_x"),
+            "origin_y": placement.get("origin_y"),
+            "width": placement.get("width"),
+            "height": placement.get("height"),
+            "page": placement.get("page"),
+        }
+
     def sign_documento_externo_electronico(self, pdf):
         id_documento = pdf.get("id_documento")
+        lock_token = None
+        entity_id = None
         try:
-            es_op = pdf.get("es_op")
-            if es_op is not True and es_op is not False:
-                return id_documento, self._error_payload(
-                    id_documento=id_documento,
-                    message="Falta es_op.",
-                ), None
-            if not pdf.get("id_firmante"):
-                return id_documento, self._error_payload(
-                    id_documento=id_documento,
-                    message="Falta id_firmante.",
-                ), None
+            prepared, error = self._prepare_documento_externo(pdf)
+            if error is not None:
+                return id_documento, error, None
 
-            pdf_b64 = pdf["pdf"]
-            signature_placement = None
-            if es_op is True:
-                if "firma_lugar" in pdf:
-                    return id_documento, self._error_payload(
-                        id_documento=id_documento,
-                        message="Una Orden de Pago no admite Campo de Firma (firma_lugar).",
-                    ), None
-                markers = find_marcadores_trib(pdf_b64)
-                if len(markers) == 0:
-                    return id_documento, self._error_payload(
-                        id_documento=id_documento,
-                        message="Falta el Marcador TRIB.",
-                    ), None
-                if len(markers) > 1:
-                    return id_documento, self._error_payload(
-                        id_documento=id_documento,
-                        message="Hay más de un Marcador TRIB.",
-                    ), None
-                marker = markers[0]
-                field_id = ""
-                signature_placement = {
-                    "origin_x": marker.origin_x,
-                    "origin_y": marker.origin_y,
-                    "width": marker.width,
-                    "height": marker.height,
-                    "page": marker.page,
-                }
-            else:
-                field_id = pdf.get("firma_lugar")
-                if not field_id:
-                    return id_documento, self._error_payload(
-                        id_documento=id_documento,
-                        message="Falta el Campo de Firma (firma_lugar).",
-                    ), None
-                field_names = list_pdf_field_names(pdf_b64)
-                if field_id not in field_names:
-                    return id_documento, self._error_payload(
-                        id_documento=id_documento,
-                        message=f"El Campo de Firma '{field_id}' no existe en el PDF.",
-                    ), None
+            entity_id = lock_entity_id(prepared["id_documento"], prepared["id_firmante"], prepared["ancla"])
+            lock_token = externo_context_store.acquire_lock(entity_id)
+            if lock_token is None:
+                return id_documento, self._externo_busy_error(id_documento), None
 
-            name = pdf["firma_nombre"]
-            stamp = pdf["firma_sello"]
-            area = pdf["firma_area"]
-            timestamp_ms = int(tiempo.time() * 1000)
-            datetimesigned = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+            timestamp_ms, datetimesigned = tucuman_clock()
             execution = self.build_execution_context(timestamp_ms, datetimesigned, False)
-            document_context = self._build_document_context(pdf_b64, execution)
-            role = f"{name}, {stamp}, {area}"
+            document_context = self._build_document_context(prepared["pdf_b64"], execution)
+            role = f"{prepared['name']}, {prepared['stamp']}, {prepared['area']}"
             signed_pdf = self.sign_own_pdf(
-                pdf_b64,
+                prepared["pdf_b64"],
                 False,
-                field_id,
-                stamp,
-                area,
-                name,
+                prepared["field_id"],
+                prepared["stamp"],
+                prepared["area"],
+                prepared["name"],
                 document_context,
                 role,
-                signature_placement=signature_placement,
+                signature_placement=prepared["signature_placement"],
             )
             return id_documento, None, signed_pdf
         except Exception as exc:
@@ -870,6 +1014,143 @@ class SignaturesService:
                 id_documento=id_documento,
                 message=str(exc),
             ), None
+        finally:
+            externo_context_store.release_lock(entity_id, lock_token)
+
+    def init_documento_externo_digital(self, pdf, certificates):
+        id_documento = pdf.get("id_documento")
+        lock_token = None
+        entity_id = None
+        try:
+            prepared, error = self._prepare_documento_externo(pdf)
+            if error is not None:
+                return id_documento, error, None
+
+            entity_id = lock_entity_id(prepared["id_documento"], prepared["id_firmante"], prepared["ancla"])
+            lock_token = externo_context_store.acquire_lock(entity_id)
+            if lock_token is None:
+                return id_documento, self._externo_busy_error(id_documento), None
+
+            fingerprint = build_externo_fingerprint(
+                prepared["id_documento"],
+                prepared["id_firmante"],
+                prepared["ancla"],
+                prepared["pdf_b64"],
+            )
+            timestamp_ms, datetimesigned = tucuman_clock()
+            context, _result = externo_context_store.create_or_get_digital(
+                fingerprint,
+                timestamp_ms,
+                datetimesigned,
+            )
+            execution = self.build_execution_context(
+                context["timestamp_ms"],
+                context["datetimesigned"],
+                False,
+            )
+            document_context = self._build_document_context(prepared["pdf_b64"], execution)
+            role = f"{prepared['name']}, {prepared['stamp']}, {prepared['area']}"
+            custom_image = self._externo_token_image(prepared, execution, mode="cert")
+            data_to_sign_response = get_data_to_sign_token(
+                prepared["pdf_b64"],
+                certificates,
+                execution.timestamp_ms,
+                prepared["field_id"],
+                role,
+                custom_image,
+                document_context.page_count,
+                **self._externo_dss_kwargs(prepared),
+            )
+            return id_documento, None, data_to_sign_response["bytes"]
+        except Exception as exc:
+            return id_documento, self._error_payload(
+                id_documento=id_documento,
+                message=str(exc),
+            ), None
+        finally:
+            externo_context_store.release_lock(entity_id, lock_token)
+
+    def end_documento_externo_digital(self, pdf, certificates):
+        id_documento = pdf.get("id_documento")
+        lock_token = None
+        entity_id = None
+        lease_token = None
+        fingerprint = None
+        try:
+            prepared, error = self._prepare_documento_externo(pdf)
+            if error is not None:
+                return id_documento, error, None
+            signature_value = pdf.get("signatureValue")
+            if not signature_value:
+                return id_documento, self._error_payload(
+                    id_documento=id_documento,
+                    message="Falta signatureValue.",
+                ), None
+
+            entity_id = lock_entity_id(prepared["id_documento"], prepared["id_firmante"], prepared["ancla"])
+            lock_token = externo_context_store.acquire_lock(entity_id)
+            if lock_token is None:
+                return id_documento, self._externo_busy_error(id_documento), None
+
+            fingerprint = build_externo_fingerprint(
+                prepared["id_documento"],
+                prepared["id_firmante"],
+                prepared["ancla"],
+                prepared["pdf_b64"],
+            )
+            claim = externo_context_store.claim_for_end(fingerprint)
+            if claim.result == "missing":
+                return id_documento, self._error_payload(
+                    id_documento=id_documento,
+                    message="No se encontró contexto de firma pendiente para el documento.",
+                ), None
+            if claim.result == "busy":
+                return id_documento, self._externo_busy_error(id_documento), None
+            if claim.result == "finalized":
+                error = self._error_payload(
+                    id_documento=id_documento,
+                    message="La firma ya fue finalizada previamente para este documento.",
+                )
+                error["finalized"] = True
+                return id_documento, error, None
+            if claim.result != "claimed":
+                return id_documento, self._error_payload(
+                    id_documento=id_documento,
+                    message="Contexto de firma inválido para el documento.",
+                ), None
+
+            lease_token = claim.lease_token
+            execution = self.build_execution_context(
+                claim.context["timestamp_ms"],
+                claim.context["datetimesigned"],
+                False,
+            )
+            document_context = self._build_document_context(prepared["pdf_b64"], execution)
+            role = f"{prepared['name']}, {prepared['stamp']}, {prepared['area']}"
+            custom_image = self._externo_token_image(prepared, execution, mode="token")
+            signed_pdf_response = sign_document_token(
+                prepared["pdf_b64"],
+                signature_value,
+                certificates,
+                execution.timestamp_ms,
+                prepared["field_id"],
+                role,
+                custom_image,
+                document_context.page_count,
+                **self._externo_dss_kwargs(prepared),
+            )
+            externo_context_store.complete(fingerprint, lease_token)
+            lease_token = None
+            return id_documento, None, signed_pdf_response.get("bytes", "")
+        except Exception as exc:
+            if fingerprint and lease_token:
+                externo_context_store.release_claim(fingerprint, lease_token)
+            return id_documento, self._error_payload(
+                id_documento=id_documento,
+                message=str(exc),
+            ), None
+        finally:
+            externo_context_store.release_lock(entity_id, lock_token)
 
     def end_signature_pdf(self, pdfs, certificates):
         error = None

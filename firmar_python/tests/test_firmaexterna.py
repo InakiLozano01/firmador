@@ -100,6 +100,7 @@ from app.routes.documento_externo import register_documento_externo_routes
 
 
 API_KEY = "test-externo-key"
+CERTS = {"certificate": "token-cert", "certificateChain": []}
 
 
 def pdf_with_signature_field(field_name="sig_field") -> str:
@@ -182,6 +183,9 @@ class _FirmaExternaClient(unittest.TestCase):
 
     def _post_externa(self, body, headers=None):
         return self.client.post("/firmaexterna", json=body, headers=headers if headers is not None else self._auth_headers())
+
+    def _post_externa_end(self, body, headers=None):
+        return self.client.post("/firmaexternaend", json=body, headers=headers if headers is not None else self._auth_headers())
 
 
 class FirmaExternaElectronicTests(_FirmaExternaClient):
@@ -538,6 +542,187 @@ class FirmaExternaElectronicOpTests(_FirmaExternaClient):
         signed_op = base64.b64decode(payload["signedPdfs"][0])
         trib_text = PdfReader(io.BytesIO(signed_op)).pages[0].extract_text() or ""
         self.assertRegex(trib_text, r"@TRIB")
+
+
+class FirmaExternaDigitalCampoTests(_FirmaExternaClient):
+    def _capture_token_dss(self, get_data_mock, sign_mock=None):
+        self.dss_times = []
+        self.dss_field_ids = []
+        self.dss_sign_times = []
+
+        def capture_get_data(pdf, certificates, current_time, field_id, stamp, encoded_image, page_count=None, **_kwargs):
+            self.dss_times.append(current_time)
+            self.dss_field_ids.append(field_id)
+            return {"bytes": f"dts-{current_time}"}
+
+        get_data_mock.side_effect = capture_get_data
+        if sign_mock is not None:
+            def capture_sign(pdf, signature_value, certificates, current_time, field_id, stamp, encoded_image, page_count=None, **_kwargs):
+                self.dss_sign_times.append(current_time)
+                self.dss_field_ids.append(field_id)
+                return {"bytes": f"signed-{signature_value}"}
+
+            sign_mock.side_effect = capture_sign
+
+    def test_digital_lote_without_certificates_is_http_400(self):
+        response = self._post_externa({"firma_digital": True, "pdfs": [_item()]})
+        self.assertEqual(response.status_code, 400)
+
+    def test_firmaexternaend_rejects_firma_digital_flag(self):
+        response = self._post_externa_end({
+            "firma_digital": False,
+            "certificates": CERTS,
+            "pdfs": [_item(signatureValue="sig")],
+        })
+        self.assertEqual(response.status_code, 400)
+
+    def test_firmaexternaend_rejects_missing_api_key(self):
+        response = self.client.post("/firmaexternaend", json={"certificates": CERTS, "pdfs": [_item()]})
+        self.assertEqual(response.status_code, 401)
+
+    @patch("app.services.signatures_service.unlock_pdf_and_close_task")
+    @patch("app.services.signatures_service.save_signed_pdf_atomic")
+    @patch("app.services.signatures_service.create_signature_image", return_value={"data": "sello-bytes"})
+    @patch("app.services.signatures_service.get_data_to_sign_token")
+    def test_digital_init_returns_compact_data_to_sign(self, get_data_mock, sello_mock, save_mock, unlock_mock):
+        self._capture_token_dss(get_data_mock)
+        sello_mock.side_effect = lambda *args, **kwargs: self.sello_labels.append(kwargs.get("label_signed_by")) or {
+            "data": "sello-bytes"
+        }
+        first = _item(id_documento="a")
+        second = _item(id_documento="b")
+        response = self._post_externa({
+            "firma_digital": True,
+            "certificates": CERTS,
+            "pdfs": [first, second],
+        })
+        payload = response.get_json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(payload["status"])
+        self.assertEqual(payload["docsSigned"], ["a", "b"])
+        self.assertEqual(len(payload["dataToSign"]), 2)
+        self.assertNotIn("signedPdfs", payload)
+        self.assertEqual(self.dss_field_ids, ["sig_field", "sig_field"])
+        self.assertIn("Firmado digitalmente por", self.sello_labels)
+        save_mock.assert_not_called()
+        unlock_mock.assert_not_called()
+
+    @patch("app.services.signatures_service.unlock_pdf_and_close_task")
+    @patch("app.services.signatures_service.save_signed_pdf_atomic")
+    @patch("app.services.signatures_service.create_signature_image", return_value={"data": "sello-bytes"})
+    @patch("app.services.signatures_service.sign_document_token")
+    @patch("app.services.signatures_service.get_data_to_sign_token")
+    def test_digital_end_embeds_with_frozen_clock(self, get_data_mock, sign_mock, _sello, save_mock, unlock_mock):
+        self._capture_token_dss(get_data_mock, sign_mock)
+        item = _item()
+        init = self._post_externa({"firma_digital": True, "certificates": CERTS, "pdfs": [item]})
+        init_payload = init.get_json()
+        frozen = self.dss_times[0]
+
+        end_item = dict(item)
+        end_item["signatureValue"] = "token-sig"
+        response = self._post_externa_end({"certificates": CERTS, "pdfs": [end_item]})
+        payload = response.get_json()
+
+        self.assertEqual(init.status_code, 200)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(payload["status"])
+        self.assertEqual(payload["docsSigned"], ["doc-1"])
+        self.assertEqual(payload["signedPdfs"], ["signed-token-sig"])
+        self.assertEqual(init_payload["dataToSign"], [f"dts-{frozen}"])
+        self.assertEqual(self.dss_sign_times, [frozen])
+        self.assertEqual(self.dss_field_ids[-1], "sig_field")
+        save_mock.assert_not_called()
+        unlock_mock.assert_not_called()
+
+    @patch("app.services.signatures_service.create_signature_image", return_value={"data": "sello-bytes"})
+    @patch("app.services.signatures_service.get_data_to_sign_token")
+    def test_digital_init_retry_reuses_clock_and_data_to_sign(self, get_data_mock, *_rest):
+        self._capture_token_dss(get_data_mock)
+        body = {"firma_digital": True, "certificates": CERTS, "pdfs": [_item()]}
+        with patch("app.services.signatures_service.tiempo.time", side_effect=[1000.0, 5000.0, 9000.0, 12000.0]):
+            first = self._post_externa(body)
+            second = self._post_externa(body)
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(first.get_json()["dataToSign"], second.get_json()["dataToSign"])
+        self.assertEqual(self.dss_times[0], self.dss_times[1])
+
+    @patch("app.services.signatures_service.create_signature_image", return_value={"data": "sello-bytes"})
+    @patch("app.services.signatures_service.get_data_to_sign_token")
+    def test_swapped_pdf_does_not_reuse_frozen_clock(self, get_data_mock, *_rest):
+        self._capture_token_dss(get_data_mock)
+        original = _item()
+        swapped = _item(pdf=pdf_with_signature_field("other_field"), firma_lugar="other_field")
+        self._post_externa({"firma_digital": True, "certificates": CERTS, "pdfs": [original]})
+        second = self._post_externa({"firma_digital": True, "certificates": CERTS, "pdfs": [swapped]})
+        payload = second.get_json()
+        reused = payload.get("status") is True and payload.get("dataToSign") == [f"dts-{self.dss_times[0]}"]
+        self.assertFalse(reused)
+
+    @patch("app.services.signatures_service.create_signature_image", return_value={"data": "sello-bytes"})
+    @patch("app.services.signatures_service.sign_document_token")
+    @patch("app.services.signatures_service.get_data_to_sign_token")
+    def test_successful_end_replay_is_409_without_pdfs(self, get_data_mock, sign_mock, *_rest):
+        self._capture_token_dss(get_data_mock, sign_mock)
+        item = _item()
+        self._post_externa({"firma_digital": True, "certificates": CERTS, "pdfs": [item]})
+        end_item = dict(item)
+        end_item["signatureValue"] = "token-sig"
+        first_end = self._post_externa_end({"certificates": CERTS, "pdfs": [end_item]})
+        replay = self._post_externa_end({"certificates": CERTS, "pdfs": [end_item]})
+        replay_payload = replay.get_json()
+
+        self.assertEqual(first_end.status_code, 200)
+        self.assertEqual(replay.status_code, 409)
+        self.assertNotIn("signedPdfs", replay_payload)
+
+    @patch("app.services.signatures_service.create_signature_image", return_value={"data": "sello-bytes"})
+    @patch("app.services.signatures_service.get_certificate_from_local", return_value={"certificate": "local"})
+    @patch("app.services.signatures_service.get_signature_value_own", return_value="sig")
+    @patch("app.services.signatures_service.sign_document_certificate", return_value={"bytes": "signed"})
+    @patch("app.services.signatures_service.get_data_to_sign_certificate", return_value={"bytes": "data"})
+    def test_in_flight_lock_returns_busy_item_error(self, *_rest):
+        try:
+            from app.services import externo_context as externo_context_mod
+        except ImportError:
+            self.fail("Documento Externo must take a Redis lock so a second in-flight request is busy")
+        original_acquire = externo_context_mod.externo_context_store.acquire_lock
+        externo_context_mod.externo_context_store.acquire_lock = lambda *_a, **_k: None
+        try:
+            response = self._post_externa({"firma_digital": False, "pdfs": [_item()]})
+        finally:
+            externo_context_mod.externo_context_store.acquire_lock = original_acquire
+        payload = response.get_json()
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(payload["status"])
+        self.assertEqual(payload["docsNotSigned"], ["doc-1"])
+        self.assertIn("curso", payload["errors"][0]["message"].lower())
+
+    @patch("app.services.signatures_service.create_signature_image", return_value={"data": "sello-bytes"})
+    @patch("app.services.signatures_service.get_certificate_from_local", return_value={"certificate": "local"})
+    @patch("app.services.signatures_service.get_signature_value_own", return_value="sig")
+    @patch("app.services.signatures_service.sign_document_certificate")
+    @patch("app.services.signatures_service.get_data_to_sign_certificate")
+    def test_electronic_retry_re_signs_with_new_clock(self, get_data_mock, sign_mock, *_rest):
+        times = []
+
+        def capture(pdf, certificates, current_time, field_id, stamp, encoded_image, page_count=None, **_kwargs):
+            times.append(current_time)
+            return {"bytes": "data"}
+
+        get_data_mock.side_effect = capture
+        sign_mock.return_value = {"bytes": "signed"}
+        body = {"firma_digital": False, "pdfs": [_item()]}
+        with patch("app.services.signatures_service.tiempo.time", side_effect=[1000.0, 5000.0, 9000.0, 12000.0]):
+            first = self._post_externa(body)
+            second = self._post_externa(body)
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.assertTrue(first.get_json()["status"])
+        self.assertTrue(second.get_json()["status"])
+        self.assertNotEqual(times[0], times[1])
 
 
 if __name__ == "__main__":
