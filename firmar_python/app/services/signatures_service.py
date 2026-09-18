@@ -842,6 +842,11 @@ class SignaturesService:
 
     def _prepare_documento_externo(self, pdf):
         id_documento = pdf.get("id_documento")
+        if not id_documento:
+            return None, self._error_payload(
+                id_documento=id_documento if id_documento is not None else "",
+                message="Falta id_documento.",
+            )
         es_op = pdf.get("es_op")
         if es_op is not True and es_op is not False:
             return None, self._error_payload(
@@ -1002,6 +1007,9 @@ class SignaturesService:
             if error is not None:
                 return id_documento, error, None
             execution, document_context = self._externo_execution(prepared, reuse_digital_clock=True)
+            stored = (externo_context_store.get_context(prepared.fingerprint) or {}).get("dataToSign")
+            if stored:
+                return id_documento, None, stored
             custom_image = self._externo_token_image(prepared, execution, mode="cert")
             data_to_sign_response = get_data_to_sign_token(
                 prepared.pdf_b64,
@@ -1013,7 +1021,9 @@ class SignaturesService:
                 document_context.page_count,
                 **self._externo_dss_kwargs(prepared),
             )
-            return id_documento, None, data_to_sign_response["bytes"]
+            data_to_sign = data_to_sign_response["bytes"]
+            externo_context_store.remember_data_to_sign(prepared.fingerprint, data_to_sign)
+            return id_documento, None, data_to_sign
         except Exception as exc:
             return id_documento, self._error_payload(
                 id_documento=id_documento,

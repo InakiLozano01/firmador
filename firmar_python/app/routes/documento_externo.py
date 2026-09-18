@@ -80,6 +80,13 @@ def register_documento_externo_routes(app):
         if not isinstance(pdfs, list) or len(pdfs) == 0:
             return _empty_pdfs()
 
+        if any(isinstance(pdf, dict) and "firma_digital" in pdf for pdf in pdfs):
+            return jsonify({
+                "status": False,
+                "message": "firma_digital es solo a nivel de lote",
+                "errors": [{"message": "firma_digital no permitido en el ítem"}],
+            }), 400
+
         firma_digital = data.get("firma_digital")
         if firma_digital is True:
             if not _has_certificates(data):

@@ -153,6 +153,16 @@ class ExternoContextStore:
         self._put_context(fingerprint, ctx, finalized=False)
         return ExternoClaim(result="claimed", context=ctx, lease_token=lease_token)
 
+    def get_context(self, fingerprint: str) -> Optional[Dict]:
+        return self._get_context(fingerprint)
+
+    def remember_data_to_sign(self, fingerprint: str, data_to_sign: str) -> None:
+        ctx = self._get_context(fingerprint)
+        if not ctx:
+            return
+        ctx["dataToSign"] = data_to_sign
+        self._put_context(fingerprint, ctx, finalized=False)
+
     def complete(self, fingerprint: str, lease_token: Optional[str]) -> str:
         ctx = self._get_context(fingerprint)
         if not ctx or str(ctx.get("lease_token") or "") != str(lease_token or ""):

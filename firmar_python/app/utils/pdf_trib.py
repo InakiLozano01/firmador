@@ -77,6 +77,12 @@ def _markers_in_annotations(page_obj, page_number: int) -> List[MarcadorTrib]:
     return markers
 
 
+def _merge_page_encodings(texts: List[MarcadorTrib], annots: List[MarcadorTrib]) -> List[MarcadorTrib]:
+    if len(texts) == 1 and len(annots) == 1:
+        return annots
+    return annots + texts
+
+
 def _dedupe(markers: List[MarcadorTrib]) -> List[MarcadorTrib]:
     seen = set()
     unique = []
@@ -94,15 +100,15 @@ def find_marcadores_trib(pdf_b64: str) -> List[MarcadorTrib]:
     markers: List[MarcadorTrib] = []
     for index, page in enumerate(reader.pages):
         page_number = index + 1
-        found_on_page: List[MarcadorTrib] = []
+        found_text: List[MarcadorTrib] = []
 
-        def visitor(text, cm, tm, fontDict, fontSize, _page=page_number, _bucket=found_on_page):
+        def visitor(text, cm, tm, fontDict, fontSize, _page=page_number, _bucket=found_text):
             _bucket.extend(_markers_in_text(text, tm, fontSize, _page))
 
         try:
             page.extract_text(visitor_text=visitor)
         except Exception:
             pass
-        found_on_page.extend(_markers_in_annotations(page, page_number))
-        markers.extend(found_on_page)
+        found_annots = _markers_in_annotations(page, page_number)
+        markers.extend(_merge_page_encodings(found_text, found_annots))
     return _dedupe(markers)
