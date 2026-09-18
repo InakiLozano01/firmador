@@ -17,11 +17,12 @@ from app.exceptions import signature_exc
 from app.services.dss.close_pdf import close_pdf
 from app.services.dss.dss_json import get_data_to_sign_tapir_jades, sign_document_tapir_jades
 from app.services.dss.dss_pdf import (
-    get_data_to_sign_certificate,
+    get_data_to_sign_certificate as _dss_get_data_certificate,
     get_data_to_sign_token,
-    sign_document_certificate,
+    sign_document_certificate as _dss_sign_certificate,
     sign_document_token,
 )
+from app.services.dss.placement import get_data_to_sign_with_placement, sign_document_with_placement
 from app.services.local_certs import get_certificate_from_local, get_signature_value_own
 from app.services.observability import ENTRY_ERROR, current_operation, record_entry, stage_scope
 from app.services.signing_context_store import (
@@ -32,6 +33,7 @@ from app.services.signing_context_store import (
     signing_context_store,
 )
 from app.utils.pdf_fields import list_pdf_field_names
+from app.utils.pdf_trib import find_marcadores_trib
 from app.utils.db import (
     get_number_and_date_then_close,
     get_number_and_date_then_close_project,
@@ -47,6 +49,87 @@ logger = logging.getLogger(__name__)
 ERROR_CTX_RELEASE_FAILED = "CTX_RELEASE_FAILED"
 ERROR_PDF_SAVE_FAILED = "PDF_SAVE_FAILED"
 ERROR_PDF_REPAIR_REQUIRED = "PDF_REPAIR_REQUIRED"
+
+
+def _has_signature_placement(origin_x, origin_y, width, height, page) -> bool:
+    return any(value is not None for value in (origin_x, origin_y, width, height, page))
+
+
+def get_data_to_sign_certificate(
+    pdf,
+    certificates,
+    current_time,
+    field_id,
+    stamp,
+    encoded_image,
+    page_count=None,
+    origin_x=None,
+    origin_y=None,
+    width=None,
+    height=None,
+    page=None,
+):
+    if not _has_signature_placement(origin_x, origin_y, width, height, page):
+        return _dss_get_data_certificate(
+            pdf, certificates, current_time, field_id, stamp, encoded_image, page_count
+        )
+    return get_data_to_sign_with_placement(
+        pdf,
+        certificates,
+        current_time,
+        field_id,
+        stamp,
+        encoded_image,
+        page_count,
+        origin_x=origin_x,
+        origin_y=origin_y,
+        width=width,
+        height=height,
+        page=page,
+    )
+
+
+def sign_document_certificate(
+    pdf,
+    signature_value,
+    certificates,
+    current_time,
+    field_id,
+    stamp,
+    encoded_image,
+    page_count=None,
+    origin_x=None,
+    origin_y=None,
+    width=None,
+    height=None,
+    page=None,
+):
+    if not _has_signature_placement(origin_x, origin_y, width, height, page):
+        return _dss_sign_certificate(
+            pdf,
+            signature_value,
+            certificates,
+            current_time,
+            field_id,
+            stamp,
+            encoded_image,
+            page_count,
+        )
+    return sign_document_with_placement(
+        pdf,
+        signature_value,
+        certificates,
+        current_time,
+        field_id,
+        stamp,
+        encoded_image,
+        page_count,
+        origin_x=origin_x,
+        origin_y=origin_y,
+        width=width,
+        height=height,
+        page=page,
+    )
 
 
 class RepairRequiredError(signature_exc.SignatureProcessError):
@@ -709,12 +792,7 @@ class SignaturesService:
         id_documento = pdf.get("id_documento")
         try:
             es_op = pdf.get("es_op")
-            if es_op is True:
-                return id_documento, self._error_payload(
-                    id_documento=id_documento,
-                    message="Una Orden de Pago no usa Campo de Firma.",
-                ), None
-            if es_op is not False:
+            if es_op is not True and es_op is not False:
                 return id_documento, self._error_payload(
                     id_documento=id_documento,
                     message="Falta es_op.",
@@ -725,20 +803,47 @@ class SignaturesService:
                     message="Falta id_firmante.",
                 ), None
 
-            field_id = pdf.get("firma_lugar")
-            if not field_id:
-                return id_documento, self._error_payload(
-                    id_documento=id_documento,
-                    message="Falta el Campo de Firma (firma_lugar).",
-                ), None
-
             pdf_b64 = pdf["pdf"]
-            field_names = list_pdf_field_names(pdf_b64)
-            if field_id not in field_names:
-                return id_documento, self._error_payload(
-                    id_documento=id_documento,
-                    message=f"El Campo de Firma '{field_id}' no existe en el PDF.",
-                ), None
+            signature_placement = None
+            if es_op is True:
+                if "firma_lugar" in pdf:
+                    return id_documento, self._error_payload(
+                        id_documento=id_documento,
+                        message="Una Orden de Pago no admite Campo de Firma (firma_lugar).",
+                    ), None
+                markers = find_marcadores_trib(pdf_b64)
+                if len(markers) == 0:
+                    return id_documento, self._error_payload(
+                        id_documento=id_documento,
+                        message="Falta el Marcador TRIB.",
+                    ), None
+                if len(markers) > 1:
+                    return id_documento, self._error_payload(
+                        id_documento=id_documento,
+                        message="Hay más de un Marcador TRIB.",
+                    ), None
+                marker = markers[0]
+                field_id = ""
+                signature_placement = {
+                    "origin_x": marker.origin_x,
+                    "origin_y": marker.origin_y,
+                    "width": marker.width,
+                    "height": marker.height,
+                    "page": marker.page,
+                }
+            else:
+                field_id = pdf.get("firma_lugar")
+                if not field_id:
+                    return id_documento, self._error_payload(
+                        id_documento=id_documento,
+                        message="Falta el Campo de Firma (firma_lugar).",
+                    ), None
+                field_names = list_pdf_field_names(pdf_b64)
+                if field_id not in field_names:
+                    return id_documento, self._error_payload(
+                        id_documento=id_documento,
+                        message=f"El Campo de Firma '{field_id}' no existe en el PDF.",
+                    ), None
 
             name = pdf["firma_nombre"]
             stamp = pdf["firma_sello"]
@@ -757,6 +862,7 @@ class SignaturesService:
                 name,
                 document_context,
                 role,
+                signature_placement=signature_placement,
             )
             return id_documento, None, signed_pdf
         except Exception as exc:
@@ -1092,7 +1198,7 @@ class SignaturesService:
                 message=f"Error al finalizar firma JADES: {str(exc)}",
             ), index_signed
 
-    def sign_own_pdf(self, pdf, is_yunga_sign, field_to_sign, stamp, area, name, document_context: DocumentProcessingContext, role):
+    def sign_own_pdf(self, pdf, is_yunga_sign, field_to_sign, stamp, area, name, document_context: DocumentProcessingContext, role, signature_placement=None):
         datetimesigned = self.normalize_datetimesigned(document_context.execution.datetimesigned)
         if not is_yunga_sign:
             custom_image = self._build_signature_image(
@@ -1127,10 +1233,12 @@ class SignaturesService:
                 role,
                 custom_image,
                 document_context,
+                signature_placement=signature_placement,
             )
 
     @staticmethod
-    def create_and_sign(pdf, certificates, field_to_sign, role, custom_image, document_context: DocumentProcessingContext):
+    def create_and_sign(pdf, certificates, field_to_sign, role, custom_image, document_context: DocumentProcessingContext, signature_placement=None):
+        placement = signature_placement or {}
         try:
             with stage_scope("pdf.sign.local.get_data_to_sign", "Obtener datos para firma local"):
                 data_to_sign_response = get_data_to_sign_certificate(
@@ -1141,6 +1249,11 @@ class SignaturesService:
                     role,
                     custom_image,
                     document_context.page_count,
+                    origin_x=placement.get("origin_x"),
+                    origin_y=placement.get("origin_y"),
+                    width=placement.get("width"),
+                    height=placement.get("height"),
+                    page=placement.get("page"),
                 )
             with stage_scope("pdf.sign.local.private_key_sign", "Firmar datos con clave local"):
                 signature_value = get_signature_value_own(data_to_sign_response["bytes"])
@@ -1154,6 +1267,11 @@ class SignaturesService:
                     role,
                     custom_image,
                     document_context.page_count,
+                    origin_x=placement.get("origin_x"),
+                    origin_y=placement.get("origin_y"),
+                    width=placement.get("width"),
+                    height=placement.get("height"),
+                    page=placement.get("page"),
                 )
             return signed_pdf_response["bytes"]
         except Exception as exc:

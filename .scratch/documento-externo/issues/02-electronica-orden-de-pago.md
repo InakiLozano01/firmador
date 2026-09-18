@@ -4,12 +4,12 @@
 
 **Blocked by:** 01 — Firma Electrónica de Documento Externo con Campo de Firma
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] `es_op=true` with exactly one Marcador TRIB → item succeeds; DSS sees rectangle + page (empty `fieldId`), not `firma_lugar`
-- [ ] `@trib` and `@TRIB` both count; marker not on the last page still uses the marker’s page
-- [ ] Zero markers, or more than one, → item error; no fallback to a Campo de Firma
-- [ ] `es_op=true` plus `firma_lugar` → item error only; the rest of the lote continues
-- [ ] `es_op=false` on a PDF that also contains `@TRIB` ignores the marker and uses the Campo de Firma
-- [ ] Mixed OP + non-OP electronic lote in one request: successes compact in request order; Marcador TRIB is still present after signing
-- [ ] HTTP seam with fixture PDFs (0 / 1 / 2 markers); DSS mock records origin, size, and page
+- [x] `es_op=true` with exactly one Marcador TRIB → item succeeds; DSS sees rectangle + page (empty `fieldId`), not `firma_lugar`
+- [x] `@trib` and `@TRIB` both count; marker not on the last page still uses the marker’s page
+- [x] Zero markers, or more than one, → item error; no fallback to a Campo de Firma
+- [x] `es_op=true` plus `firma_lugar` → item error only; the rest of the lote continues
+- [x] `es_op=false` on a PDF that also contains `@TRIB` ignores the marker and uses the Campo de Firma
+- [x] Mixed OP + non-OP electronic lote in one request: successes compact in request order; Marcador TRIB is still present after signing
+- [x] HTTP seam with fixture PDFs (0 / 1 / 2 markers); DSS mock records origin, size, and page

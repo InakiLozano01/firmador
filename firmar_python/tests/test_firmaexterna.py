@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from flask import Flask
-from PyPDF2 import PdfWriter
+from PyPDF2 import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 
 
@@ -119,6 +119,23 @@ def pdf_without_fields() -> str:
     return base64.b64encode(buffer.getvalue()).decode("ascii")
 
 
+def pdf_with_trib_markers(markers, pages=1, extra_field=None) -> str:
+    buffer = io.BytesIO()
+    pdf = canvas.Canvas(buffer, pagesize=(595, 842))
+    by_page = {}
+    for page_number, x, y, text in markers:
+        by_page.setdefault(page_number, []).append((x, y, text))
+    for page_number in range(1, pages + 1):
+        if extra_field and page_number == 1:
+            pdf.acroForm.textfield(name=extra_field, x=10, y=10, width=100, height=40)
+        pdf.setFont("Helvetica", 12)
+        for x, y, text in by_page.get(page_number, []):
+            pdf.drawString(x, y, text)
+        pdf.showPage()
+    pdf.save()
+    return base64.b64encode(buffer.getvalue()).decode("ascii")
+
+
 def _item(**overrides):
     payload = {
         "pdf": pdf_with_signature_field(),
@@ -134,7 +151,19 @@ def _item(**overrides):
     return payload
 
 
-class FirmaExternaElectronicTests(unittest.TestCase):
+def _op_item(**overrides):
+    payload = _item(
+        es_op=True,
+        pdf=pdf_with_trib_markers(markers=[(2, 100, 500, "@TRIB")], pages=3),
+    )
+    payload.pop("firma_lugar", None)
+    payload.update(overrides)
+    if "firma_lugar" not in overrides:
+        payload.pop("firma_lugar", None)
+    return payload
+
+
+class _FirmaExternaClient(unittest.TestCase):
     def setUp(self):
         os.environ["FIRMA_EXTERNA_API_KEY"] = API_KEY
         app = Flask(__name__)
@@ -143,6 +172,7 @@ class FirmaExternaElectronicTests(unittest.TestCase):
         self.client = app.test_client()
         self.dss_field_ids = []
         self.sello_labels = []
+        self.dss_placements = []
 
     def tearDown(self):
         os.environ.pop("FIRMA_EXTERNA_API_KEY", None)
@@ -152,6 +182,9 @@ class FirmaExternaElectronicTests(unittest.TestCase):
 
     def _post_externa(self, body, headers=None):
         return self.client.post("/firmaexterna", json=body, headers=headers if headers is not None else self._auth_headers())
+
+
+class FirmaExternaElectronicTests(_FirmaExternaClient):
 
     def test_rejects_missing_api_key(self):
         response = self.client.post("/firmaexterna", json={"firma_digital": False, "pdfs": []})
@@ -220,7 +253,7 @@ class FirmaExternaElectronicTests(unittest.TestCase):
             "data": "sello-bytes"
         }
 
-        def capture_get_data(pdf, certificates, current_time, field_id, stamp, encoded_image, page_count=None):
+        def capture_get_data(pdf, certificates, current_time, field_id, stamp, encoded_image, page_count=None, **_kwargs):
             self.dss_field_ids.append(field_id)
             return {"bytes": "data-to-sign"}
 
@@ -321,6 +354,190 @@ class FirmaExternaElectronicTests(unittest.TestCase):
             [err["id_documento"] for err in payload["errors"]],
             ["no-es-op", "no-firmante"],
         )
+
+
+class FirmaExternaElectronicOpTests(_FirmaExternaClient):
+    def _capture_dss(self, get_data_mock, sign_mock=None, echo_pdf=False):
+        self.dss_placements = []
+
+        def capture_get_data(
+            pdf,
+            certificates,
+            current_time,
+            field_id,
+            stamp,
+            encoded_image,
+            page_count=None,
+            origin_x=None,
+            origin_y=None,
+            width=None,
+            height=None,
+            page=None,
+            **_kwargs,
+        ):
+            self.dss_placements.append({
+                "pdf": pdf,
+                "fieldId": field_id,
+                "originX": origin_x,
+                "originY": origin_y,
+                "width": width,
+                "height": height,
+                "page": page if page is not None else page_count,
+            })
+            return {"bytes": "data-to-sign"}
+
+        get_data_mock.side_effect = capture_get_data
+        if sign_mock is not None and echo_pdf:
+            sign_mock.side_effect = lambda pdf, *_args, **_kwargs: {"bytes": pdf}
+
+    @patch("app.services.signatures_service.create_signature_image", return_value={"data": "sello-bytes"})
+    @patch("app.services.signatures_service.get_certificate_from_local", return_value={"certificate": "local"})
+    @patch("app.services.signatures_service.get_signature_value_own", return_value="sig")
+    @patch("app.services.signatures_service.sign_document_certificate", return_value={"bytes": "signed-op"})
+    @patch("app.services.signatures_service.get_data_to_sign_certificate")
+    def test_op_with_one_trib_uses_rectangle_on_marker_page(self, get_data_mock, *_rest):
+        self._capture_dss(get_data_mock)
+        item = _op_item(
+            id_documento="op-1",
+            pdf=pdf_with_trib_markers(markers=[(2, 100, 500, "@trib")], pages=3),
+        )
+
+        response = self._post_externa({"firma_digital": False, "pdfs": [item]})
+        payload = response.get_json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(payload["status"])
+        self.assertEqual(payload["docsSigned"], ["op-1"])
+        self.assertEqual(payload["signedPdfs"], ["signed-op"])
+        self.assertEqual(len(self.dss_placements), 1)
+        placement = self.dss_placements[0]
+        self.assertEqual(placement["fieldId"], "")
+        self.assertEqual(placement["page"], 2)
+        self.assertEqual(placement["width"], 320)
+        self.assertEqual(placement["height"], 80)
+        self.assertAlmostEqual(placement["originX"], 100, delta=2)
+        self.assertAlmostEqual(placement["originY"] + 80, 500, delta=20)
+
+    @patch("app.services.signatures_service.create_signature_image", return_value={"data": "sello-bytes"})
+    @patch("app.services.signatures_service.get_certificate_from_local", return_value={"certificate": "local"})
+    @patch("app.services.signatures_service.get_signature_value_own", return_value="sig")
+    @patch("app.services.signatures_service.sign_document_certificate", return_value={"bytes": "signed"})
+    @patch("app.services.signatures_service.get_data_to_sign_certificate")
+    def test_zero_or_two_trib_markers_fail_without_campo_fallback(self, get_data_mock, *_rest):
+        self._capture_dss(get_data_mock)
+        zero = _op_item(
+            id_documento="zero",
+            pdf=pdf_with_trib_markers(markers=[], pages=1, extra_field="sig_field"),
+        )
+        two = _op_item(
+            id_documento="two",
+            pdf=pdf_with_trib_markers(
+                markers=[(1, 40, 200, "@TRIB"), (1, 300, 200, "@TRIB")],
+                pages=1,
+                extra_field="sig_field",
+            ),
+        )
+        good_campo = _item(id_documento="ok")
+        good_op = _op_item(id_documento="ok-op")
+
+        response = self._post_externa({"firma_digital": False, "pdfs": [zero, good_campo, two, good_op]})
+        payload = response.get_json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(payload["status"])
+        self.assertEqual(payload["docsSigned"], ["ok", "ok-op"])
+        self.assertEqual(payload["docsNotSigned"], ["zero", "two"])
+        self.assertEqual(
+            [err["id_documento"] for err in payload["errors"]],
+            ["zero", "two"],
+        )
+        self.assertEqual([call["fieldId"] for call in self.dss_placements], ["sig_field", ""])
+
+    @patch("app.services.signatures_service.create_signature_image", return_value={"data": "sello-bytes"})
+    @patch("app.services.signatures_service.get_certificate_from_local", return_value={"certificate": "local"})
+    @patch("app.services.signatures_service.get_signature_value_own", return_value="sig")
+    @patch("app.services.signatures_service.sign_document_certificate", return_value={"bytes": "signed"})
+    @patch("app.services.signatures_service.get_data_to_sign_certificate")
+    def test_op_with_firma_lugar_fails_only_that_item(self, get_data_mock, *_rest):
+        self._capture_dss(get_data_mock)
+        invalid = _op_item(id_documento="op-field", firma_lugar="sig_field")
+        good_op = _op_item(id_documento="ok-op")
+
+        response = self._post_externa({"firma_digital": False, "pdfs": [invalid, good_op]})
+        payload = response.get_json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(payload["status"])
+        self.assertEqual(payload["docsSigned"], ["ok-op"])
+        self.assertEqual(payload["docsNotSigned"], ["op-field"])
+        self.assertEqual(payload["errors"][0]["id_documento"], "op-field")
+        self.assertEqual([call["fieldId"] for call in self.dss_placements], [""])
+
+    @patch("app.services.signatures_service.create_signature_image", return_value={"data": "sello-bytes"})
+    @patch("app.services.signatures_service.get_certificate_from_local", return_value={"certificate": "local"})
+    @patch("app.services.signatures_service.get_signature_value_own", return_value="sig")
+    @patch("app.services.signatures_service.sign_document_certificate", return_value={"bytes": "signed"})
+    @patch("app.services.signatures_service.get_data_to_sign_certificate")
+    def test_op_with_empty_firma_lugar_key_fails_only_that_item(self, get_data_mock, *_rest):
+        self._capture_dss(get_data_mock)
+        invalid = _op_item(id_documento="op-empty-field", firma_lugar="")
+        good_op = _op_item(id_documento="ok-op")
+
+        response = self._post_externa({"firma_digital": False, "pdfs": [invalid, good_op]})
+        payload = response.get_json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(payload["status"])
+        self.assertEqual(payload["docsSigned"], ["ok-op"])
+        self.assertEqual(payload["docsNotSigned"], ["op-empty-field"])
+        self.assertEqual([call["fieldId"] for call in self.dss_placements], [""])
+
+    @patch("app.services.signatures_service.create_signature_image", return_value={"data": "sello-bytes"})
+    @patch("app.services.signatures_service.get_certificate_from_local", return_value={"certificate": "local"})
+    @patch("app.services.signatures_service.get_signature_value_own", return_value="sig")
+    @patch("app.services.signatures_service.sign_document_certificate", return_value={"bytes": "signed"})
+    @patch("app.services.signatures_service.get_data_to_sign_certificate")
+    def test_non_op_with_trib_uses_campo_de_firma(self, get_data_mock, *_rest):
+        self._capture_dss(get_data_mock)
+        pdf = pdf_with_trib_markers(
+            markers=[(2, 100, 500, "@TRIB")],
+            pages=3,
+            extra_field="sig_field",
+        )
+        response = self._post_externa({
+            "firma_digital": False,
+            "pdfs": [_item(id_documento="not-op", pdf=pdf, es_op=False, firma_lugar="sig_field")],
+        })
+        payload = response.get_json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(payload["status"])
+        self.assertEqual(payload["docsSigned"], ["not-op"])
+        self.assertEqual(self.dss_placements[0]["fieldId"], "sig_field")
+        self.assertNotEqual(self.dss_placements[0]["page"], 2)
+
+    @patch("app.services.signatures_service.create_signature_image", return_value={"data": "sello-bytes"})
+    @patch("app.services.signatures_service.get_certificate_from_local", return_value={"certificate": "local"})
+    @patch("app.services.signatures_service.get_signature_value_own", return_value="sig")
+    @patch("app.services.signatures_service.sign_document_certificate")
+    @patch("app.services.signatures_service.get_data_to_sign_certificate")
+    def test_mixed_lote_keeps_compact_order_and_trib_text(self, get_data_mock, sign_mock, *_rest):
+        self._capture_dss(get_data_mock, sign_mock=sign_mock, echo_pdf=True)
+        op_pdf = pdf_with_trib_markers(markers=[(1, 80, 400, "@TRIB")], pages=1)
+        op = _op_item(id_documento="op-mix", pdf=op_pdf)
+        non_op = _item(id_documento="campo-mix")
+
+        response = self._post_externa({"firma_digital": False, "pdfs": [op, non_op]})
+        payload = response.get_json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(payload["status"])
+        self.assertEqual(payload["docsSigned"], ["op-mix", "campo-mix"])
+        self.assertEqual(len(payload["signedPdfs"]), 2)
+        self.assertEqual([call["fieldId"] for call in self.dss_placements], ["", "sig_field"])
+        signed_op = base64.b64decode(payload["signedPdfs"][0])
+        trib_text = PdfReader(io.BytesIO(signed_op)).pages[0].extract_text() or ""
+        self.assertRegex(trib_text, r"@TRIB")
 
 
 if __name__ == "__main__":
