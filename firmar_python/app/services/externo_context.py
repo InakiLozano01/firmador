@@ -4,7 +4,7 @@ import hashlib
 import json
 import secrets
 from dataclasses import dataclass
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Protocol, Tuple
 
 from app.services.signing_context_store import signing_context_store
 
@@ -35,8 +35,48 @@ def build_externo_fingerprint(id_documento, id_firmante, ancla, pdf_b64: str) ->
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
-def lock_entity_id(id_documento, id_firmante, ancla) -> str:
-    return f"{id_documento}:{id_firmante}:{ancla}"
+class _StoreBackend(Protocol):
+    def set_nx(self, key: str, value: str, ttl_ms: int) -> bool: ...
+    def get(self, key: str) -> Optional[str]: ...
+    def set(self, key: str, value: str, ttl_ms: int) -> None: ...
+    def delete(self, key: str) -> None: ...
+
+
+class _MemoryBackend:
+    def __init__(self):
+        self._values: Dict[str, str] = {}
+
+    def set_nx(self, key: str, value: str, ttl_ms: int) -> bool:
+        if key in self._values:
+            return False
+        self._values[key] = value
+        return True
+
+    def get(self, key: str) -> Optional[str]:
+        return self._values.get(key)
+
+    def set(self, key: str, value: str, ttl_ms: int) -> None:
+        self._values[key] = value
+
+    def delete(self, key: str) -> None:
+        self._values.pop(key, None)
+
+
+class _RedisBackend:
+    def __init__(self, client):
+        self.client = client
+
+    def set_nx(self, key: str, value: str, ttl_ms: int) -> bool:
+        return bool(self.client.set(key, value, px=ttl_ms, nx=True))
+
+    def get(self, key: str) -> Optional[str]:
+        return self.client.get(key)
+
+    def set(self, key: str, value: str, ttl_ms: int) -> None:
+        self.client.set(key, value, px=ttl_ms)
+
+    def delete(self, key: str) -> None:
+        self.client.delete(key)
 
 
 def _redis_client():
@@ -49,14 +89,12 @@ def _redis_client():
 
 
 class ExternoContextStore:
-    def __init__(self, client=None, *, key_prefix="signctx", ttl_ms=21600000, lock_ttl_ms=120000, finalized_ttl_ms=300000):
-        self.client = client
+    def __init__(self, backend: _StoreBackend, *, key_prefix="signctx", ttl_ms=21600000, lock_ttl_ms=120000, finalized_ttl_ms=300000):
+        self.backend = backend
         self.key_prefix = key_prefix
         self.ttl_ms = ttl_ms
         self.lock_ttl_ms = lock_ttl_ms
         self.finalized_ttl_ms = finalized_ttl_ms
-        self._locks: Dict[str, str] = {}
-        self._contexts: Dict[str, Dict] = {}
 
     def _lock_key(self, entity_id: str) -> str:
         return f"{self.key_prefix}:externo:lock:{entity_id}"
@@ -66,27 +104,16 @@ class ExternoContextStore:
 
     def acquire_lock(self, entity_id: str) -> Optional[str]:
         token = secrets.token_hex(16)
-        if self.client is None:
-            if entity_id in self._locks:
-                return None
-            self._locks[entity_id] = token
-            return token
-        acquired = self.client.set(self._lock_key(entity_id), token, px=self.lock_ttl_ms, nx=True)
-        if not acquired:
+        if not self.backend.set_nx(self._lock_key(entity_id), token, self.lock_ttl_ms):
             return None
         return token
 
     def release_lock(self, entity_id: str, token: Optional[str]) -> None:
         if not token or not entity_id:
             return
-        if self.client is None:
-            if self._locks.get(entity_id) == token:
-                self._locks.pop(entity_id, None)
-            return
         key = self._lock_key(entity_id)
-        current = self.client.get(key)
-        if current == token:
-            self.client.delete(key)
+        if self.backend.get(key) == token:
+            self.backend.delete(key)
 
     def create_or_get_digital(
         self,
@@ -101,31 +128,14 @@ class ExternoContextStore:
             "datetimesigned": datetimesigned,
             "lease_token": None,
         }
-        if self.client is None:
-            existing = self._contexts.get(fingerprint)
-            if existing:
-                return existing, "hit"
-            self._contexts[fingerprint] = dict(payload)
-            return self._contexts[fingerprint], "created"
-
         key = self._ctx_key(fingerprint)
-        created = self.client.set(
-            key,
-            json.dumps(payload, sort_keys=True, separators=(",", ":")),
-            px=self.ttl_ms,
-            nx=True,
-        )
-        if created:
+        encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+        if self.backend.set_nx(key, encoded, self.ttl_ms):
             return payload, "created"
-        existing = self._parse(self.client.get(key))
+        existing = self._parse(self.backend.get(key))
         if existing:
             return existing, "hit"
-        self.client.set(
-            key,
-            json.dumps(payload, sort_keys=True, separators=(",", ":")),
-            px=self.ttl_ms,
-            nx=True,
-        )
+        self.backend.set_nx(key, encoded, self.ttl_ms)
         return payload, "created"
 
     def claim_for_end(self, fingerprint: str) -> ExternoClaim:
@@ -162,20 +172,14 @@ class ExternoContextStore:
         return "released"
 
     def _get_context(self, fingerprint: str) -> Optional[Dict]:
-        if self.client is None:
-            stored = self._contexts.get(fingerprint)
-            return dict(stored) if stored else None
-        return self._parse(self.client.get(self._ctx_key(fingerprint)))
+        return self._parse(self.backend.get(self._ctx_key(fingerprint)))
 
     def _put_context(self, fingerprint: str, ctx: Dict, *, finalized: bool) -> None:
         ttl = self.finalized_ttl_ms if finalized else self.ttl_ms
-        if self.client is None:
-            self._contexts[fingerprint] = dict(ctx)
-            return
-        self.client.set(
+        self.backend.set(
             self._ctx_key(fingerprint),
             json.dumps(ctx, sort_keys=True, separators=(",", ":")),
-            px=ttl,
+            ttl,
         )
 
     @staticmethod
@@ -191,8 +195,9 @@ class ExternoContextStore:
 
 def _build_store() -> ExternoContextStore:
     client = _redis_client()
+    backend: _StoreBackend = _RedisBackend(client) if client is not None else _MemoryBackend()
     return ExternoContextStore(
-        client=client,
+        backend,
         key_prefix=getattr(signing_context_store, "key_prefix", "signctx"),
         ttl_ms=getattr(signing_context_store, "ttl_ms", 21600 * 1000),
         lock_ttl_ms=getattr(signing_context_store, "entity_lock_ttl_ms", 120000),

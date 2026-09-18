@@ -684,16 +684,21 @@ class FirmaExternaDigitalCampoTests(_FirmaExternaClient):
     @patch("app.services.signatures_service.sign_document_certificate", return_value={"bytes": "signed"})
     @patch("app.services.signatures_service.get_data_to_sign_certificate", return_value={"bytes": "data"})
     def test_in_flight_lock_returns_busy_item_error(self, *_rest):
+        from app.services.externo_context import build_externo_fingerprint, externo_context_store
+
+        item = _item()
+        lock_id = build_externo_fingerprint(
+            item["id_documento"],
+            item["id_firmante"],
+            item["firma_lugar"],
+            item["pdf"],
+        )
+        held = externo_context_store.acquire_lock(lock_id)
+        self.assertIsNotNone(held)
         try:
-            from app.services import externo_context as externo_context_mod
-        except ImportError:
-            self.fail("Documento Externo must take a Redis lock so a second in-flight request is busy")
-        original_acquire = externo_context_mod.externo_context_store.acquire_lock
-        externo_context_mod.externo_context_store.acquire_lock = lambda *_a, **_k: None
-        try:
-            response = self._post_externa({"firma_digital": False, "pdfs": [_item()]})
+            response = self._post_externa({"firma_digital": False, "pdfs": [item]})
         finally:
-            externo_context_mod.externo_context_store.acquire_lock = original_acquire
+            externo_context_store.release_lock(lock_id, held)
         payload = response.get_json()
         self.assertEqual(response.status_code, 200)
         self.assertFalse(payload["status"])
@@ -723,6 +728,223 @@ class FirmaExternaDigitalCampoTests(_FirmaExternaClient):
         self.assertTrue(first.get_json()["status"])
         self.assertTrue(second.get_json()["status"])
         self.assertNotEqual(times[0], times[1])
+
+
+class FirmaExternaDigitalOpTests(_FirmaExternaClient):
+    def _capture_token_placement(self, get_data_mock, sign_mock=None):
+        self.dss_times = []
+        self.dss_sign_times = []
+        self.dss_placements = []
+
+        def _record(current_time, field_id, origin_x, origin_y, width, height, page, page_count):
+            self.dss_placements.append({
+                "fieldId": field_id,
+                "originX": origin_x,
+                "originY": origin_y,
+                "width": width,
+                "height": height,
+                "page": page if page is not None else page_count,
+            })
+
+        def capture_get_data(
+            pdf,
+            certificates,
+            current_time,
+            field_id,
+            stamp,
+            encoded_image,
+            page_count=None,
+            origin_x=None,
+            origin_y=None,
+            width=None,
+            height=None,
+            page=None,
+            **_kwargs,
+        ):
+            self.dss_times.append(current_time)
+            _record(current_time, field_id, origin_x, origin_y, width, height, page, page_count)
+            return {"bytes": f"dts-{current_time}"}
+
+        get_data_mock.side_effect = capture_get_data
+        if sign_mock is not None:
+            def capture_sign(
+                pdf,
+                signature_value,
+                certificates,
+                current_time,
+                field_id,
+                stamp,
+                encoded_image,
+                page_count=None,
+                origin_x=None,
+                origin_y=None,
+                width=None,
+                height=None,
+                page=None,
+                **_kwargs,
+            ):
+                self.dss_sign_times.append(current_time)
+                _record(current_time, field_id, origin_x, origin_y, width, height, page, page_count)
+                return {"bytes": f"signed-{signature_value}"}
+
+            sign_mock.side_effect = capture_sign
+
+    def _assert_trib_rectangle(self, placement):
+        self.assertEqual(placement["fieldId"], "")
+        self.assertEqual(placement["page"], 2)
+        self.assertEqual(placement["width"], 320)
+        self.assertEqual(placement["height"], 80)
+        self.assertAlmostEqual(placement["originX"], 100, delta=2)
+        self.assertAlmostEqual(placement["originY"] + 80, 500, delta=20)
+
+    @patch("app.services.signatures_service.unlock_pdf_and_close_task")
+    @patch("app.services.signatures_service.save_signed_pdf_atomic")
+    @patch("app.services.signatures_service.create_signature_image", return_value={"data": "sello-bytes"})
+    @patch("app.services.signatures_service.sign_document_token")
+    @patch("app.services.signatures_service.get_data_to_sign_token")
+    def test_digital_op_init_and_end_uses_trib_rectangle(self, get_data_mock, sign_mock, _sello, save_mock, unlock_mock):
+        self._capture_token_placement(get_data_mock, sign_mock)
+        item = _op_item(
+            id_documento="op-digital",
+            pdf=pdf_with_trib_markers(markers=[(2, 100, 500, "@trib")], pages=3),
+        )
+        init = self._post_externa({"firma_digital": True, "certificates": CERTS, "pdfs": [item]})
+        init_payload = init.get_json()
+        frozen = self.dss_times[0]
+        end_item = dict(item)
+        end_item["signatureValue"] = "token-op"
+        end = self._post_externa_end({"certificates": CERTS, "pdfs": [end_item]})
+        end_payload = end.get_json()
+
+        self.assertEqual(init.status_code, 200)
+        self.assertTrue(init_payload["status"])
+        self.assertEqual(init_payload["docsSigned"], ["op-digital"])
+        self.assertEqual(init_payload["dataToSign"], [f"dts-{frozen}"])
+        self.assertNotIn("signedPdfs", init_payload)
+        self._assert_trib_rectangle(self.dss_placements[0])
+
+        self.assertEqual(end.status_code, 200)
+        self.assertTrue(end_payload["status"])
+        self.assertEqual(end_payload["docsSigned"], ["op-digital"])
+        self.assertEqual(end_payload["signedPdfs"], ["signed-token-op"])
+        self.assertEqual(self.dss_sign_times, [frozen])
+        self._assert_trib_rectangle(self.dss_placements[-1])
+        save_mock.assert_not_called()
+        unlock_mock.assert_not_called()
+
+    @patch("app.services.signatures_service.create_signature_image", return_value={"data": "sello-bytes"})
+    @patch("app.services.signatures_service.sign_document_token")
+    @patch("app.services.signatures_service.get_data_to_sign_token")
+    def test_digital_mix_lote_excludes_failed_items(self, get_data_mock, sign_mock, *_rest):
+        self._capture_token_placement(get_data_mock, sign_mock)
+        zero = _op_item(
+            id_documento="zero",
+            pdf=pdf_with_trib_markers(markers=[], pages=1, extra_field="sig_field"),
+        )
+        absent_field = _item(id_documento="absent-field", pdf=pdf_without_fields(), firma_lugar="sig_field")
+        campo = _item(id_documento="campo")
+        op = _op_item(id_documento="op-ok")
+        init = self._post_externa({
+            "firma_digital": True,
+            "certificates": CERTS,
+            "pdfs": [zero, campo, absent_field, op],
+        })
+        init_payload = init.get_json()
+
+        self.assertEqual(init.status_code, 200)
+        self.assertFalse(init_payload["status"])
+        self.assertEqual(init_payload["docsSigned"], ["campo", "op-ok"])
+        self.assertEqual(init_payload["docsNotSigned"], ["zero", "absent-field"])
+        self.assertEqual(len(init_payload["dataToSign"]), 2)
+        self.assertEqual(
+            [call["fieldId"] for call in self.dss_placements],
+            ["sig_field", ""],
+        )
+
+        end_campo = dict(campo)
+        end_campo["signatureValue"] = "sig-campo"
+        end_op = dict(op)
+        end_op["signatureValue"] = "sig-op"
+        end = self._post_externa_end({"certificates": CERTS, "pdfs": [end_campo, end_op]})
+        end_payload = end.get_json()
+        self.assertEqual(end.status_code, 200)
+        self.assertTrue(end_payload["status"])
+        self.assertEqual(end_payload["docsSigned"], ["campo", "op-ok"])
+        self.assertEqual(end_payload["signedPdfs"], ["signed-sig-campo", "signed-sig-op"])
+
+    @patch("app.services.signatures_service.create_signature_image", return_value={"data": "sello-bytes"})
+    @patch("app.services.signatures_service.get_data_to_sign_token")
+    def test_op_and_campo_same_bytes_do_not_share_clock(self, get_data_mock, *_rest):
+        self._capture_token_placement(get_data_mock)
+        pdf = pdf_with_trib_markers(
+            markers=[(2, 100, 500, "@TRIB")],
+            pages=3,
+            extra_field="sig_field",
+        )
+        op = _op_item(id_documento="shared", pdf=pdf)
+        campo = _item(id_documento="shared", pdf=pdf, es_op=False, firma_lugar="sig_field")
+        with patch("app.services.signatures_service.tiempo.time", side_effect=[1000.0, 5000.0, 9000.0, 12000.0]):
+            first = self._post_externa({"firma_digital": True, "certificates": CERTS, "pdfs": [op]})
+            second = self._post_externa({"firma_digital": True, "certificates": CERTS, "pdfs": [campo]})
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.assertTrue(first.get_json()["status"])
+        self.assertTrue(second.get_json()["status"])
+        self.assertNotEqual(first.get_json()["dataToSign"], second.get_json()["dataToSign"])
+        self.assertNotEqual(self.dss_times[0], self.dss_times[1])
+
+    @patch("app.services.signatures_service.create_signature_image", return_value={"data": "sello-bytes"})
+    @patch("app.services.signatures_service.get_data_to_sign_token")
+    def test_digital_op_init_retry_reuses_clock(self, get_data_mock, *_rest):
+        self._capture_token_placement(get_data_mock)
+        body = {"firma_digital": True, "certificates": CERTS, "pdfs": [_op_item()]}
+        with patch("app.services.signatures_service.tiempo.time", side_effect=[1000.0, 5000.0, 9000.0, 12000.0]):
+            first = self._post_externa(body)
+            second = self._post_externa(body)
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(first.get_json()["dataToSign"], second.get_json()["dataToSign"])
+        self.assertEqual(self.dss_times[0], self.dss_times[1])
+
+    @patch("app.services.signatures_service.create_signature_image", return_value={"data": "sello-bytes"})
+    @patch("app.services.signatures_service.sign_document_token")
+    @patch("app.services.signatures_service.get_data_to_sign_token")
+    def test_digital_op_end_replay_is_409_without_pdfs(self, get_data_mock, sign_mock, *_rest):
+        self._capture_token_placement(get_data_mock, sign_mock)
+        item = _op_item()
+        self._post_externa({"firma_digital": True, "certificates": CERTS, "pdfs": [item]})
+        end_item = dict(item)
+        end_item["signatureValue"] = "token-op"
+        first_end = self._post_externa_end({"certificates": CERTS, "pdfs": [end_item]})
+        replay = self._post_externa_end({"certificates": CERTS, "pdfs": [end_item]})
+        self.assertEqual(first_end.status_code, 200)
+        self.assertEqual(replay.status_code, 409)
+        self.assertNotIn("signedPdfs", replay.get_json())
+
+    @patch("app.services.signatures_service.create_signature_image", return_value={"data": "sello-bytes"})
+    @patch("app.services.signatures_service.get_data_to_sign_token")
+    def test_digital_op_in_flight_lock_is_busy(self, get_data_mock, *_rest):
+        from app.services.externo_context import build_externo_fingerprint, externo_context_store
+
+        self._capture_token_placement(get_data_mock)
+        item = _op_item()
+        lock_id = build_externo_fingerprint(
+            item["id_documento"],
+            item["id_firmante"],
+            "OP",
+            item["pdf"],
+        )
+        held = externo_context_store.acquire_lock(lock_id)
+        self.assertIsNotNone(held)
+        try:
+            response = self._post_externa({"firma_digital": True, "certificates": CERTS, "pdfs": [item]})
+        finally:
+            externo_context_store.release_lock(lock_id, held)
+        payload = response.get_json()
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(payload["status"])
+        self.assertEqual(payload["docsNotSigned"], ["doc-1"])
+        self.assertIn("curso", payload["errors"][0]["message"].lower())
 
 
 if __name__ == "__main__":

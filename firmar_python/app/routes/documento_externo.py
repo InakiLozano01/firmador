@@ -39,6 +39,35 @@ def _empty_pdfs():
     }), 400
 
 
+def _certificates_required():
+    return jsonify({
+        "status": False,
+        "message": "Firma Digital requiere certificates",
+        "errors": [{"message": "certificates requerido"}],
+    }), 400
+
+
+def _has_certificates(data):
+    return "certificates" in data and bool(data.get("certificates"))
+
+
+def _lote_response(docs_signed, docs_not_signed, errors_stack, success, message, **extra):
+    if errors_stack:
+        update_operation(
+            operation_status=OPERATION_PARTIAL_ERROR,
+            error_message=f"{len(errors_stack)} doc(s) failed",
+        )
+    body = {
+        "status": success,
+        "message": message,
+        "docsSigned": docs_signed,
+        "docsNotSigned": docs_not_signed,
+        "errors": errors_stack,
+    }
+    body.update(extra)
+    return jsonify(body), 200
+
+
 def register_documento_externo_routes(app):
     @app.route("/firmaexterna", methods=["POST"])
     @observe_http_operation("sign.pdf.externo.init")
@@ -53,29 +82,20 @@ def register_documento_externo_routes(app):
 
         firma_digital = data.get("firma_digital")
         if firma_digital is True:
-            if "certificates" not in data or not data.get("certificates"):
-                return jsonify({
-                    "status": False,
-                    "message": "Firma Digital requiere certificates",
-                    "errors": [{"message": "certificates requerido"}],
-                }), 400
+            if not _has_certificates(data):
+                return _certificates_required()
             update_operation(batch_size=len(pdfs))
             docs_signed, docs_not_signed, data_to_sign, errors_stack, success, message = (
                 _controller.init_documento_externo_digital(pdfs, data.get("certificates"))
             )
-            if errors_stack:
-                update_operation(
-                    operation_status=OPERATION_PARTIAL_ERROR,
-                    error_message=f"{len(errors_stack)} doc(s) failed",
-                )
-            return jsonify({
-                "status": success,
-                "message": message,
-                "docsSigned": docs_signed,
-                "docsNotSigned": docs_not_signed,
-                "dataToSign": data_to_sign,
-                "errors": errors_stack,
-            }), 200
+            return _lote_response(
+                docs_signed,
+                docs_not_signed,
+                errors_stack,
+                success,
+                message,
+                dataToSign=data_to_sign,
+            )
 
         if firma_digital is not False:
             return jsonify({
@@ -95,19 +115,14 @@ def register_documento_externo_routes(app):
         docs_signed, docs_not_signed, signed_pdfs, errors_stack, success, message = (
             _controller.init_documento_externo_electronico(pdfs)
         )
-        if errors_stack:
-            update_operation(
-                operation_status=OPERATION_PARTIAL_ERROR,
-                error_message=f"{len(errors_stack)} doc(s) failed",
-            )
-        return jsonify({
-            "status": success,
-            "message": message,
-            "docsSigned": docs_signed,
-            "docsNotSigned": docs_not_signed,
-            "signedPdfs": signed_pdfs,
-            "errors": errors_stack,
-        }), 200
+        return _lote_response(
+            docs_signed,
+            docs_not_signed,
+            errors_stack,
+            success,
+            message,
+            signedPdfs=signed_pdfs,
+        )
 
     @app.route("/firmaexternaend", methods=["POST"])
     @observe_http_operation("sign.pdf.externo.finalize")
@@ -127,12 +142,8 @@ def register_documento_externo_routes(app):
         if not isinstance(pdfs, list) or len(pdfs) == 0:
             return _empty_pdfs()
 
-        if "certificates" not in data or not data.get("certificates"):
-            return jsonify({
-                "status": False,
-                "message": "Firma Digital requiere certificates",
-                "errors": [{"message": "certificates requerido"}],
-            }), 400
+        if not _has_certificates(data):
+            return _certificates_required()
 
         update_operation(batch_size=len(pdfs))
         docs_signed, docs_not_signed, signed_pdfs, errors_stack, success, message, replay_conflict = (
@@ -146,16 +157,11 @@ def register_documento_externo_routes(app):
                 "docsNotSigned": docs_not_signed,
                 "errors": errors_stack,
             }), 409
-        if errors_stack:
-            update_operation(
-                operation_status=OPERATION_PARTIAL_ERROR,
-                error_message=f"{len(errors_stack)} doc(s) failed",
-            )
-        return jsonify({
-            "status": success,
-            "message": message,
-            "docsSigned": docs_signed,
-            "docsNotSigned": docs_not_signed,
-            "signedPdfs": signed_pdfs,
-            "errors": errors_stack,
-        }), 200
+        return _lote_response(
+            docs_signed,
+            docs_not_signed,
+            errors_stack,
+            success,
+            message,
+            signedPdfs=signed_pdfs,
+        )
