@@ -18,6 +18,8 @@ Sistema integral para la firma digital de documentos que proporciona una soluci�
 - 🐍 **Servicio Python (Flask)**: Motor principal que maneja toda la lógica de firma, validación y procesamiento de documentos
 - ☕ **Servicio Java**: Backend robusto que proporciona servicios DSS (Digital Signature Services) avanzados
 
+Integración de Documentos Externos (sistemas emisores, no TAPIR): [docs/firma-documento-externo.md](docs/firma-documento-externo.md).
+
 ## ✨ Características Principales
 
 ### 🔐 Firma Digital Avanzada

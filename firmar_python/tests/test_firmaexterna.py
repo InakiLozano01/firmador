@@ -138,34 +138,33 @@ def pdf_with_trib_markers(markers, pages=1, extra_field=None) -> str:
     return base64.b64encode(buffer.getvalue()).decode("ascii")
 
 
-def pdf_with_trib_text_and_annotation() -> str:
-    buffer = io.BytesIO()
-    pdf = canvas.Canvas(buffer, pagesize=(595, 842))
-    pdf.setFont("Helvetica", 12)
-    pdf.drawString(100, 500, "@TRIB")
-    pdf.showPage()
-    pdf.save()
-
-    reader = PdfReader(io.BytesIO(buffer.getvalue()))
+def _attach_trib_annotation(pdf_b64: str, rect) -> str:
+    reader = PdfReader(io.BytesIO(base64.b64decode(pdf_b64)))
     writer = PdfWriter()
     writer.add_page(reader.pages[0])
     page = writer.pages[0]
+    llx, lly, urx, ury = rect
     annot = DictionaryObject()
     annot.update({
         NameObject("/Type"): NameObject("/Annot"),
         NameObject("/Subtype"): NameObject("/FreeText"),
         NameObject("/Contents"): TextStringObject("@TRIB"),
         NameObject("/Rect"): ArrayObject([
-            FloatObject(90),
-            FloatObject(410),
-            FloatObject(180),
-            FloatObject(520),
+            FloatObject(llx),
+            FloatObject(lly),
+            FloatObject(urx),
+            FloatObject(ury),
         ]),
     })
     page[NameObject("/Annots")] = ArrayObject([annot])
     out = io.BytesIO()
     writer.write(out)
     return base64.b64encode(out.getvalue()).decode("ascii")
+
+
+def pdf_with_trib_text_and_annotation(text=(100, 500), annot_rect=(90, 410, 180, 520)) -> str:
+    pdf_b64 = pdf_with_trib_markers(markers=[(1, text[0], text[1], "@TRIB")])
+    return _attach_trib_annotation(pdf_b64, annot_rect)
 
 
 def _item(**overrides):
@@ -217,6 +216,24 @@ class _FirmaExternaClient(unittest.TestCase):
 
     def _post_externa_end(self, body, headers=None):
         return self.client.post("/firmaexternaend", json=body, headers=headers if headers is not None else self._auth_headers())
+
+    def _assert_digital_init_retry_returns_stored(self, get_data_mock, item, token_prefix):
+        calls = {"n": 0}
+
+        def capture(*_args, **_kwargs):
+            calls["n"] += 1
+            return {"bytes": f"{token_prefix}-{calls['n']}"}
+
+        get_data_mock.side_effect = capture
+        body = {"firma_digital": True, "certificates": CERTS, "pdfs": [item]}
+        first = self._post_externa(body)
+        second = self._post_externa(body)
+        stored = f"{token_prefix}-1"
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(first.get_json()["dataToSign"], [stored])
+        self.assertEqual(second.get_json()["dataToSign"], [stored])
+        self.assertEqual(get_data_mock.call_count, 1)
 
 
 class FirmaExternaElectronicTests(_FirmaExternaClient):
@@ -415,9 +432,8 @@ class FirmaExternaElectronicTests(_FirmaExternaClient):
         self.assertFalse(payload["status"])
         self.assertEqual(payload["docsSigned"], ["ok"])
         self.assertEqual(payload["signedPdfs"], ["signed-id"])
-        self.assertEqual(len(payload["docsNotSigned"]), 1)
-        self.assertEqual(len(payload["errors"]), 1)
-        self.assertIn("id_documento", payload["errors"][0])
+        self.assertEqual(payload["docsNotSigned"], [""])
+        self.assertEqual(payload["errors"][0]["id_documento"], "")
         self.assertEqual(get_data_mock.call_count, 1)
 
 
@@ -503,6 +519,32 @@ class FirmaExternaElectronicOpTests(_FirmaExternaClient):
         self.assertEqual(payload["docsSigned"], ["text-and-annot"])
         self.assertEqual(len(self.dss_placements), 1)
         self.assertEqual(self.dss_placements[0]["fieldId"], "")
+
+    @patch("app.services.signatures_service.create_signature_image", return_value={"data": "sello-bytes"})
+    @patch("app.services.signatures_service.get_certificate_from_local", return_value={"certificate": "local"})
+    @patch("app.services.signatures_service.get_signature_value_own", return_value="sig")
+    @patch("app.services.signatures_service.sign_document_certificate", return_value={"bytes": "signed"})
+    @patch("app.services.signatures_service.get_data_to_sign_certificate")
+    def test_op_text_and_annotation_at_different_origins_are_two_markers(self, get_data_mock, *_rest):
+        self._capture_dss(get_data_mock)
+        two_origins = _op_item(
+            id_documento="two-origins",
+            pdf=pdf_with_trib_text_and_annotation(
+                text=(40, 200),
+                annot_rect=(300, 400, 380, 480),
+            ),
+        )
+        good_op = _op_item(id_documento="ok-op")
+
+        response = self._post_externa({"firma_digital": False, "pdfs": [two_origins, good_op]})
+        payload = response.get_json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(payload["status"])
+        self.assertEqual(payload["docsSigned"], ["ok-op"])
+        self.assertEqual(payload["docsNotSigned"], ["two-origins"])
+        self.assertIn("Marcador TRIB", payload["errors"][0]["message"])
+        self.assertEqual([call["fieldId"] for call in self.dss_placements], [""])
 
     @patch("app.services.signatures_service.create_signature_image", return_value={"data": "sello-bytes"})
     @patch("app.services.signatures_service.get_certificate_from_local", return_value={"certificate": "local"})
@@ -721,25 +763,11 @@ class FirmaExternaDigitalCampoTests(_FirmaExternaClient):
     @patch("app.services.signatures_service.create_signature_image", return_value={"data": "sello-bytes"})
     @patch("app.services.signatures_service.get_data_to_sign_token")
     def test_digital_init_retry_returns_stored_data_to_sign(self, get_data_mock, *_rest):
-        calls = {"n": 0}
-
-        def capture(pdf, certificates, current_time, field_id, stamp, encoded_image, page_count=None, **_kwargs):
-            calls["n"] += 1
-            return {"bytes": f"dts-call-{calls['n']}"}
-
-        get_data_mock.side_effect = capture
-        body = {
-            "firma_digital": True,
-            "certificates": CERTS,
-            "pdfs": [_item(id_documento="retry-stored-dts")],
-        }
-        first = self._post_externa(body)
-        second = self._post_externa(body)
-        self.assertEqual(first.status_code, 200)
-        self.assertEqual(second.status_code, 200)
-        self.assertEqual(first.get_json()["dataToSign"], ["dts-call-1"])
-        self.assertEqual(second.get_json()["dataToSign"], ["dts-call-1"])
-        self.assertEqual(get_data_mock.call_count, 1)
+        self._assert_digital_init_retry_returns_stored(
+            get_data_mock,
+            _item(id_documento="retry-stored-dts"),
+            "dts-call",
+        )
 
     @patch("app.services.signatures_service.create_signature_image", return_value={"data": "sello-bytes"})
     @patch("app.services.signatures_service.get_data_to_sign_token")
@@ -988,34 +1016,11 @@ class FirmaExternaDigitalOpTests(_FirmaExternaClient):
     @patch("app.services.signatures_service.create_signature_image", return_value={"data": "sello-bytes"})
     @patch("app.services.signatures_service.get_data_to_sign_token")
     def test_digital_op_init_retry_returns_stored_data_to_sign(self, get_data_mock, *_rest):
-        calls = {"n": 0}
-
-        def capture(
-            pdf,
-            certificates,
-            current_time,
-            field_id,
-            stamp,
-            encoded_image,
-            page_count=None,
-            **_kwargs,
-        ):
-            calls["n"] += 1
-            return {"bytes": f"op-dts-call-{calls['n']}"}
-
-        get_data_mock.side_effect = capture
-        body = {
-            "firma_digital": True,
-            "certificates": CERTS,
-            "pdfs": [_op_item(id_documento="op-retry-stored-dts")],
-        }
-        first = self._post_externa(body)
-        second = self._post_externa(body)
-        self.assertEqual(first.status_code, 200)
-        self.assertEqual(second.status_code, 200)
-        self.assertEqual(first.get_json()["dataToSign"], ["op-dts-call-1"])
-        self.assertEqual(second.get_json()["dataToSign"], ["op-dts-call-1"])
-        self.assertEqual(get_data_mock.call_count, 1)
+        self._assert_digital_init_retry_returns_stored(
+            get_data_mock,
+            _op_item(id_documento="op-retry-stored-dts"),
+            "op-dts-call",
+        )
 
     @patch("app.services.signatures_service.create_signature_image", return_value={"data": "sello-bytes"})
     @patch("app.services.signatures_service.sign_document_token")

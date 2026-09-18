@@ -20,6 +20,22 @@ class MarcadorTrib:
     height: float = SELLO_HEIGHT
 
 
+@dataclass(frozen=True)
+class _TextEncoding:
+    marker: MarcadorTrib
+    glyph_x: float
+    glyph_y: float
+
+
+@dataclass(frozen=True)
+class _AnnotEncoding:
+    marker: MarcadorTrib
+    llx: float
+    lly: float
+    urx: float
+    ury: float
+
+
 def _prefix_width(prefix: str, font_size: float) -> float:
     if not prefix:
         return 0.0
@@ -31,25 +47,30 @@ def _prefix_width(prefix: str, font_size: float) -> float:
         return float(len(prefix) * font_size * 0.5)
 
 
-def _markers_in_text(text, tm, font_size, page: int) -> List[MarcadorTrib]:
+def _markers_in_text(text, tm, font_size, page: int) -> List[_TextEncoding]:
     if not text or tm is None:
         return []
     size = float(font_size or 12)
     markers = []
     for match in TRIB_PATTERN.finditer(text):
-        origin_x = float(tm[4]) + _prefix_width(text[: match.start()], size)
-        top = float(tm[5]) + size
+        glyph_x = float(tm[4]) + _prefix_width(text[: match.start()], size)
+        glyph_y = float(tm[5])
+        top = glyph_y + size
         markers.append(
-            MarcadorTrib(
-                page=page,
-                origin_x=origin_x,
-                origin_y=top - SELLO_HEIGHT,
+            _TextEncoding(
+                marker=MarcadorTrib(
+                    page=page,
+                    origin_x=glyph_x,
+                    origin_y=top - SELLO_HEIGHT,
+                ),
+                glyph_x=glyph_x,
+                glyph_y=glyph_y,
             )
         )
     return markers
 
 
-def _markers_in_annotations(page_obj, page_number: int) -> List[MarcadorTrib]:
+def _markers_in_annotations(page_obj, page_number: int) -> List[_AnnotEncoding]:
     markers = []
     annots = page_obj.get("/Annots") or []
     for annot_ref in annots:
@@ -64,23 +85,43 @@ def _markers_in_annotations(page_obj, page_number: int) -> List[MarcadorTrib]:
         if not rect:
             continue
         try:
-            llx, _lly, _urx, ury = [float(value) for value in rect]
+            llx, lly, urx, ury = [float(value) for value in rect]
         except (TypeError, ValueError):
             continue
         markers.append(
-            MarcadorTrib(
-                page=page_number,
-                origin_x=llx,
-                origin_y=ury - SELLO_HEIGHT,
+            _AnnotEncoding(
+                marker=MarcadorTrib(
+                    page=page_number,
+                    origin_x=llx,
+                    origin_y=ury - SELLO_HEIGHT,
+                ),
+                llx=llx,
+                lly=lly,
+                urx=urx,
+                ury=ury,
             )
         )
     return markers
 
 
-def _merge_page_encodings(texts: List[MarcadorTrib], annots: List[MarcadorTrib]) -> List[MarcadorTrib]:
-    if len(texts) == 1 and len(annots) == 1:
-        return annots
-    return annots + texts
+def _text_inside_annotation(text: _TextEncoding, annot: _AnnotEncoding) -> bool:
+    return (
+        text.marker.page == annot.marker.page
+        and annot.llx <= text.glyph_x <= annot.urx
+        and annot.lly <= text.glyph_y <= annot.ury
+    )
+
+
+def _prefer_annotation_when_text_inside(
+    texts: List[_TextEncoding],
+    annots: List[_AnnotEncoding],
+) -> List[MarcadorTrib]:
+    leftover_text = [
+        text.marker
+        for text in texts
+        if not any(_text_inside_annotation(text, annot) for annot in annots)
+    ]
+    return [annot.marker for annot in annots] + leftover_text
 
 
 def _dedupe(markers: List[MarcadorTrib]) -> List[MarcadorTrib]:
@@ -100,7 +141,7 @@ def find_marcadores_trib(pdf_b64: str) -> List[MarcadorTrib]:
     markers: List[MarcadorTrib] = []
     for index, page in enumerate(reader.pages):
         page_number = index + 1
-        found_text: List[MarcadorTrib] = []
+        found_text: List[_TextEncoding] = []
 
         def visitor(text, cm, tm, fontDict, fontSize, _page=page_number, _bucket=found_text):
             _bucket.extend(_markers_in_text(text, tm, fontSize, _page))
@@ -110,5 +151,5 @@ def find_marcadores_trib(pdf_b64: str) -> List[MarcadorTrib]:
         except Exception:
             pass
         found_annots = _markers_in_annotations(page, page_number)
-        markers.extend(_merge_page_encodings(found_text, found_annots))
+        markers.extend(_prefer_annotation_when_text_inside(found_text, found_annots))
     return _dedupe(markers)

@@ -1007,7 +1007,7 @@ class SignaturesService:
             if error is not None:
                 return id_documento, error, None
             execution, document_context = self._externo_execution(prepared, reuse_digital_clock=True)
-            stored = (externo_context_store.get_context(prepared.fingerprint) or {}).get("dataToSign")
+            stored = externo_context_store.stored_data_to_sign(prepared.fingerprint)
             if stored:
                 return id_documento, None, stored
             custom_image = self._externo_token_image(prepared, execution, mode="cert")
