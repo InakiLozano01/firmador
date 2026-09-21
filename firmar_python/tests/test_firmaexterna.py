@@ -497,7 +497,34 @@ class FirmaExternaElectronicOpTests(_FirmaExternaClient):
         self.assertEqual(placement["width"], 320)
         self.assertEqual(placement["height"], 80)
         self.assertAlmostEqual(placement["originX"], 100, delta=2)
-        self.assertAlmostEqual(placement["originY"] + 80, 500, delta=20)
+        self.assertAlmostEqual(placement["originY"], 842 - (500 + 12), delta=20)
+
+    @patch("app.services.signatures_service.create_signature_image", return_value={"data": "sello-bytes"})
+    @patch("app.services.signatures_service.get_certificate_from_local", return_value={"certificate": "local"})
+    @patch("app.services.signatures_service.get_signature_value_own", return_value="sig")
+    @patch("app.services.signatures_service.sign_document_certificate", return_value={"bytes": "signed-right"})
+    @patch("app.services.signatures_service.get_data_to_sign_certificate")
+    def test_op_trib_near_right_edge_keeps_sello_on_page(self, get_data_mock, *_rest):
+        self._capture_dss(get_data_mock)
+        item = _op_item(
+            id_documento="op-right",
+            pdf=pdf_with_trib_markers(markers=[(1, 410, 271, "@TRIB")], pages=1),
+        )
+
+        response = self._post_externa({"firma_digital": False, "pdfs": [item]})
+        payload = response.get_json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(payload["status"])
+        self.assertEqual(payload["docsSigned"], ["op-right"])
+        placement = self.dss_placements[0]
+        self.assertEqual(placement["fieldId"], "")
+        self.assertGreaterEqual(placement["originX"], 0)
+        self.assertGreaterEqual(placement["originY"], 0)
+        self.assertLessEqual(placement["originX"] + placement["width"], 595.01)
+        self.assertLessEqual(placement["originY"] + placement["height"], 842.01)
+        self.assertAlmostEqual(placement["originX"], 410, delta=5)
+        self.assertLess(placement["width"], 320)
 
     @patch("app.services.signatures_service.create_signature_image", return_value={"data": "sello-bytes"})
     @patch("app.services.signatures_service.get_certificate_from_local", return_value={"certificate": "local"})
@@ -915,7 +942,7 @@ class FirmaExternaDigitalOpTests(_FirmaExternaClient):
         self.assertEqual(placement["width"], 320)
         self.assertEqual(placement["height"], 80)
         self.assertAlmostEqual(placement["originX"], 100, delta=2)
-        self.assertAlmostEqual(placement["originY"] + 80, 500, delta=20)
+        self.assertAlmostEqual(placement["originY"], 842 - (500 + 12), delta=20)
 
     @patch("app.services.signatures_service.unlock_pdf_and_close_task")
     @patch("app.services.signatures_service.save_signed_pdf_atomic")

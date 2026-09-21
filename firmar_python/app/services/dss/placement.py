@@ -4,13 +4,29 @@ from ...exceptions.dss_exc import DSSResponseError
 from .requests import _build_pdf_document, _pdf_parameters, _post_dss_json
 
 
+def _dss_error_detail(payload) -> str:
+    if isinstance(payload, dict):
+        for key in ("message", "error", "data"):
+            value = payload.get(key)
+            if value:
+                return str(value)[:500]
+        return str(payload)[:500]
+    if payload:
+        return str(payload)[:500]
+    return ""
+
+
 def _unwrap_dss_response(response, *, endpoint: str):
     if isinstance(response, tuple):
         payload, status_code = response
     else:
         payload, status_code = response, 200
     if status_code != 200:
-        raise DSSResponseError(f"DSS API returned status code {status_code} for {endpoint}")
+        detail = _dss_error_detail(payload)
+        message = f"DSS API returned status code {status_code} for {endpoint}"
+        if detail:
+            message = f"{message}: {detail}"
+        raise DSSResponseError(message)
     if not isinstance(payload, dict) or "bytes" not in payload:
         raise DSSResponseError(f"Invalid response format from DSS API for {endpoint}")
     return payload
