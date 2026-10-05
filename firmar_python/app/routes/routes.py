@@ -13,6 +13,44 @@ validations_controller = ValidationsController()
 logger = logging.getLogger(__name__)
 
 def register_routes(app):
+    @app.route('/firmaloro', methods=['POST'])
+    def firmaloro():
+        """
+        Route for batch signing process or complete electronic signing process for loro system.
+        """
+        try:
+            data = request.get_json()
+            pdfs = data['pdfs']
+        except Exception as e:
+            logger.error(f"Error getting request data: {str(e)}", exc_info=True)
+            return jsonify({
+                "status": False, 
+                "message": f"Error al obtener los datos de la request: {str(e)}",
+                "errors": [{
+                    "message": str(e)
+                }]
+            }), 500
+
+        try:
+            id_docs_signeds, docs_not_signed, signed_pdfs, errors_stack, success, message = signatures_controller.signature_pdf_loro(pdfs)
+            return jsonify({
+                "status": success, 
+                "message": message, 
+                "docsSigned": id_docs_signeds, 
+                "docsNotSigned": docs_not_signed, 
+                "signedPdfs": signed_pdfs, 
+                "errors": errors_stack
+            }), 200
+        except Exception as e:
+            logger.error(f"Error in signature process: {str(e)}", exc_info=True)
+            return jsonify({
+                "status": False, 
+                "message": f"Error en la firma: {str(e)}",
+                "errors": [{
+                    "message": str(e)
+                }]
+            }), 500
+        
     @app.route('/firmalote', methods=['POST'])
     def firmalote():
         """
@@ -331,7 +369,58 @@ def register_routes(app):
         """
         Test route.
         """
-        return jsonify({"status": "success", "message": "Test route"}), 200
+        logger.info("Endpoint funciona. Servidor de firma Python funciona. Esta todo perfectito.")
+        return jsonify({"status": "success", "message": "Esta todo perfectito."}), 200
+    
+    @app.route('/create_signature_image', methods=['POST'])
+    def create_signature():
+        """
+        Route for creating a signature image from user info.
+        """
+        try:
+            data = request.get_json()
+            username = data.get('username')
+            area = data.get('area') 
+            department = data.get('department')
+            datetime = data.get('datetime')
+            label_signed_by= data.get('label_signed_by')
+            label_signed_at= data.get('label_signed_at')
+            
+            if not all([username, area, department, datetime]):
+                return jsonify({
+                    "status": False,
+                    "message": "Missing required fields",
+                    "errors": [{
+                        "message": "All fields (username, area, department, datetime) are required"
+                    }]
+                }), 400
+
+            try:
+                return  tools_controller.create_signature_image(username, area, department, datetime,label_signed_by,label_signed_at)
+                """ return jsonify({
+                    "status": True,
+                    "message": "Signature image created successfully",
+                    "image": image_result
+                }), 200 """
+            except Exception as e:
+                logger.error(f"Error creating signature image: {str(e)}", exc_info=True)
+                return jsonify({
+                    "status": False,
+                    "message": f"Error creating signature image: {str(e)}",
+                    "errors": [{
+                        "message": str(e)
+                    }]
+                }), 500
+
+        except Exception as e:
+            logger.error(f"Error processing request data: {str(e)}", exc_info=True)
+            return jsonify({
+                "status": False,
+                "message": f"Error processing request data: {str(e)}",
+                "errors": [{
+                    "message": str(e)
+                }]
+            }), 400
 
 
 

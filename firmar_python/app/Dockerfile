@@ -34,6 +34,9 @@ RUN pip install libarchive-c
 # Install reportlab
 RUN pip install reportlab
 
+# Install redis client
+RUN pip install redis
+
 # Automatically configure mod_wsgi
 #RUN mod_wsgi-express install-module | tee /etc/apache2/mods-available/wsgi.load
 #RUN a2enmod wsgi
@@ -51,7 +54,7 @@ COPY . .
 # Make sure all directories have correct permissions
 RUN chown -R www-data:www-data /app \
     && chmod -R 755 /app \
-    && chmod 600 /app/certs/own/TC_clave_csr.key  # Restrict private key permissions
+    && chmod 600 /app/certs/own/yunga_private_csr.key  # Restrict private key permissions
 
 # Update mod_wsgi configuration for larger file uploads
 RUN sed -i "s/default=10485760,/default=1048576000,/" /usr/local/lib/python3.12/site-packages/mod_wsgi/server/__init__.py

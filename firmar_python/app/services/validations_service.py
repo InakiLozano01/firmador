@@ -13,6 +13,9 @@ import base64
 import hashlib
 import multiprocessing
 from flask import jsonify
+import tempfile
+import shutil
+import zipfile
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -39,7 +42,11 @@ class ValidationsService:
 
         try:
             logger.debug("Analyzing validation report")
-            signatures = validation_analyze(report)
+            result = validation_analyze(report)
+            if isinstance(result, tuple):
+                signatures, _ = result
+            else:
+                signatures = result
             if not signatures:
                 raise validation_exc.InvalidSignatureDataError(f"Error al validar PDF: No se encontraron firmas válidas: id_doc: {id_doc}")
             logger.debug("Validation analysis completed")
@@ -92,12 +99,15 @@ class ValidationsService:
                         continue
 
                     # Analyze validation results
-                    validation_result = validation_analyze(validation_report)
-
+                    result_val = validation_analyze(validation_report)
+                    if isinstance(result_val, tuple):
+                        validation_result, _ = result_val
+                    else:
+                        validation_result = result_val
                     # Process validation result
-                    first_signature = validation_result[0]
-                    tested = bool(first_signature.get('valid', False))
-                    certs_valid = first_signature.get('certs_valid', False)
+                    first_signature = validation_result[0] if validation_result else None
+                    tested = bool(first_signature.get('valid', False)) if first_signature else False
+                    certs_valid = first_signature.get('certs_valid', False) if first_signature else False
                     indication = tested and certs_valid
 
                     validation_results.append({
@@ -147,33 +157,102 @@ class ValidationsService:
             doc_order_to_filename = {}
             pdf_count = 0
             
-            # Extract and process files from ZIP
-            with libarchive.file_reader(path) as archive:
-                for entry in archive:
-                    if entry.isdir:
-                        continue
+            logger.info(f"Processing expediente at path: {path}")
+            
+            # Create temporary directory for extraction and processing
+            temp_dir = tempfile.mkdtemp(prefix="expediente_")
+            extract_dir = os.path.join(temp_dir, "extracted")
+            os.makedirs(extract_dir, exist_ok=True)
+            
+            logger.info(f"Created temporary extraction directory: {extract_dir}")
+            
+            try:
+                # Extract all files from the original archive
+                with libarchive.file_reader(path) as archive:
+                    for entry in archive:
+                        if entry.isdir:
+                            continue
                         
-                    entry_pathname = entry.pathname
-                    if isinstance(entry_pathname, bytes):
-                        try:
-                            entry_pathname = entry_pathname.decode('utf-8')
-                        except UnicodeDecodeError:
-                            entry_pathname = entry_pathname.decode('latin-1')
-
-                    entry_path = unicodedata.normalize('NFKD', entry_pathname).encode('ascii', 'ignore').decode('ascii')
-                    normalized_path = os.path.normpath(entry_path)
-                    file_name = os.path.basename(normalized_path)
-                    content = b''.join(entry.get_blocks())
-                    files[file_name] = content
-
-                    if file_name.lower().endswith('.pdf'):
-                        pdf_count += 1
-                        base_name = os.path.splitext(file_name)[0]
-                        match = re.match(r'[^_]+_([^_]+)_?', base_name)
-                        if match:
-                            doc_order = match.group(1)
-                            doc_order_to_filename[doc_order] = file_name
-
+                        entry_pathname = entry.pathname
+                        if isinstance(entry_pathname, bytes):
+                            # Try common encodings in a specific order
+                            decoded = None
+                            encodings_to_try = ['cp1252', 'utf-8', 'latin-1', 'iso-8859-1']
+                            for encoding in encodings_to_try:
+                                try:
+                                    decoded = entry_pathname.decode(encoding)
+                                    break
+                                except UnicodeDecodeError:
+                                    continue
+                            
+                            # If all attempts failed, use a fallback with 'ignore' error handling
+                            if decoded is None:
+                                decoded = entry_pathname.decode('iso-8859-1', errors='ignore')
+                            
+                            entry_pathname = decoded
+                        
+                        # Normalize path and get just the filename
+                        normalized_path = os.path.normpath(entry_pathname)
+                        file_name = os.path.basename(normalized_path)
+                        # Remove any directory prefix from the filename
+                        file_name = file_name.split('\\')[-1]  # Handle Windows-style paths
+                        file_name = file_name.split('/')[-1]   # Handle Unix-style paths
+                        
+                        # Store original for comparison
+                        original_filename = file_name
+                        
+                        # Sanitize the filename using regex
+                        # Keep alphanumeric, underscore, dot, hyphen, spaces, and parentheses
+                        sanitized_name = re.sub(r'[^a-zA-Z0-9_.\-() áéíóúÁÉÍÓÚ]', '', original_filename)
+                        
+                        # Extract the file content
+                        content = b''.join(entry.get_blocks())
+                        
+                        # Save the file with the sanitized name
+                        output_path = os.path.join(extract_dir, sanitized_name)
+                        with open(output_path, 'wb') as f:
+                            f.write(content)
+                        
+                        # Log if the name was changed
+                        if original_filename != sanitized_name:
+                            logger.info(f"Renamed file: {original_filename!r} -> {sanitized_name!r}")
+                
+                
+                # Now create a new ZIP file at the original path, replacing it
+                with zipfile.ZipFile(path, 'w') as new_zip:
+                    for root, _, filenames in os.walk(extract_dir):
+                        for filename in filenames:
+                            file_path = os.path.join(root, filename)
+                            # Add file to the archive with just the filename (no path)
+                            new_zip.write(file_path, arcname=filename)
+                
+                logger.info(f"Replaced original archive with sanitized version at {path}")
+                
+                # Now process the sanitized archive
+                files = {}
+                with zipfile.ZipFile(path, 'r') as archive:
+                    for file_info in archive.infolist():
+                        file_name = file_info.filename
+                        with archive.open(file_info) as file:
+                            content = file.read()
+                            files[file_name] = content
+                        
+                        if file_name.lower().endswith('.pdf'):
+                            pdf_count += 1
+                            base_name = os.path.splitext(file_name)[0]
+                            match = re.match(r'[^_]+_([^_]+)_?', base_name)
+                            if match:
+                                doc_order = match.group(1)
+                                doc_order_to_filename[doc_order] = file_name
+            
+            finally:
+                # Clean up temp directory and its contents
+                try:
+                    shutil.rmtree(temp_dir)
+                    logger.info(f"Cleaned up temporary directory: {temp_dir}")
+                except Exception as e:
+                    logger.error(f"Error cleaning up temporary directory: {e}")
+            
             # Find and validate index.json
             index_json = None
             for filename, content in files.items():
@@ -295,12 +374,22 @@ class ValidationsService:
             "valid_hash": False,
             "doc_filename": None,
             "signatures": None,
-            "not_found": False
+            "not_found": False,
+            "invalid_format": False  # Add new field for format validation
         }
         try:
             if doc_order in doc_order_to_filename:
                 doc_filename = doc_order_to_filename[doc_order]
                 doc_content = files[doc_filename]
+                
+                # Set the filename regardless of validation outcome
+                result_doc["doc_filename"] = doc_filename
+                
+                # Calculate hash and check validity regardless of validation outcome
+                hash_doc = hashlib.sha256(doc_content).hexdigest()
+                valid_hash = False if not doc_hash else (hash_doc == doc_hash.lower())
+                result_doc["valid_hash"] = valid_hash
+                
                 docb64 = base64.b64encode(doc_content).decode('utf-8')
 
                 # Validate the document
@@ -313,10 +402,28 @@ class ValidationsService:
                 except Exception as e:
                     logger.error(f"Error validating signature in document {doc_id}: {str(e)}")
                     result_doc["signatures"] = []  # Empty signatures list instead of None
+                    
+                    # Check if this is a format recognition error
+                    error_str = str(e)
+                    logger.debug(f"Checking error message for format issues: {error_str}")
+                    
+                    # Look for our special marker or other indicators of format problems
+                    if "PDF_FORMAT_ERROR" in error_str or "Document format not recognized" in error_str:
+                        result_doc["invalid_format"] = True
+                        logger.info(f"Document {doc_id} format not recognized by validation service (explicit marker)")
+                    # Fallback: For PDFs, most 500 errors from validation are format issues
+                    elif "500 Server Error" in error_str and "validateSignature" in error_str:
+                        result_doc["invalid_format"] = True
+                        logger.info(f"Document {doc_id} likely has format issues (500 error from validation service): {error_str}")
+                    
                     return result_doc
                 
                 try:
-                    signatures = validation_analyze(validation_report)
+                    result_doc_val = validation_analyze(validation_report)
+                    if isinstance(result_doc_val, tuple):
+                        signatures, _ = result_doc_val
+                    else:
+                        signatures = result_doc_val
                     # If no signatures found, that's okay - just use an empty list
                     if not signatures:
                         logger.info(f"No signatures found in document {doc_id}")
@@ -326,17 +433,7 @@ class ValidationsService:
                     result_doc["signatures"] = []  # Empty signatures list instead of None
                     return result_doc
                 
-                hash_doc = hashlib.sha256(doc_content).hexdigest()
-                if not doc_hash:
-                    valid_hash = False
-                else:
-                    valid_hash = (hash_doc == doc_hash.lower())
-
-                result_doc.update({
-                    "valid_hash": valid_hash,
-                    "doc_filename": doc_filename,
-                    "signatures": signatures
-                })
+                result_doc["signatures"] = signatures
             else:
                 result_doc['not_found'] = True
         except Exception as e:
@@ -350,8 +447,8 @@ class ValidationsService:
         try:
             # Validate the signature using the prepared json_str and signature
             try:
-                validation_report = validate_signature_json(json_str, signature)
-                if not validation_report:
+                validation_report, status_code = validate_signature_json(json_str, signature)
+                if status_code != 200 or not validation_report:
                     logger.warning("No validation response received for tramite")
                     return {
                         'secuencia': tramite['secuencia'],
@@ -379,12 +476,16 @@ class ValidationsService:
                 }
 
             try:
-                validation_result = validation_analyze(validation_report)
+                result_tramite = validation_analyze(validation_report)
+                if isinstance(result_tramite, tuple):
+                    validation_result, _ = result_tramite
+                else:
+                    validation_result = result_tramite
                 if not validation_result:
                     logger.info("No signatures found in tramite")
                     validation_result = []
             except Exception as e:
-                logger.error(f"Error analyzing tramite validation: {str(e)}")
+                logger.error(f"Error analyzing validation in tramite: {str(e)}")
                 return {
                     'secuencia': tramite['secuencia'],
                     'is_valid': False,

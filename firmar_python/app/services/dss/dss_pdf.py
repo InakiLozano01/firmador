@@ -150,20 +150,29 @@ def sign_document_certificate(pdf, signature_value, certificates, current_time, 
 
 def get_data_to_sign_token(pdf, certificates, current_time, field_id, stamp, encoded_image):
     try:
+        logging.debug(f"Starting get_data_to_sign_token with timestamp {current_time} for field {field_id}")
+        
         # If pdf is already a string, assume it's base64 encoded
         if isinstance(pdf, str):
             pdf_str = pdf
         else:
             pdf_str = base64.b64encode(pdf).decode('utf-8')
             
+        logging.debug(f"Sending request to DSS API for data_to_sign with timestamp {current_time}")
         response = dss_get_data_tapir(pdf_str, certificates, current_time, field_id, stamp, encoded_image)
+        
         if isinstance(response, tuple):
             response, status_code = response
+            logging.debug(f"Received response with status code {status_code}")
             if status_code != 200:
                 error_message = _handle_error_response(response)
                 raise DSSResponseError(error_message)
+        
         if not isinstance(response, dict) or "bytes" not in response:
             raise DSSResponseError("Invalid response format from DSS API")
+            
+        # Log first 50 chars of the data_to_sign to help with troubleshooting
+        logging.debug(f"Successfully received data_to_sign (first 50 chars): {response['bytes'][:50]}...")
         return response
     except Exception as e:
         logging.error(f"Error in get_data_to_sign_token: {str(e)}")
@@ -171,20 +180,29 @@ def get_data_to_sign_token(pdf, certificates, current_time, field_id, stamp, enc
 
 def sign_document_token(pdf, signature_value, certificates, current_time, field_id, stamp, encoded_image):
     try:
+        logging.debug(f"Starting sign_document_token with timestamp {current_time} for field {field_id}")
+        logging.debug(f"Signature value (first 50 chars): {signature_value[:50]}...")
+        
         # If pdf is already a string, assume it's base64 encoded
         if isinstance(pdf, str):
             pdf_str = pdf
         else:
             pdf_str = base64.b64encode(pdf).decode('utf-8')
             
+        logging.debug(f"Sending request to DSS API for signing with timestamp {current_time}")
         response = dss_sign_tapir(pdf_str, signature_value, certificates, current_time, field_id, stamp, encoded_image)
+        
         if isinstance(response, tuple):
             response, status_code = response
+            logging.debug(f"Received response with status code {status_code}")
             if status_code != 200:
                 error_message = _handle_error_response(response)
                 raise DSSResponseError(error_message)
+                
         if not isinstance(response, dict) or "bytes" not in response:
             raise DSSResponseError("Invalid response format from DSS API")
+            
+        logging.debug(f"Successfully received signed document (bytes length: {len(response['bytes'])})")
         return response
     except Exception as e:
         logging.error(f"Error in sign_document_token: {str(e)}")
